@@ -321,8 +321,8 @@
     "thuốc giãn phế quản": {
       "diagnoses": [
         "acute bronchitis",
-        "acute bronchospasm",
         "Acute Bronchospasm",
+        "acute bronchospasm",
         "Atelectasis",
         "bronchial asthma",
         "Bronchial Asthma",
@@ -417,8 +417,8 @@
         "Common Cold",
         "Complex Regional Pain Syndrome",
         "concussion",
-        "dengue",
         "Dengue",
+        "dengue",
         "dental caries",
         "Endometriosis",
         "gallstone",
@@ -454,8 +454,8 @@
         "Pain management (over-the-counter pain relievers",
         "Pain management (such as nonsteroidal anti-inflammatory drugs [NSAIDs]",
         "pain management techniques (such as medications",
-        "pain relievers",
         "Pain relievers",
+        "pain relievers",
         "Pain relievers (e.g., Acetaminophen)",
         "Pain relievers (e.g., Ibuprofen)",
         "Pain relievers (e.g., NSAIDs)",
@@ -546,20 +546,20 @@
     },
     "thuốc kháng histamin": {
       "diagnoses": [
-        "Allergy",
         "allergy",
+        "Allergy",
         "Conjunctivitis due to Allergy",
         "conjunctivitis due to allergy",
-        "drug reaction",
         "Drug Reaction",
+        "drug reaction",
         "seasonal allergies (hay fever)",
         "Urticaria (Hives)"
       ],
       "medications": [
         "antihistamine eye drops",
         "Antihistamine eye drops (e.g., Olopatadine)",
-        "Antihistamines",
         "antihistamines",
+        "Antihistamines",
         "Antihistamines (e.g., Diphenhydramine)",
         "Antihistamines (e.g., Loratadine)",
         "Oral antihistamines (e.g., Cetirizine)"
@@ -770,8 +770,8 @@
         "Gastroenteritis",
         "Gonorrhea",
         "gum disease",
-        "impetigo",
         "Impetigo",
+        "impetigo",
         "Open Wound from Surgical Incision",
         "Orbital Cellulitis",
         "otitis externa (swimmer's ear)",
@@ -786,8 +786,8 @@
         "Syphilis",
         "typhoid",
         "Typhoid",
-        "urinary tract infection",
         "Urinary tract infection",
+        "urinary tract infection",
         "Urinary Tract Infection (UTI)",
         "vaginal cyst",
         "vaginitis"
@@ -906,8 +906,8 @@
     "thuốc kháng virus": {
       "diagnoses": [
         "AIDS",
-        "chicken pox",
         "Chicken pox",
+        "chicken pox",
         "Chorioretinitis",
         "Cold Sore",
         "Cranial Nerve Palsy",
@@ -1192,8 +1192,8 @@
       "diagnoses": [
         "acute sinusitis",
         "eustachian tube dysfunction (ear disorder)",
-        "Nose Disorder",
-        "nose disorder"
+        "nose disorder",
+        "Nose Disorder"
       ],
       "medications": [
         "and may include medications (such as decongestants",
@@ -1235,8 +1235,8 @@
         "Dysthymic Disorder",
         "Narcolepsy",
         "Neuropathic Pain",
-        "Panic disorder",
         "panic disorder",
+        "Panic disorder",
         "personality disorder",
         "Postpartum Depression",
         "schizophrenia",
@@ -1244,8 +1244,8 @@
       ],
       "medications": [
         "antidepressant medication (if recommended by a healthcare professional)",
-        "Antidepressant medications",
         "antidepressant medications",
+        "Antidepressant medications",
         "antidepressants",
         "Antipsychotics (e.g., Risperidone, Olanzapine)",
         "Medications (mood stabilizers",
@@ -1333,8 +1333,8 @@
         "beta blockers",
         "beta blockers)",
         "Beta-blockers",
-        "Diuretics",
         "diuretics",
+        "Diuretics",
         "Diuretics (e.g., Spironolactone)",
         "medication (such as antihypertensive drugs)",
         "Medications (antihypertensives)",
@@ -1439,8 +1439,8 @@
       ],
       "medications": [
         "Biologics",
-        "Medications (immunosuppressants",
         "medications (immunosuppressants",
+        "Medications (immunosuppressants",
         "Medications (immunosuppressants)",
         "Methotrexate"
       ],
@@ -1470,8 +1470,8 @@
         "Gastroesophageal Reflux Disease (GERD)",
         "gastrointestinal hemorrhage",
         "GERD",
-        "Hiatal Hernia",
         "hiatal hernia",
+        "Hiatal Hernia",
         "Indigestion",
         "peptic ulcer disease"
       ],
@@ -1568,8 +1568,8 @@
     },
     "thuốc điều trị sốt rét": {
       "diagnoses": [
-        "Malaria",
-        "malaria"
+        "malaria",
+        "Malaria"
       ],
       "medications": [
         "Antimalarial drugs"
@@ -1756,8 +1756,8 @@
         "Testicular Cancer"
       ],
       "medications": [
-        "Chemotherapy",
         "chemotherapy",
+        "Chemotherapy",
         "Radiation therapy",
         "radiation therapy"
       ],
@@ -3701,8 +3701,8 @@
         "thuốc kháng histamin"
       ],
       "medications": [
-        "antihistamines",
-        "Antihistamines"
+        "Antihistamines",
+        "antihistamines"
       ],
       "symptoms": [
         "burning micturition",

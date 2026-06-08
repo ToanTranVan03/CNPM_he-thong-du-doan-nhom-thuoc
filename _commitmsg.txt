@@ -1,0 +1,10 @@
+fix: dọn danh sách features (1270 → 582) + chống tái phát
+
+- Nguyên nhân: train_model.py build features từ cột trieu_chung của mọi dòng;
+  dòng mô tả tự nhiên là cả câu nên bị đưa vào features (phình lên 1270).
+- Sửa: bỏ dòng source=natural khi build features + thêm cờ --features-data để
+  lấy từ vựng triệu chứng từ data GỐC đầy đủ (tránh thiếu khi train trên tập đã cap).
+- Regenerate models/ (features=582, khớp bản gốc; accuracy giữ 0.953, eval thật 92.6%).
+- Cập nhật README (pipeline train + cờ --features-data) và regenerate audit.
+
+Co-Authored-By: nhóm Opus 4.8 <noreply@.com>

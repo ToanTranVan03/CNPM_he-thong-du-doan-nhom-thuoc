@@ -216,6 +216,7 @@ def train_text_rows(
     text_column: str,
     target_column: str,
     source: Path,
+    features_data: Path | None = None,
 ) -> None:
     if text_column not in rows[0]:
         raise ValueError(f"CSV does not contain text column '{text_column}'.")
@@ -251,10 +252,18 @@ def train_text_rows(
     accuracy = accuracy_score(y_test, predictions)
     report = classification_report(y_test, predictions, output_dict=True, zero_division=0)
 
+    # Danh sách features (từ vựng triệu chứng cho bộ chọn + tầng dịch VN→EN) nên lấy từ
+    # data ĐẦY ĐỦ, không bị ảnh hưởng bởi việc khử trùng/cap của tập train. Nếu truyền
+    # --features-data thì build từ file đó; nếu không thì build từ rows (bỏ dòng natural).
+    feature_rows = read_csv_path(features_data) if features_data else rows
     features = []
-    if "trieu_chung" in rows[0]:
+    if feature_rows and "trieu_chung" in feature_rows[0]:
         feature_values = []
-        for row in rows:
+        for row in feature_rows:
+            # Bỏ qua dòng mô tả tự nhiên (cả câu, không phải triệu chứng atomic) để
+            # danh sách features không bị phình bởi câu đầy đủ.
+            if "natural" in str(row.get("source", "")).lower():
+                continue
             feature_values.extend(split_symptoms(row.get("trieu_chung", "")))
         features = unique_sorted(feature_values)
 
@@ -383,6 +392,7 @@ def train(
     random_state: int,
     text_column: str | None,
     target_column: str | None,
+    features_data: Path | None = None,
 ) -> None:
     kind = data_kind(data_path)
     if kind == "disease_json":
@@ -406,6 +416,7 @@ def train(
         text_column=resolved_text_column,
         target_column=resolved_target_column,
         source=data_path,
+        features_data=features_data,
     )
     if {"nhom_thuoc", "chan_doan_du_kien", "ten_thuoc", "trieu_chung"}.issubset(rows[0].keys()):
         write_reference_summary(rows, output_dir, data_path)
@@ -429,6 +440,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-column", default=None)
     parser.add_argument("--test-size", type=float, default=0.2)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument(
+        "--features-data",
+        type=Path,
+        default=None,
+        help="File data đầy đủ để build danh sách features (từ vựng triệu chứng). "
+        "Nếu train trên tập đã khử trùng/cap, truyền data gốc vào đây để giữ đủ từ vựng.",
+    )
     return parser.parse_args()
 
 
@@ -441,4 +459,5 @@ if __name__ == "__main__":
         args.random_state,
         args.text_column,
         args.target_column,
+        args.features_data,
     )

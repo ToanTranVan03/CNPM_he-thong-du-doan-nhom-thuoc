@@ -54,6 +54,21 @@ python scripts/train_model.py --data "data\train_ready_mapped_drug_groups.csv"
 
 Mặc định model sẽ được ghi vào thư mục `models/`. Với CSV mới, script tự chọn `trieu_chung` làm text input và `nhom_thuoc` làm target; có thể đổi bằng `--text-column` và `--target-column`.
 
+### Train trên tập đã trộn data tự nhiên (khuyến nghị)
+
+Pipeline đầy đủ: làm sạch mapping → dựng data tự nhiên → gộp/cân bằng → train.
+
+```powershell
+python scripts/fix_mappings.py
+python scripts/build_natural_dataset.py
+python scripts/build_combined_dataset.py
+python scripts/train_model.py --data "data\train_combined.csv" --features-data "data\train_ready_mapped_drug_groups.csv"
+```
+
+> `--features-data` bắt buộc khi train trên tập đã khử trùng/cap (`train_combined.csv`): danh sách
+> features (từ vựng triệu chứng cho bộ chọn + tầng dịch VN→EN) được lấy từ data GỐC đầy đủ để
+> không bị thiếu triệu chứng. Đánh giá lại bằng `python scripts/eval_natural_descriptions.py --model models`.
+
 ## Luồng xử lý
 
 1. Người dùng nhập mô tả triệu chứng tiếng Việt.
