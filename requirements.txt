@@ -8,6 +8,11 @@ flask-cors
 pandas
 pyarrow               # đọc file .parquet (dataset HuggingFace)
 
+# Hiểu ngữ nghĩa tiếng Việt (khớp triệu chứng câu lạ cùng nghĩa)
+# Lần đầu chạy sẽ tự tải model SBERT (~500MB). Thiếu 2 gói này app vẫn chạy (fallback keyword).
+torch                  # CPU: pip install torch --index-url https://download.pytorch.org/whl/cpu
+sentence-transformers  # model mặc định: keepitreal/vietnamese-sbert (đổi qua env VI_SBERT_MODEL)
+
 # Thu thập dữ liệu (scraping)
 requests
 beautifulsoup4

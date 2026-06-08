@@ -784,6 +784,27 @@ AMBIGUOUS_NORMALIZED_KEYWORDS = {
     if len(variants) > 1
 }
 
+# ── Lớp khớp NGỮ NGHĨA tiếng Việt (SBERT) — bổ sung cho khớp từ khóa cứng ──────
+# Bật/tắt qua env. Graceful: thiếu thư viện/model -> tự dùng exact-match như cũ.
+SEMANTIC_ENABLED = os.environ.get("SEMANTIC_MATCH", "1") != "0"
+SEMANTIC_THRESHOLD = float(os.environ.get("SEMANTIC_THRESHOLD", "0.62"))
+# Lớp ngữ nghĩa chỉ chạy khi exact-match thu được < ngưỡng này (fallback).
+SEMANTIC_FALLBACK_MAX = int(os.environ.get("SEMANTIC_FALLBACK_MAX", "2"))
+SEMANTIC_READY = False
+if SEMANTIC_ENABLED:
+    try:
+        import semantic_matcher
+        _semantic_pairs = [
+            (kw, feature)
+            for feature in features
+            for kw in symptom_keywords(feature)
+            if len(kw) >= 3
+        ]
+        SEMANTIC_READY = semantic_matcher.build_index(_semantic_pairs)
+    except Exception:
+        SEMANTIC_READY = False
+
+
 def has_phrase(text: str, phrase: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", text) is not None
 
@@ -1283,6 +1304,14 @@ def symptoms_from_text(text: str) -> set[str]:
     if any(has_phrase(normalized_text, phrase) for phrase in ["mat ca chan sung", "co chan sung"]):
         if "ankle swelling" in feature_lookup:
             matches.add(feature_lookup["ankle swelling"])
+
+    # Lớp ngữ nghĩa (fallback): chỉ kích hoạt khi khớp từ khóa thu được ÍT triệu chứng,
+    # để giữ độ chính xác cho ca rõ ràng (exact đủ) và cứu ca lạ (exact bỏ sót).
+    if SEMANTIC_READY and len(matches) < SEMANTIC_FALLBACK_MAX:
+        try:
+            matches.update(semantic_matcher.match(text, threshold=SEMANTIC_THRESHOLD))
+        except Exception:
+            pass
     return matches
 
 
