@@ -1698,23 +1698,68 @@ def has_neuro_danger_signs(active_symptoms: set[str]) -> bool:
 
 
 def emergency_red_flag_from_notes(notes: str) -> str | None:
-    """Dấu hiệu CẤP CỨU hô hấp/tim mạch nhận từ mô tả thô (không phụ thuộc feature).
-    Trả về thông điệp cảnh báo nếu phát hiện; None nếu không.
+    """Dấu hiệu CẤP CỨU/khủng hoảng nhận từ mô tả thô (không phụ thuộc feature trích được).
+    Trả về thông điệp cảnh báo nếu phát hiện; None nếu không. Ưu tiên AN TOÀN: thà cảnh báo thừa.
     """
     t = normalize(notes or "")
-    # Tím tái / suy hô hấp cấp
-    cyanosis = any(p in t for p in ["tim tai", "moi tim", "tim moi", "tim tai mat", "da tim"])
-    severe_dyspnea = any(p in t for p in ["kho tho du doi", "kho tho nang", "tho gap", "ngat tho", "khong tho duoc"])
-    if cyanosis or (severe_dyspnea and cyanosis):
-        return ("Dấu hiệu suy hô hấp cấp (tím tái/khó thở dữ dội). Đây có thể là CẤP CỨU; "
-                "gọi cấp cứu hoặc đến cơ sở y tế ngay, KHÔNG tự dùng thuốc.")
-    # Nhồi máu cơ tim: đau ngực + (lan tay/hàm | vã mồ hôi | bóp nghẹt)
-    chest = any(p in t for p in ["dau nguc", "dau that nguc", "tuc nguc du doi", "nguc bi bop"])
-    mi_feat = any(p in t for p in ["lan tay trai", "lan canh tay", "lan ham", "lan vai", "lan ra tay",
-                                   "va mo hoi", "bop nghet", "bop chat", "boi hoi"])
+    def has(*ps): return any(p in t for p in ps)
+
+    GO = " Đây có thể là CẤP CỨU; gọi 115 hoặc đến cơ sở y tế ngay, KHÔNG tự dùng thuốc theo gợi ý."
+
+    # 1) Ý định tự tử / tự hại -> thông điệp hỗ trợ khủng hoảng (ưu tiên cao nhất)
+    if has("tu tu", "tu sat", "muon chet", "ket thuc cuoc doi", "tu hai", "hai ban than",
+           "cat tay cho", "khong muon song"):
+        return ("Bạn đang mô tả ý định tự tử/tự hại. Bạn không đơn độc — hãy liên hệ NGAY người thân "
+                "tin cậy hoặc đường dây hỗ trợ tâm lý (vd Ngày Mai 096 306 1414) hoặc gọi cấp cứu 115. "
+                "Hệ thống này KHÔNG thay thế hỗ trợ y tế/khủng hoảng.")
+
+    # 2) Ngộ độc / quá liều
+    if has("ngo doc", "qua lieu", "uong nham", "thuoc tru sau", "uong thuoc sau", "uong nhieu thuoc",
+           "uong hoa chat", "uong nham thuoc"):
+        return "Nghi ngộ độc/quá liều." + GO
+
+    # 3) Phản vệ / phù mạch (dị ứng nặng)
+    angioedema = has("sung moi", "sung luoi", "phu moi", "phu luoi", "phu mat", "sung mat",
+                     "hong nghen", "co hong nghen", "phu mach", "sung hong")
+    allergic_trigger = has("an tom", "an hai san", "ong dot", "ong chich", "uong thuoc la", "sau khi tiem",
+                           "noi me day", "man khap nguoi", "noi man khap")
+    severe_resp_or_shock = has("kho tho", "tho rit", "tut huyet ap", "choang", "ngat")
+    if (angioedema and severe_resp_or_shock) or (allergic_trigger and severe_resp_or_shock and angioedema) \
+       or (allergic_trigger and has("tut huyet ap", "ngat", "soc")):
+        return "Nghi PHẢN VỆ (dị ứng nặng: sưng môi/lưỡi/họng, khó thở, tụt huyết áp)." + GO
+
+    # 4) Xuất huyết nặng: nôn ra máu / phân đen (melena)
+    if has("non ra mau", "oi ra mau", "non mau", "phan den", "di ngoai phan den", "phan hac in"):
+        return "Nghi xuất huyết tiêu hóa nặng (nôn ra máu/phân đen)." + GO
+    if has("di ngoai ra mau", "chay mau nhieu", "mau chay nhieu") and has("choang", "hoa mat", "nguoi lanh", "tut huyet ap", "tim dap nhanh"):
+        return "Nghi mất máu cấp/sốc." + GO
+
+    # 5) Suy hô hấp cấp / tím tái
+    cyanosis = has("tim tai", "moi tim", "tim moi", "da tim", "tim nguoi")
+    severe_dyspnea = has("kho tho du doi", "kho tho nang", "tho gap", "ngat tho", "khong tho duoc")
+    if cyanosis or severe_dyspnea:
+        return "Dấu hiệu suy hô hấp cấp (tím tái/khó thở dữ dội)." + GO
+
+    # 6) Nhồi máu cơ tim: đau ngực + (lan tay/hàm | vã mồ hôi | bóp nghẹt)
+    chest = has("dau nguc", "dau that nguc", "tuc nguc du doi", "nguc bi bop")
+    mi_feat = has("lan tay trai", "lan canh tay", "lan ham", "lan vai", "lan ra tay", "va mo hoi", "bop nghet", "bop chat")
     if chest and mi_feat:
-        return ("Đau ngực kèm dấu hiệu nghi nhồi máu cơ tim (lan tay/hàm, vã mồ hôi, bóp nghẹt). "
-                "Đây có thể là CẤP CỨU; gọi cấp cứu ngay, KHÔNG tự dùng thuốc.")
+        return "Đau ngực nghi nhồi máu cơ tim (lan tay/hàm, vã mồ hôi, bóp nghẹt)." + GO
+
+    # 7) Chấn thương đầu nặng
+    if has("nga cao", "tai nan", "chan thuong dau", "chan thuong so nao", "nga dap dau", "ta nga") and \
+       has("chay mau tai", "noi lan", "lan lon", "lo mo", "bat tinh", "dau dau du doi", "non oi"):
+        return "Nghi chấn thương đầu nặng." + GO
+
+    # 8) Bụng ngoại khoa (viêm phúc mạc): bụng cứng
+    if has("bung cung", "cung nhu go", "bung cung nhu go", "do cung bung", "phan ung thanh bung"):
+        return "Nghi bụng ngoại khoa cấp (bụng cứng, đau dữ dội)." + GO
+
+    # 9) Cấp cứu sản khoa: thai + chảy máu/đau bụng
+    if has("mang thai", "co thai", "dang bau", "co bau", "thai ", "thai nhi", "bau "):
+        if has("chay mau", "ra mau", "ra dich nau", "dau bung", "dau quan", "dau lung du doi"):
+            return "Có thai kèm chảy máu/đau bụng — nguy cơ cấp cứu sản khoa (sảy thai/thai ngoài tử cung)." + GO
+
     return None
 
 
@@ -2355,6 +2400,21 @@ def predict():
     if not isinstance(selected, list):
         return jsonify({"error": "Danh sách triệu chứng không hợp lệ."}), 400
 
+    # ── CỔNG CẤP CỨU (ưu tiên cao nhất): bắt dấu hiệu nguy hiểm/khủng hoảng từ mô tả thô,
+    # trước cả bước trích triệu chứng, để KHÔNG bao giờ gợi thuốc cho ca cấp cứu.
+    _emergency = emergency_red_flag_from_notes(notes)
+    if _emergency:
+        return jsonify({
+            "error": _emergency,
+            "display_title": "⚠️ Cần hỗ trợ y tế khẩn cấp",
+            "needs_more_input": True,
+            "confidence": None,
+            "label_type": LABEL_TYPE,
+            "score_type": "emergency",
+            "matched_symptoms": [],
+            "top_predictions": [],
+        }), 422
+
     active_symptoms = set()
     active_symptoms_order = []
     for symptom in selected:
@@ -2439,9 +2499,6 @@ def predict():
             "Có dấu hiệu thần kinh nguy hiểm (cứng cổ, yếu/liệt nửa người, lú lẫn, nói khó, co giật). "
             "Đây có thể là cấp cứu; cần đến cơ sở y tế ngay, KHÔNG tự dùng thuốc theo gợi ý tham khảo."
         )
-    _emergency_msg = emergency_red_flag_from_notes(notes)
-    if _emergency_msg:
-        quality_reasons.insert(0, _emergency_msg)
     matched_symptoms = active_symptoms_order
     matched_symptom_labels = unique_values([symptom_label_vi(symptom) for symptom in matched_symptoms])
     label_kind_vi = "nhóm thuốc" if LABEL_TYPE == "drug_group" else "bệnh"
