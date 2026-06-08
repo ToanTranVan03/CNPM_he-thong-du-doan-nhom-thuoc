@@ -1,0 +1,15 @@
+# Core ML + API
+scikit-learn>=1.9    # model models/ đã retrain trên 1.9.x (2026-06-08)
+joblib
+flask
+flask-cors
+
+# Xử lý dữ liệu
+pandas
+pyarrow               # đọc file .parquet (dataset HuggingFace)
+
+# Thu thập dữ liệu (scraping)
+requests
+beautifulsoup4
+lxml
+browser-use           # LLM điều khiển trình duyệt (cần Chrome + API key khi chạy)

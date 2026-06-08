@@ -1,0 +1,11 @@
+{
+  "total": 500,
+  "passed": 500,
+  "failed": 0,
+  "status_counts": {
+    "422": 133,
+    "200": 367
+  },
+  "issue_counts": {},
+  "csv": "D:\\CNPM\\docs\\stress_test_500_cases.csv"
+}

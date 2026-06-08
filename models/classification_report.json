@@ -1,0 +1,159 @@
+{
+  "bù dịch và điện giải": {
+    "precision": 0.9685314685314685,
+    "recall": 0.8935483870967742,
+    "f1-score": 0.9295302013422819,
+    "support": 620.0
+  },
+  "thuốc chống co giật/đau thần kinh": {
+    "precision": 0.9693877551020408,
+    "recall": 0.9875259875259875,
+    "f1-score": 0.9783728115345005,
+    "support": 481.0
+  },
+  "thuốc chống nôn": {
+    "precision": 0.8146853146853147,
+    "recall": 0.966804979253112,
+    "f1-score": 0.8842504743833017,
+    "support": 241.0
+  },
+  "thuốc chống đông/kháng tiểu cầu": {
+    "precision": 0.5,
+    "recall": 1.0,
+    "f1-score": 0.6666666666666666,
+    "support": 2.0
+  },
+  "thuốc corticosteroid/chống viêm": {
+    "precision": 0.9234608985024958,
+    "recall": 0.8894230769230769,
+    "f1-score": 0.9061224489795918,
+    "support": 624.0
+  },
+  "thuốc giãn phế quản": {
+    "precision": 0.8874172185430463,
+    "recall": 0.9675090252707581,
+    "f1-score": 0.92573402417962,
+    "support": 554.0
+  },
+  "thuốc giảm đau hạ sốt": {
+    "precision": 0.9491778774289985,
+    "recall": 0.918958031837916,
+    "f1-score": 0.9338235294117647,
+    "support": 691.0
+  },
+  "thuốc kháng histamin": {
+    "precision": 0.9722222222222222,
+    "recall": 0.9722222222222222,
+    "f1-score": 0.9722222222222222,
+    "support": 648.0
+  },
+  "thuốc kháng nấm/ký sinh trùng ngoài da": {
+    "precision": 0.9301801801801802,
+    "recall": 0.9604651162790697,
+    "f1-score": 0.9450800915331807,
+    "support": 430.0
+  },
+  "thuốc kháng sinh": {
+    "precision": 0.9574468085106383,
+    "recall": 0.9104046242774566,
+    "f1-score": 0.9333333333333333,
+    "support": 692.0
+  },
+  "thuốc kháng virus": {
+    "precision": 0.9459459459459459,
+    "recall": 0.9459459459459459,
+    "f1-score": 0.9459459459459459,
+    "support": 37.0
+  },
+  "thuốc kháng viêm không steroid": {
+    "precision": 0.9607201309328969,
+    "recall": 0.9407051282051282,
+    "f1-score": 0.9506072874493927,
+    "support": 624.0
+  },
+  "thuốc nhuận tràng": {
+    "precision": 0.9585798816568047,
+    "recall": 0.9642857142857143,
+    "f1-score": 0.9614243323442137,
+    "support": 168.0
+  },
+  "thuốc nội tiết tuyến giáp": {
+    "precision": 0.6,
+    "recall": 1.0,
+    "f1-score": 0.75,
+    "support": 3.0
+  },
+  "thuốc thông mũi": {
+    "precision": 0.9817850637522769,
+    "recall": 0.964221824686941,
+    "f1-score": 0.9729241877256317,
+    "support": 559.0
+  },
+  "thuốc thần kinh/tâm thần": {
+    "precision": 0.9864864864864865,
+    "recall": 0.9733333333333334,
+    "f1-score": 0.9798657718120806,
+    "support": 600.0
+  },
+  "thuốc tim mạch/huyết áp": {
+    "precision": 0.9824281150159745,
+    "recall": 0.9855769230769231,
+    "f1-score": 0.984,
+    "support": 624.0
+  },
+  "thuốc điều hòa/ức chế miễn dịch": {
+    "precision": 0.8571428571428571,
+    "recall": 1.0,
+    "f1-score": 0.9230769230769231,
+    "support": 6.0
+  },
+  "thuốc điều trị dạ dày": {
+    "precision": 0.9649390243902439,
+    "recall": 0.9798761609907121,
+    "f1-score": 0.9723502304147466,
+    "support": 646.0
+  },
+  "thuốc điều trị sốt rét": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1-score": 1.0,
+    "support": 27.0
+  },
+  "thuốc điều trị đái tháo đường": {
+    "precision": 0.9794520547945206,
+    "recall": 0.9862068965517241,
+    "f1-score": 0.9828178694158075,
+    "support": 435.0
+  },
+  "thuốc/điều trị ung thư": {
+    "precision": 0.4,
+    "recall": 0.6666666666666666,
+    "f1-score": 0.5,
+    "support": 3.0
+  },
+  "vitamin và khoáng chất": {
+    "precision": 0.9594813614262561,
+    "recall": 0.9866666666666667,
+    "f1-score": 0.9728841413311422,
+    "support": 600.0
+  },
+  "vắc-xin": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1-score": 1.0,
+    "support": 3.0
+  },
+  "accuracy": 0.952994204764971,
+  "macro avg": {
+    "precision": 0.8937279443854446,
+    "recall": 0.952514446295672,
+    "f1-score": 0.9154596872125979,
+    "support": 9318.0
+  },
+  "weighted avg": {
+    "precision": 0.9543791692693296,
+    "recall": 0.952994204764971,
+    "f1-score": 0.9531364300125921,
+    "support": 9318.0
+  }
+}
