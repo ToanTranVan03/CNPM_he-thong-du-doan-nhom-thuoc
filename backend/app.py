@@ -1384,6 +1384,12 @@ def negated_feature_normals(source_text: str) -> set[str]:
         ("khong buon non", "khong non"): ["nausea", "vomiting"],
         ("khong ho",): ["cough"],
         ("khong kho tho",): ["breathlessness", "shortness of breath", "difficulty breathing"],
+        ("khong dau bung", "khong dau da day", "khong dau thuong vi"): [
+            "abdominal pain", "belly pain", "stomach pain", "acidity", "heartburn", "indigestion",
+            "lower abdominal pain", "upper abdominal pain", "sharp abdominal pain", "burning abdominal pain",
+        ],
+        ("khong chong mat",): ["dizziness"],
+        ("khong ngua",): ["itching", "itching of skin"],
     }
     for phrases, feats in NEG_MAP.items():
         if any(has_phrase(normalized_source, p) for p in phrases):
@@ -1689,6 +1695,27 @@ def has_neuro_danger_signs(active_symptoms: set[str]) -> bool:
         active_symptoms, ["fever", "high fever", "mild fever", "headache"]
     )
     return has_stiff_neck and has_meningism_context
+
+
+def emergency_red_flag_from_notes(notes: str) -> str | None:
+    """Dấu hiệu CẤP CỨU hô hấp/tim mạch nhận từ mô tả thô (không phụ thuộc feature).
+    Trả về thông điệp cảnh báo nếu phát hiện; None nếu không.
+    """
+    t = normalize(notes or "")
+    # Tím tái / suy hô hấp cấp
+    cyanosis = any(p in t for p in ["tim tai", "moi tim", "tim moi", "tim tai mat", "da tim"])
+    severe_dyspnea = any(p in t for p in ["kho tho du doi", "kho tho nang", "tho gap", "ngat tho", "khong tho duoc"])
+    if cyanosis or (severe_dyspnea and cyanosis):
+        return ("Dấu hiệu suy hô hấp cấp (tím tái/khó thở dữ dội). Đây có thể là CẤP CỨU; "
+                "gọi cấp cứu hoặc đến cơ sở y tế ngay, KHÔNG tự dùng thuốc.")
+    # Nhồi máu cơ tim: đau ngực + (lan tay/hàm | vã mồ hôi | bóp nghẹt)
+    chest = any(p in t for p in ["dau nguc", "dau that nguc", "tuc nguc du doi", "nguc bi bop"])
+    mi_feat = any(p in t for p in ["lan tay trai", "lan canh tay", "lan ham", "lan vai", "lan ra tay",
+                                   "va mo hoi", "bop nghet", "bop chat", "boi hoi"])
+    if chest and mi_feat:
+        return ("Đau ngực kèm dấu hiệu nghi nhồi máu cơ tim (lan tay/hàm, vã mồ hôi, bóp nghẹt). "
+                "Đây có thể là CẤP CỨU; gọi cấp cứu ngay, KHÔNG tự dùng thuốc.")
+    return None
 
 
 def dermatology_rule_drug_group(active_symptoms: set[str]) -> str | None:
@@ -2412,6 +2439,9 @@ def predict():
             "Có dấu hiệu thần kinh nguy hiểm (cứng cổ, yếu/liệt nửa người, lú lẫn, nói khó, co giật). "
             "Đây có thể là cấp cứu; cần đến cơ sở y tế ngay, KHÔNG tự dùng thuốc theo gợi ý tham khảo."
         )
+    _emergency_msg = emergency_red_flag_from_notes(notes)
+    if _emergency_msg:
+        quality_reasons.insert(0, _emergency_msg)
     matched_symptoms = active_symptoms_order
     matched_symptom_labels = unique_values([symptom_label_vi(symptom) for symptom in matched_symptoms])
     label_kind_vi = "nhóm thuốc" if LABEL_TYPE == "drug_group" else "bệnh"
