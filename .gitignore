@@ -5,6 +5,7 @@ __pycache__/
 venv/
 node_modules/
 .env
+_commitmsg.txt
 
 # Dữ liệu người dùng (chứa mật khẩu hash + token phiên) — KHÔNG đẩy lên
 data/users.json
