@@ -472,7 +472,7 @@ _VI_SYMPTOM_KEYWORDS_EXTRA = {
     "sinus_pressure": ["đau nhức xoang", "đau xoang má", "nhức xoang"],
     "wheezing": ["khò khè khi gắng sức", "thở khò khè"],
     "breathlessness": ["lên cơn khó thở", "khó thở khi gắng sức", "khó thở khi gặp lạnh"],
-    "enlarged_thyroid": ["bướu cổ to", "bướu giáp"],
+    "enlarged_thyroid": ["bướu cổ to", "bướu giáp", "cổ to", "cổ phình", "cổ bạnh", "mắt lồi", "lồi mắt"],
     "excessive_urination_at_night": ["tiểu đêm", "tiểu đêm nhiều lần"],
     "excessive_hunger": ["đói nhiều"],
     "chills": ["rét run", "sốt thành cơn"],
@@ -489,6 +489,13 @@ _VI_SYMPTOM_KEYWORDS_EXTRA = {
     "muscle_pain": ["đau mỏi toàn thân", "đau nhức toàn thân", "đau người"],
     "Redness, swelling, discharge from the wound": ["chảy mủ", "vết thương chảy mủ", "vết thương sưng đỏ", "mưng mủ", "có mủ"],
     "Shooting or burning pain, tingling or numbness": ["đau rát bỏng lan dọc dây thần kinh", "đau lan dọc dây thần kinh", "đau rát bỏng lan"],
+    # Batch 3: cơ-xương-khớp / lo âu / tim mạch
+    "joint_pain": ["khớp sưng đau", "sưng đau khớp", "viêm khớp", "viêm gân", "đau gân", "ngón chân sưng đau", "sưng đỏ đau khớp"],
+    "anxiety": ["sợ hãi vô cớ", "hoảng sợ", "lo lắng quá mức", "căng thẳng", "lo âu kéo dài"],
+    "chest_pain": ["đau thắt ngực", "đau ngực khi gắng sức", "đau ngực bóp nghẹt"],
+    "palpitations": ["tim đập nhanh", "tim đập mạnh", "tim đập không đều", "loạn nhịp", "trống ngực"],
+    "High blood pressure, chest pain or discomfort, shortness of breath, fatigue":
+        ["huyết áp cao", "cao huyết áp", "tăng huyết áp", "huyết áp 160", "huyết áp lên cao"],
 }
 for _k, _v in _VI_SYMPTOM_KEYWORDS_EXTRA.items():
     VI_SYMPTOM_KEYWORDS[_k] = list(dict.fromkeys(VI_SYMPTOM_KEYWORDS.get(_k, []) + _v))
@@ -1776,6 +1783,39 @@ def antiviral_skin_rule_drug_group(active_symptoms: set[str]) -> str | None:
     return None
 
 
+def psych_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    # Lo âu / trầm cảm / hoảng sợ -> nhóm thần kinh-tâm thần. Đặt TRƯỚC tim mạch để
+    # hồi hộp do lo âu không bị kéo về tim mạch.
+    if has_any_symptom(
+        active_symptoms,
+        [
+            "anxiety", "anxiety and nervousness", "fears and phobias", "depression",
+            "Persistent depressive symptoms (low mood, lack of interest, changes in sleep and appetite), lasting for at least two years",
+        ],
+    ):
+        return "thuốc thần kinh/tâm thần"
+    return None
+
+
+def cardiac_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    # Tăng huyết áp / đau thắt ngực gắng sức / loạn nhịp kèm khó thở -> tim mạch-huyết áp.
+    if has_any_symptom(active_symptoms, ["High blood pressure, chest pain or discomfort, shortness of breath, fatigue"]):
+        return "thuốc tim mạch/huyết áp"
+    # Đau thắt ngực KHÔNG kèm sốt/ho (loại viêm phổi, viêm sụn sườn).
+    angina = has_any_symptom(active_symptoms, ["chest pain"]) and not has_any_symptom(
+        active_symptoms, ["fever", "high fever", "mild fever", "cough", "phlegm"]
+    )
+    palp = has_any_symptom(
+        active_symptoms,
+        ["palpitations", "fast heart rate", "increased heart rate",
+         "Irregular or rapid heartbeat, palpitations, shortness of breath, chest pain or discomfort, dizziness or lightheadedness, fatigue"],
+    )
+    dyspnea = has_any_symptom(active_symptoms, ["breathlessness", "shortness of breath", "difficulty breathing"])
+    if angina or (palp and dyspnea):
+        return "thuốc tim mạch/huyết áp"
+    return None
+
+
 def has_unclear_limb_stiffness(active_symptoms: set[str]) -> bool:
     has_stiffness = has_any_symptom(
         active_symptoms,
@@ -2342,6 +2382,8 @@ def predict():
     rule_group = (
         diabetes_rule_drug_group(active_symptoms)
         or thyroid_rule_drug_group(active_symptoms)
+        or psych_rule_drug_group(active_symptoms)
+        or cardiac_rule_drug_group(active_symptoms)
         or bronchodilator_rule_drug_group(active_symptoms)
         or wound_infection_rule_drug_group(active_symptoms)
         or infectious_bloody_diarrhea_rule_drug_group(active_symptoms)
@@ -2381,7 +2423,7 @@ def predict():
         quality_reasons.append(
             f"Chỉ nhận diện được {len(matched_symptom_labels)} triệu chứng chính trong tập train; cần thêm triệu chứng để phân biệt {label_kind_vi}."
         )
-    if LABEL_TYPE == "drug_group" and should_force_more_info(active_symptoms):
+    if LABEL_TYPE == "drug_group" and score_type != "rule" and should_force_more_info(active_symptoms):
         if has_unclear_limb_stiffness(active_symptoms):
             quality_reasons.append(
                 "Cứng/co rút tay đơn độc chưa đủ để xác định cần dùng thuốc kháng viêm hay nhóm thuốc khác."
