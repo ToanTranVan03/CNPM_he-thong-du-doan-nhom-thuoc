@@ -451,6 +451,48 @@ VI_SYMPTOM_KEYWORDS = {
     "frontal headache": ["đau đầu vùng trán", "đau trán"],
 }
 
+# Bổ sung 2026-06-09 (robust hoá tiếng Việt): các cụm tiếng Việt phổ biến còn thiếu,
+# map sang feature CÓ THẬT trong model. Merge để không trùng/đè key cũ.
+_VI_SYMPTOM_KEYWORDS_EXTRA = {
+    "headache": ["đau nửa đầu", "đau nửa đầu từng cơn"],
+    "stomach_pain": ["đau thượng vị lúc đói", "đau vùng thượng vị"],
+    "heartburn": ["nóng rát thượng vị", "nóng rát vùng thượng vị", "ợ nóng"],
+    "acidity": ["hay ợ chua", "ợ hơi"],
+    "vomiting": ["nôn nhiều", "nôn nhiều lần", "nôn liên tục"],
+    "diarrhoea": ["đi ngoài liên tục", "đi ngoài cả ngày", "đi ngoài nhiều lần", "đi ngoài phân lỏng nước"],
+    "dehydration": ["khát nước nhiều", "khát nhiều"],
+    "neck_pain": ["đau vai gáy", "đau cổ gáy", "nhức vai gáy"],
+    "back_pain": ["đau lưng dưới", "đau thắt lưng"],
+    "painful menstruation": ["đau bụng kinh", "đau bụng kinh dữ dội", "đau quặn kỳ kinh", "thống kinh"],
+    "skin_rash": ["mề đay", "nổi mề đay", "mẩn ngứa"],
+    "itching": ["ngứa khắp người", "ngứa nhiều"],
+    "dischromic patches": ["mảng đỏ hình tròn", "mảng đỏ tròn"],
+    "skin_peeling": ["bong vảy", "bong vảy dày", "bong tróc vảy"],
+    "blister": ["mụn nước thành chùm", "nổi bóng nước", "bóng nước"],
+    "sinus_pressure": ["đau nhức xoang", "đau xoang má", "nhức xoang"],
+    "wheezing": ["khò khè khi gắng sức", "thở khò khè"],
+    "breathlessness": ["lên cơn khó thở", "khó thở khi gắng sức", "khó thở khi gặp lạnh"],
+    "enlarged_thyroid": ["bướu cổ to", "bướu giáp"],
+    "excessive_urination_at_night": ["tiểu đêm", "tiểu đêm nhiều lần"],
+    "excessive_hunger": ["đói nhiều"],
+    "chills": ["rét run", "sốt thành cơn"],
+    "sweating": ["vã mồ hôi", "ra nhiều mồ hôi", "đổ mồ hôi nhiều"],
+    "bloody_stool": ["phân có máu", "đi ngoài ra máu", "đi ngoài máu nhầy", "phân máu nhầy"],
+    # An toàn / thần kinh:
+    "seizures": ["co giật", "co giật sùi bọt mép", "lên cơn co giật"],
+    "altered_sensorium": ["mất ý thức", "lơ mơ", "rối loạn ý thức", "lú lẫn"],
+    "stiff_neck": ["cổ cứng", "gáy cứng"],
+    "weakness_of_one_body_side": ["méo miệng", "yếu một bên", "yếu nửa người", "liệt nửa người",
+                                   "tay chân một bên yếu", "liệt một bên", "yếu hẳn một bên người", "tê yếu một bên"],
+    "slurred_speech": ["nói ngọng", "nói khó", "líu lưỡi"],
+    "paresthesia": ["tê bì", "châm chích", "tê rần"],
+    "muscle_pain": ["đau mỏi toàn thân", "đau nhức toàn thân", "đau người"],
+    "Redness, swelling, discharge from the wound": ["chảy mủ", "vết thương chảy mủ", "vết thương sưng đỏ", "mưng mủ", "có mủ"],
+    "Shooting or burning pain, tingling or numbness": ["đau rát bỏng lan dọc dây thần kinh", "đau lan dọc dây thần kinh", "đau rát bỏng lan"],
+}
+for _k, _v in _VI_SYMPTOM_KEYWORDS_EXTRA.items():
+    VI_SYMPTOM_KEYWORDS[_k] = list(dict.fromkeys(VI_SYMPTOM_KEYWORDS.get(_k, []) + _v))
+
 UNSUPPORTED_SYMPTOM_KEYWORDS = {
     "sleep_problem": {
         "label_vi": "Mất ngủ/khó ngủ",
@@ -1299,6 +1341,17 @@ def negated_feature_normals(source_text: str) -> set[str]:
     ]
     if any(has_phrase(normalized_source, phrase) for phrase in no_fever_phrases):
         negated.update(FEVER_FEATURE_NORMALS)
+    # Phủ định tổng quát: "không <triệu chứng>" -> loại feature tương ứng.
+    NEG_MAP = {
+        ("khong tieu chay", "khong di ngoai", "khong di long"): ["diarrhoea", "diarrhea"],
+        ("khong dau dau", "khong nhuc dau"): ["headache", "frontal headache"],
+        ("khong buon non", "khong non"): ["nausea", "vomiting"],
+        ("khong ho",): ["cough"],
+        ("khong kho tho",): ["breathlessness", "shortness of breath", "difficulty breathing"],
+    }
+    for phrases, feats in NEG_MAP.items():
+        if any(has_phrase(normalized_source, p) for p in phrases):
+            negated.update(normalize(f) for f in feats)
     return negated
 
 
@@ -1581,10 +1634,9 @@ def migraine_rule_drug_group(active_symptoms: set[str]) -> str | None:
 
 def has_neuro_danger_signs(active_symptoms: set[str]) -> bool:
     # Dấu hiệu đỏ thần kinh: cần đi khám cấp, không nên dựa vào gợi ý thuốc tham khảo.
-    return has_any_symptom(
+    hard_flags = has_any_symptom(
         active_symptoms,
         [
-            "stiff neck",
             "weakness of one body side",
             "altered sensorium",
             "coma",
@@ -1592,6 +1644,15 @@ def has_neuro_danger_signs(active_symptoms: set[str]) -> bool:
             "seizures",
         ],
     )
+    if hard_flags:
+        return True
+    # "Cứng cổ" CHỈ là dấu hiệu đỏ (nghi viêm màng não) khi kèm sốt hoặc đau đầu;
+    # cứng cổ cơ học đơn thuần (đau vai gáy) là lành tính, không báo động.
+    has_stiff_neck = has_any_symptom(active_symptoms, ["stiff neck"])
+    has_meningism_context = has_any_symptom(
+        active_symptoms, ["fever", "high fever", "mild fever", "headache"]
+    )
+    return has_stiff_neck and has_meningism_context
 
 
 def dermatology_rule_drug_group(active_symptoms: set[str]) -> str | None:
@@ -1602,6 +1663,87 @@ def dermatology_rule_drug_group(active_symptoms: set[str]) -> str | None:
     )
     if has_itch_or_rash and has_fungal_pattern:
         return "thuốc kháng nấm/ký sinh trùng ngoài da"
+    return None
+
+
+# ── Rule cluster theo logic y khoa chuẩn (2026-06-09, robust hoá) ─────────────
+# Mỗi rule yêu cầu tổ hợp triệu chứng đặc hiệu để hạn chế dương tính giả.
+
+def diabetes_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    polyuria = has_any_symptom(active_symptoms, ["polyuria", "frequent urination", "excessive urination at night"])
+    metabolic = has_any_symptom(active_symptoms, ["weight loss", "excessive hunger", "increased appetite"])
+    if polyuria and metabolic:
+        return "thuốc điều trị đái tháo đường"
+    return None
+
+
+def thyroid_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    # Bướu cổ là dấu hiệu rất đặc hiệu cho bệnh tuyến giáp.
+    if has_any_symptom(active_symptoms, ["enlarged thyroid"]):
+        return "thuốc nội tiết tuyến giáp"
+    return None
+
+
+def bronchodilator_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    has_wheeze = has_any_symptom(active_symptoms, ["wheezing"])
+    has_dyspnea = has_any_symptom(active_symptoms, ["breathlessness", "shortness of breath", "difficulty breathing", "chest tightness"])
+    if has_wheeze and has_dyspnea:
+        return "thuốc giãn phế quản"
+    return None
+
+
+def wound_infection_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    has_wound = has_any_symptom(active_symptoms, ["Redness, swelling, discharge from the wound", "pus filled pimples"])
+    if has_wound and has_any_symptom(active_symptoms, ["fever", "high fever", "mild fever", "muscle pain", "swelling"]):
+        return "thuốc kháng sinh"
+    if has_wound:
+        return "thuốc kháng sinh"
+    return None
+
+
+def infectious_bloody_diarrhea_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    has_blood = has_any_symptom(active_symptoms, ["bloody stool", "blood in stool", "melena"])
+    has_gi = has_any_symptom(active_symptoms, ["abdominal pain", "belly pain", "stomach pain", "diarrhea", "diarrhoea"])
+    has_fever = has_any_symptom(active_symptoms, ["fever", "high fever", "mild fever"])
+    if has_blood and has_gi and has_fever:
+        return "thuốc kháng sinh"
+    return None
+
+
+def neuropathic_pain_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    nerve_pain = has_any_symptom(active_symptoms, ["Shooting or burning pain, tingling or numbness"])
+    paresthesia = has_any_symptom(active_symptoms, ["paresthesia", "loss of sensation"])
+    if nerve_pain or (paresthesia and has_any_symptom(active_symptoms, ["Shooting or burning pain, tingling or numbness"])):
+        return "thuốc chống co giật/đau thần kinh"
+    if nerve_pain and paresthesia:
+        return "thuốc chống co giật/đau thần kinh"
+    return None
+
+
+def musculoskeletal_nsaid_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    # Đau cơ-xương-khớp hoặc thống kinh, KHÔNG kèm sốt (loại nhiễm trùng) -> NSAID.
+    if has_any_symptom(active_symptoms, ["fever", "high fever", "mild fever"]):
+        return None
+    musculo = has_any_symptom(
+        active_symptoms,
+        ["neck pain", "back pain", "low back pain", "joint pain", "knee pain", "painful menstruation"],
+    )
+    if musculo:
+        return "thuốc kháng viêm không steroid"
+    return None
+
+
+def constipation_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    if has_any_symptom(active_symptoms, ["constipation"]) and not has_any_symptom(active_symptoms, ["diarrhea", "diarrhoea"]):
+        return "thuốc nhuận tràng"
+    return None
+
+
+def antiviral_skin_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    # Mụn nước/bóng nước kèm sốt hoặc phát ban (thuỷ đậu/zona/herpes) -> kháng virus.
+    has_vesicle = has_any_symptom(active_symptoms, ["blister"])
+    if has_vesicle and has_any_symptom(active_symptoms, ["fever", "high fever", "mild fever", "skin rash"]):
+        return "thuốc kháng virus"
     return None
 
 
@@ -2169,8 +2311,17 @@ def predict():
         prediction = model.predict([model_inputs[0]])[0]
 
     rule_group = (
-        urinary_rule_drug_group(active_symptoms)
+        diabetes_rule_drug_group(active_symptoms)
+        or thyroid_rule_drug_group(active_symptoms)
+        or bronchodilator_rule_drug_group(active_symptoms)
+        or wound_infection_rule_drug_group(active_symptoms)
+        or infectious_bloody_diarrhea_rule_drug_group(active_symptoms)
+        or urinary_rule_drug_group(active_symptoms)
+        or neuropathic_pain_rule_drug_group(active_symptoms)
         or migraine_rule_drug_group(active_symptoms)
+        or antiviral_skin_rule_drug_group(active_symptoms)
+        or musculoskeletal_nsaid_rule_drug_group(active_symptoms)
+        or constipation_rule_drug_group(active_symptoms)
         or dental_rule_drug_group(active_symptoms)
         or gastrointestinal_rule_drug_group(active_symptoms)
         or dermatology_rule_drug_group(active_symptoms)
@@ -2194,7 +2345,10 @@ def predict():
     matched_symptom_labels = unique_values([symptom_label_vi(symptom) for symptom in matched_symptoms])
     label_kind_vi = "nhóm thuốc" if LABEL_TYPE == "drug_group" else "bệnh"
 
-    if len(matched_symptom_labels) < MIN_RELIABLE_SYMPTOMS:
+    # Khi một rule lâm sàng mạnh đã kích hoạt (score_type=="rule"), không ép "cần thêm
+    # thông tin" chỉ vì ít hơn 2 triệu chứng — nhiều ca rõ ràng chỉ có 1 triệu chứng đặc
+    # hiệu (táo bón, mụn nước thành chùm, mề đay...). Vẫn giữ ràng buộc cho dự đoán bằng model.
+    if score_type != "rule" and len(matched_symptom_labels) < MIN_RELIABLE_SYMPTOMS:
         quality_reasons.append(
             f"Chỉ nhận diện được {len(matched_symptom_labels)} triệu chứng chính trong tập train; cần thêm triệu chứng để phân biệt {label_kind_vi}."
         )
