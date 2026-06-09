@@ -63,6 +63,15 @@ features = metadata["features"]
 feature_lookup = {feature.lower(): feature for feature in features}
 LABEL_TYPE = metadata.get("label_type", "disease")
 MIN_RELIABLE_CONFIDENCE = 0.5
+# Ngưỡng scoped (vòng 3): nhóm thuốc "rủi ro cao" (sai gây hại) cần độ tin cậy cao hơn
+# khi do MODEL đoán (score_type != "rule"). Lớp phòng thủ phụ ngoài các rule đặc hiệu.
+MIN_HIGH_RISK_MODEL_CONFIDENCE = 0.6
+HIGH_RISK_DRUG_GROUPS = {
+    "thuốc kháng sinh",
+    "thuốc tim mạch/huyết áp",
+    "thuốc thần kinh/tâm thần",
+    "thuốc kháng virus",
+}
 MIN_RELIABLE_SYMPTOMS = 2
 MAX_NOTES_LENGTH = 2000
 MIN_PASSWORD_LENGTH = 6
@@ -162,6 +171,32 @@ def current_user_from_request(store: dict) -> dict | None:
     return None
 
 DRUG_GROUP_GUIDANCE = {
+    "thuốc điều trị sốt rét": {
+        "treatment": [
+            "Hướng xử trí tham khảo: sốt thành cơn kèm rét run sau khi tới vùng lưu hành sốt rét cần được XÉT NGHIỆM (lam máu/test nhanh) để chẩn đoán; KHÔNG tự mua thuốc điều trị sốt rét.",
+            "Thuốc điều trị sốt rét phải do bác sĩ chỉ định đúng loại/liều theo chủng ký sinh trùng; tự dùng có thể nguy hiểm và gây kháng thuốc.",
+        ],
+        "precautions": [
+            "Đi khám sớm; sốt rét có thể diễn tiến nặng (sốt rét ác tính) nếu chậm điều trị. Báo bác sĩ nơi đã đi, số ngày sốt, tính chất cơn sốt.",
+        ],
+        "care": [
+            "Bù nước, hạ sốt cơ học, theo dõi tri giác và các dấu hiệu nặng (lơ mơ, vàng da, tiểu ít, co giật) để đi cấp cứu kịp thời.",
+        ],
+        "warning": "Đây chỉ là gợi ý hướng bệnh, KHÔNG phải đơn thuốc. Nghi sốt rét cần đi khám và xét nghiệm máu sớm; không tự dùng thuốc điều trị sốt rét. Đến cơ sở y tế ngay nếu sốt cao liên tục, lơ mơ, vàng da, tiểu ít hoặc co giật.",
+    },
+    "vitamin và khoáng chất": {
+        "treatment": [
+            "Hướng xử trí tham khảo: mệt mỏi kèm da/niêm nhợt và móng giòn gợi ý thiếu máu/thiếu vi chất; cần XÉT NGHIỆM MÁU để xác định nguyên nhân (thiếu sắt, B12/folate, mất máu...) trước khi bổ sung.",
+            "Không tự ý bổ sung sắt/vitamin liều cao kéo dài khi chưa rõ nguyên nhân; bổ sung sai loại có thể che lấp bệnh nền.",
+        ],
+        "precautions": [
+            "Đi khám nếu mệt nhiều, khó thở, tim đập nhanh, ngất, phân đen hoặc kinh nguyệt ra nhiều — có thể là thiếu máu nặng hoặc đang mất máu cần xử trí.",
+        ],
+        "care": [
+            "Ăn uống đủ chất (thịt đỏ, rau xanh đậm, đậu), theo dõi mức độ mệt/chóng mặt và ghi lại để cung cấp khi đi khám.",
+        ],
+        "warning": "Đây chỉ là gợi ý hướng bệnh, KHÔNG phải đơn thuốc. Nghi thiếu máu cần đi khám và xét nghiệm máu để tìm nguyên nhân; không tự bổ sung sắt/vitamin liều cao khi chưa rõ nguyên nhân. Đi khám ngay nếu mệt nhiều, khó thở, ngất hoặc có dấu hiệu mất máu.",
+    },
     "thuốc kháng viêm không steroid": {
         "treatment": [
             "Hướng xử trí tham khảo: nhóm thuốc kháng viêm không steroid thường chỉ phù hợp khi có đau/viêm rõ và cần loại trừ nguy cơ dạ dày, thận, tim mạch hoặc thuốc chống đông.",
@@ -372,7 +407,7 @@ VI_SYMPTOM_KEYWORDS = {
     "swollen_blood_vessels": ["mạch máu sưng", "tĩnh mạch sưng"],
     "puffy_face_and_eyes": ["mặt phù", "mắt phù", "sưng mặt"],
     "enlarged_thyroid": ["bướu cổ", "tuyến giáp to"],
-    "brittle_nails": ["móng giòn", "móng dễ gãy"],
+    "brittle_nails": ["móng giòn", "móng dễ gãy", "móng tay giòn", "móng tay dễ gãy", "móng giòn dễ gãy", "móng tay giòn dễ gãy"],
     "swollen_extremeties": ["sưng tay chân", "phù chi"],
     "excessive_hunger": ["đói nhiều", "ăn nhiều"],
     "extra_marital_contacts": ["quan hệ ngoài luồng", "quan hệ tình dục nguy cơ"],
@@ -1697,6 +1732,27 @@ def has_neuro_danger_signs(active_symptoms: set[str]) -> bool:
     return has_stiff_neck and has_meningism_context
 
 
+_NEGATORS = ("khong", "chua", "chang", "khong he", "deu khong", "lam gi co")
+
+
+def affirmative_mention(text: str, patterns, window: int = 16) -> bool:
+    """True nếu có ÍT NHẤT một lần xuất hiện của pattern mà KHÔNG bị phủ định ngay trước đó
+    (trong cửa sổ `window` ký tự). Dùng cho ngữ cảnh nhạy như chấn thương đầu, rượu — để câu
+    'không va đập vào đầu' KHÔNG bị hiểu là có chấn thương. `text` phải đã qua normalize().
+    """
+    for pattern in patterns:
+        start = 0
+        while True:
+            i = text.find(pattern, start)
+            if i < 0:
+                break
+            prefix = text[max(0, i - window):i]
+            if not any(neg in prefix for neg in _NEGATORS):
+                return True
+            start = i + len(pattern)
+    return False
+
+
 def emergency_red_flag_from_notes(notes: str) -> str | None:
     """Dấu hiệu CẤP CỨU/khủng hoảng nhận từ mô tả thô (không phụ thuộc feature trích được).
     Trả về thông điệp cảnh báo nếu phát hiện; None nếu không. Ưu tiên AN TOÀN: thà cảnh báo thừa.
@@ -1747,9 +1803,28 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
         return "Đau ngực nghi nhồi máu cơ tim (lan tay/hàm, vã mồ hôi, bóp nghẹt)." + GO
 
     # 7) Chấn thương đầu nặng
+    #   (a) Cơ chế chấn thương cũ + dấu hiệu nặng (giữ nguyên để không regress).
     if has("nga cao", "tai nan", "chan thuong dau", "chan thuong so nao", "nga dap dau", "ta nga") and \
        has("chay mau tai", "noi lan", "lan lon", "lo mo", "bat tinh", "dau dau du doi", "non oi"):
         return "Nghi chấn thương đầu nặng." + GO
+    #   (b) Vòng 4: bắt thêm cách diễn đạt "va đập/đập/đánh vào đầu" KÈM dấu hiệu thần kinh/nôn.
+    #   - Dùng affirmative_mention để câu phủ định "không va đập vào đầu" KHÔNG kích hoạt.
+    #   - Thay "dau goi" (đầu gối) bằng "goi" trước khi dò, để "đầu" chắc chắn là cái đầu
+    #     (tránh bẫy "đập vào đầu gối"/"đau đầu gối").
+    t_head = t.replace("dau goi", " goi ")
+    head_impact = affirmative_mention(t_head, (
+        "va dap vao dau", "dap vao dau", "dap dau", "nga dap dau", "te dap dau",
+        "danh vao dau", "va vao dau", "dung vao dau", "dung dau", "chan thuong dau",
+        "chan thuong so nao",
+    ))
+    post_injury_sign = any(p in t_head for p in (
+        "dau dau", "nhuc dau", "buon non", "non", "oi", "chong mat", "choang",
+        "lo mo", "bat tinh", "ngat", "lan lon", "noi kho", "yeu liet", "co giat",
+        "mat thang bang", "di khong vung", "hoa mat",
+    ))
+    if head_impact and post_injury_sign:
+        return ("Nghi chấn thương đầu/sọ não sau va đập, kèm đau đầu, buồn nôn/nôn hoặc dấu hiệu "
+                "thần kinh.") + GO
 
     # 8) Bụng ngoại khoa (viêm phúc mạc): bụng cứng
     if has("bung cung", "cung nhu go", "bung cung nhu go", "do cung bung", "phan ung thanh bung"):
@@ -1761,6 +1836,100 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
             return "Có thai kèm chảy máu/đau bụng — nguy cơ cấp cứu sản khoa (sảy thai/thai ngoài tử cung)." + GO
 
     return None
+
+
+# ── Rule notes-aware (2026-06-09 vòng 3): 2 nhóm bệnh NGOÀI tập train mà model hay
+# "đoán sai tự tin". Nhận diện từ mô tả thô vì dấu đặc hiệu (dịch tễ vùng rừng núi,
+# da/niêm nhợt) KHÔNG có feature tương ứng trong model. Mỗi rule rất đặc hiệu để tránh
+# dương tính giả, và trả ĐÚNG nhóm thuốc thay vì để model trả kháng sinh/tim mạch.
+
+def malaria_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
+    """Nghi sốt rét: sốt thành cơn/rét run + KÈM yếu tố dịch tễ (vùng rừng núi/sốt rét).
+    Yếu tố dịch tễ là BẮT BUỘC để không nhầm với sốt virus/cúm thông thường. Trả nhóm
+    'thuốc điều trị sốt rét' (kèm cảnh báo xét nghiệm) thay vì để model trả 'thuốc kháng sinh'.
+    """
+    t = normalize(notes or "")
+    def has(*ps): return any(p in t for p in ps)
+
+    # Yếu tố dịch tễ vùng lưu hành sốt rét — điều kiện BẮT BUỘC.
+    epidemiology = has(
+        "rung nui", "vung rung", "di rung", "vao rung", "o rung",
+        "vung sot ret", "mien nui", "vung nui", "vung cao", "tay nguyen", "vung dich te",
+    )
+    if not epidemiology:
+        return None
+
+    periodic_fever = has("sot thanh con", "sot tung con", "sot con", "sot ret", "sot chu ky", "sot cach nhat")
+    chills = has("ret run", "lanh run", "run lap cap") or has_any_symptom(active_symptoms, ["chills", "shivering"])
+    fever_signal = has("sot") or has_any_symptom(active_symptoms, ["fever", "high fever", "mild fever"])
+
+    if periodic_fever or (fever_signal and chills):
+        return "thuốc điều trị sốt rét"
+    return None
+
+
+def anemia_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
+    """Nghi thiếu máu/thiếu vi chất: da/niêm NHỢT (dấu đặc hiệu) kèm mệt mỏi/chóng mặt/
+    móng giòn. Neo vào dấu xanh xao/niêm nhợt vì ca tim mạch thật KHÔNG mô tả triệu chứng
+    này -> tránh chặn nhầm. Trả 'vitamin và khoáng chất' thay vì để model trả 'thuốc tim mạch/huyết áp'.
+    """
+    t = normalize(notes or "")
+    def has(*ps): return any(p in t for p in ps)
+
+    # Da/niêm nhợt là dấu neo BẮT BUỘC.
+    pallor = has(
+        "da xanh", "xanh xao", "niem nhot", "niem mac nhot", "nhot nhat",
+        "moi nhot", "da nhot", "long ban tay nhot", "sac mat nhot",
+    )
+    if not pallor:
+        return None
+
+    systemic = (
+        has_any_symptom(active_symptoms, ["fatigue", "dizziness", "brittle nails"])
+        or has("met moi", "met", "choang", "hoa mat", "chong mat", "mong tay gion", "mong gion")
+    )
+    if systemic:
+        return "vitamin và khoáng chất"
+    return None
+
+
+# ── Ngữ cảnh notes-aware (2026-06-09 vòng 4): nhân–quả/hoàn cảnh "sau khi X" mà hệ "túi
+# triệu chứng" bỏ qua. KHÔNG phải nhóm thuốc nên không vào rule_group; dùng để chặn/cảnh báo.
+
+def has_strong_alcohol_context(notes: str) -> bool:
+    """Ngữ cảnh rượu RÕ/NHIỀU -> chống chỉ định paracetamol (độc gan). Có guard phủ định."""
+    t = normalize(notes or "")
+    return affirmative_mention(t, (
+        "uong ruou nhieu", "uong nhieu ruou", "sau khi uong ruou", "vua uong ruou",
+        "vua nhau", "sau khi nhau", "nhau nhieu", "nhau xin", "say ruou", "say xin",
+        "qua chen", "lam dung ruou", "nghien ruou", "ruou bia nhieu", "uong bia ruou nhieu",
+    ))
+
+
+def has_weak_alcohol_context(notes: str) -> bool:
+    """Ngữ cảnh rượu NHẸ/không rõ mức độ -> vẫn gợi ý nhưng thêm cảnh báo động."""
+    t = normalize(notes or "")
+    return affirmative_mention(t, (
+        "co uong ruou", "uong ruou", "uong bia", "ruou bia", "moi uong bia", "moi uong ruou",
+        "nhau",
+    ))
+
+
+def has_exertion_heat_context(notes: str) -> bool:
+    """Ngữ cảnh gắng sức/nắng nóng -> gợi ý bù nước/nghỉ (không cấp cứu mặc định)."""
+    t = normalize(notes or "")
+    return affirmative_mention(t, (
+        "sau khi chay bo", "chay bo xong", "sau khi tap nang", "tap nang xong",
+        "sau khi gang suc", "gang suc qua", "van dong manh", "sau khi van dong",
+        "ra nang", "phoi nang", "duoi nang", "troi nang", "nang nong", "lam viec ngoai troi",
+    ))
+
+
+def has_headache_nausea_or_dizzy(active_symptoms: set[str], notes: str) -> bool:
+    if has_any_symptom(active_symptoms, ["headache", "frontal headache", "nausea", "vomiting", "dizziness"]):
+        return True
+    t = normalize(notes or "")
+    return any(p in t for p in ("dau dau", "nhuc dau", "buon non", "non", "chong mat", "choang", "hoa mat"))
 
 
 def dermatology_rule_drug_group(active_symptoms: set[str]) -> str | None:
@@ -2054,7 +2223,7 @@ def suggested_symptoms_for_more_info(active_symptoms: set[str]) -> list[dict[str
 def should_force_more_info(active_symptoms: set[str]) -> bool:
     headache_cluster = has_any_symptom(active_symptoms, ["headache", "frontal headache"]) and has_any_symptom(
         active_symptoms,
-        ["dizziness", "insomnia", "difficulty falling asleep or staying asleep"],
+        ["dizziness", "insomnia", "difficulty falling asleep or staying asleep", "fatigue"],
     )
     if headache_cluster:
         return True
@@ -2467,7 +2636,10 @@ def predict():
         prediction = model.predict([model_inputs[0]])[0]
 
     rule_group = (
-        diabetes_rule_drug_group(active_symptoms)
+        # Notes-aware (vòng 3): ưu tiên cao nhất vì rất đặc hiệu, chặn model đoán sai tự tin.
+        malaria_rule_drug_group(notes, active_symptoms)
+        or anemia_rule_drug_group(notes, active_symptoms)
+        or diabetes_rule_drug_group(active_symptoms)
         or thyroid_rule_drug_group(active_symptoms)
         or psych_rule_drug_group(active_symptoms)
         or cardiac_rule_drug_group(active_symptoms)
@@ -2531,6 +2703,30 @@ def predict():
         quality_reasons.append(
             f"Độ tin cậy cao nhất chỉ {confidence * 100:.1f}%, thấp hơn ngưỡng {MIN_RELIABLE_CONFIDENCE * 100:.0f}%."
         )
+    # Lớp phòng thủ phụ: nhóm rủi ro cao do model đoán cần ngưỡng tin cậy cao hơn.
+    if (
+        score_type != "rule"
+        and confidence is not None
+        and prediction in HIGH_RISK_DRUG_GROUPS
+        and confidence < MIN_HIGH_RISK_MODEL_CONFIDENCE
+    ):
+        quality_reasons.append(
+            f"Nhóm '{prediction}' là nhóm rủi ro cao, nhưng độ tin cậy chỉ {confidence * 100:.1f}% "
+            f"(< {MIN_HIGH_RISK_MODEL_CONFIDENCE * 100:.0f}%); cần thêm triệu chứng để khẳng định."
+        )
+    # Ngữ cảnh (vòng 4): rượu RÕ/NHIỀU + nhóm giảm đau hạ sốt -> KHÔNG kê vô điều kiện vì
+    # paracetamol/acetaminophen tăng nguy cơ độc gan khi có rượu. Đẩy sang "cần thêm thông tin".
+    alcohol_blocks_analgesic = (
+        LABEL_TYPE == "drug_group"
+        and (prediction == "thuốc giảm đau hạ sốt" or "headache" in active_symptoms or "fatigue" in active_symptoms)
+        and has_strong_alcohol_context(notes)
+    )
+    if alcohol_blocks_analgesic:
+        quality_reasons.append(
+            "Mô tả có uống nhiều rượu/lạm dụng rượu kèm hướng dùng thuốc giảm đau hạ sốt: "
+            "paracetamol (acetaminophen) có thể gây độc gan khi dùng cùng rượu. Cần hỏi dược sĩ/bác sĩ, "
+            "không tự dùng; nêu rõ lượng rượu, bệnh gan và thuốc đang dùng."
+        )
     if unsupported_symptoms:
         unsupported_labels = ", ".join(symptom["label_vi"] for symptom in unsupported_symptoms)
         quality_reasons.append(
@@ -2587,6 +2783,25 @@ def predict():
     care_guidance = []
     extend_unique(care_guidance, guidance["care"])
 
+    # Ngữ cảnh động (vòng 4): bổ sung cảnh báo/chăm sóc theo "sau khi X" cho ca VẪN gợi ý nhóm.
+    warning_text = guidance["warning"]
+    if LABEL_TYPE == "drug_group" and prediction == "thuốc giảm đau hạ sốt" and has_weak_alcohol_context(notes):
+        alcohol_caution = (
+            "Lưu ý: không tự dùng paracetamol/acetaminophen nếu vừa uống rượu, uống rượu nhiều "
+            "hoặc có bệnh gan; hỏi dược sĩ/bác sĩ và kiểm tra trùng hoạt chất."
+        )
+        precaution_guidance.insert(0, alcohol_caution)
+        warning_text = alcohol_caution + " " + warning_text
+    if has_exertion_heat_context(notes) and has_headache_nausea_or_dizzy(active_symptoms, notes):
+        extend_unique(care_guidance, [
+            "Nghỉ ở nơi mát, uống từng ngụm nước/oresol nếu ra nhiều mồ hôi; theo dõi dấu mất nước "
+            "(khát nhiều, tiểu ít, chóng mặt).",
+        ])
+        extend_unique(precaution_guidance, [
+            "Đi khám/cấp cứu nếu lơ mơ, ngất, sốt cao, co giật, nôn liên tục, đau đầu dữ dội hoặc "
+            "đau ngực/khó thở.",
+        ])
+
     return jsonify(
         {
             "case_summary": summary,
@@ -2619,7 +2834,7 @@ def predict():
             "precautions_en": precaution_guidance[:10],
             "workouts": [],
             "workouts_en": references["workouts"].get(prediction, []),
-            "warning": guidance["warning"],
+            "warning": warning_text,
             "guidance_source": guidance["guidance_source"],
             "suggested_symptoms": suggested_symptoms_for_more_info(active_symptoms) if needs_more_input else [],
             "top_predictions": probabilities,
