@@ -1,11 +1,17 @@
 {
   "total": 500,
-  "passed": 500,
-  "failed": 0,
+  "passed": 459,
+  "failed": 41,
   "status_counts": {
-    "422": 133,
-    "200": 367
+    "422": 88,
+    "200": 412
   },
-  "issue_counts": {},
+  "issue_counts": {
+    "missing_summary_diagnosis": 9,
+    "missing_summary_medication_name": 9,
+    "missing_summary_drug_group": 9,
+    "missing_matched_symptoms": 9,
+    "should_request_more_info": 32
+  },
   "csv": "D:\\CNPM\\docs\\stress_test_500_cases.csv"
 }
