@@ -2,6 +2,7 @@ import argparse
 import csv
 import io
 import json
+import os
 import sys
 import zipfile
 from collections import Counter, defaultdict
@@ -127,8 +128,14 @@ def label_type_for_target(target_column: str) -> str:
 
 
 def build_text_classifier(random_state: int, min_class_count: int) -> Pipeline:
+    # Hyperparams tinh chỉnh được qua env để thử nghiệm "sắc hơn" (vòng 6 Phần A) mà không
+    # đổi chữ ký hàm. Mặc định = cấu hình cũ (tái lập model hiện tại).
+    ngram_max = int(os.environ.get("TFIDF_NGRAM_MAX", "2"))
+    min_df = int(os.environ.get("TFIDF_MIN_DF", "1"))
+    max_df = float(os.environ.get("TFIDF_MAX_DF", "1.0"))
+    svm_c = float(os.environ.get("SVM_C", "1.0"))
     svm = LinearSVC(
-        C=1.0,
+        C=svm_c,
         class_weight="balanced",
         random_state=random_state,
         max_iter=10000,
@@ -150,7 +157,9 @@ def build_text_classifier(random_state: int, min_class_count: int) -> Pipeline:
                 TfidfVectorizer(
                     token_pattern=r"(?u)\b[\w.()'-]+\b",
                     lowercase=True,
-                    ngram_range=(1, 2),
+                    ngram_range=(1, ngram_max),
+                    min_df=min_df,
+                    max_df=max_df,
                     sublinear_tf=True,
                 ),
             ),
@@ -427,8 +436,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--data",
         type=Path,
-        default=PROJECT_ROOT / "data" / "train_ready_mapped_drug_groups.csv",
-        help="Path to train_ready_mapped_drug_groups.csv or legacy archive.",
+        default=PROJECT_ROOT / "data" / "train_combined.csv",
+        help="Đường dẫn data train. Mặc định train_combined.csv (46k, có câu tiếng Việt tự "
+        "nhiên + đủ ví dụ sốt rét/kháng virus) — nguồn chuẩn sau audit vòng 6.",
     )
     parser.add_argument(
         "--out",

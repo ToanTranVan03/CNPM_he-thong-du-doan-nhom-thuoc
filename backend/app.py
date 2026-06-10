@@ -76,6 +76,10 @@ HIGH_RISK_DRUG_GROUPS = {
     "thuốc thần kinh/tâm thần",
     "thuốc kháng virus",
 }
+# Ngưỡng top-gap (vòng 6 Phần A): khi top-1 và top-2 của model SÁT nhau -> model phân vân
+# giữa các nhóm chồng lấn. Phán đoán "trọng" hơn: hạ tin cậy/xin thêm thông tin thay vì đoán
+# bừa. Đặt 0 để TẮT. Đọc env để dễ chỉnh/đo.
+MIN_TOPGAP = float(os.environ.get("MIN_TOPGAP", "0.12"))
 MIN_RELIABLE_SYMPTOMS = 2
 MAX_NOTES_LENGTH = 2000
 MIN_PASSWORD_LENGTH = 6
@@ -2818,6 +2822,7 @@ def predict():
     probabilities = []
     confidence = None
     prediction = None
+    top_gap = None  # khoảng cách xác suất top-1 vs top-2 (đo độ "dứt khoát" của model)
     if hasattr(model, "predict_proba"):
         proba_rows = model.predict_proba(model_inputs)
         class_names = model.classes_
@@ -2837,6 +2842,8 @@ def predict():
             for disease, probability in ranked[:5]
         ]
         confidence = round(float(max(proba)), 4)
+        if len(ranked) >= 2:
+            top_gap = round(float(ranked[0][1] - ranked[1][1]), 4)
     else:
         prediction = model.predict([model_inputs[0]])[0]
 
@@ -2918,6 +2925,18 @@ def predict():
         quality_reasons.append(
             f"Nhóm '{prediction}' là nhóm rủi ro cao, nhưng độ tin cậy chỉ {confidence * 100:.1f}% "
             f"(< {MIN_HIGH_RISK_MODEL_CONFIDENCE * 100:.0f}%); cần thêm triệu chứng để khẳng định."
+        )
+    # Top-gap (vòng 6): model phân vân giữa 2 nhóm sát nhau -> phán đoán "trọng" hơn bằng cách
+    # xin thêm thông tin thay vì đoán bừa. Chỉ áp cho model path, khi top-1 chưa vượt trội.
+    if (
+        MIN_TOPGAP > 0
+        and score_type != "rule"
+        and top_gap is not None
+        and top_gap < MIN_TOPGAP
+    ):
+        quality_reasons.append(
+            f"Model phân vân giữa các nhóm gần nhau (chênh lệch top-1/top-2 chỉ {top_gap * 100:.1f}%); "
+            "cần thêm triệu chứng để phân biệt."
         )
     # Ngữ cảnh (vòng 4): rượu RÕ/NHIỀU + nhóm giảm đau hạ sốt -> KHÔNG kê vô điều kiện vì
     # paracetamol/acetaminophen tăng nguy cơ độc gan khi có rượu. Đẩy sang "cần thêm thông tin".
@@ -3033,6 +3052,7 @@ def predict():
             "representative_active_ingredients": representative_ingredients,
             "reason": reason_text,
             "confidence": confidence,
+            "top_gap": top_gap,
             "score_label": SCORE_LABEL,
             "score_type": score_type,
             "label_type": LABEL_TYPE,
