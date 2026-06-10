@@ -33,6 +33,10 @@ DATA_SOURCE = Path(os.environ.get("DATA_SOURCE", PROJECT_ROOT / "data" / "train_
 DATA_ARCHIVE = Path(os.environ.get("DATA_ARCHIVE", DATA_SOURCE))
 GUIDANCE_PATH = Path(os.environ.get("GUIDANCE_PATH", PROJECT_ROOT / "data" / "disease_guidance.json"))
 USERS_PATH = Path(os.environ.get("USERS_PATH", PROJECT_ROOT / "data" / "users.json"))
+# Vòng 6: mapping nhóm -> 2-3 hoạt chất tiêu biểu (đã curate, làm sạch) cho output trọng tâm.
+DRUG_REPRESENTATIVES_PATH = Path(
+    os.environ.get("DRUG_REPRESENTATIVES_PATH", PROJECT_ROOT / "data" / "drug_group_representatives.json")
+)
 
 app = Flask(__name__, static_folder=None)
 CORS(
@@ -1323,6 +1327,42 @@ def load_reference_data():
 references = load_reference_data()
 
 
+def load_drug_representatives() -> dict[str, dict]:
+    """Nạp mapping nhóm -> hoạt chất tiêu biểu đã curate. Bỏ qua key bắt đầu bằng '_' (metadata).
+    Lỗi/thiếu file -> dict rỗng (output tự lùi về cách cũ, không crash)."""
+    try:
+        raw = json.loads(DRUG_REPRESENTATIVES_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    out = {}
+    for group, entry in raw.items():
+        if group.startswith("_") or not isinstance(entry, dict):
+            continue
+        ingredients = [str(x).strip() for x in entry.get("active_ingredients", []) if str(x).strip()]
+        out[group] = {"active_ingredients": ingredients, "note": str(entry.get("note", "")).strip()}
+    return out
+
+
+DRUG_REPRESENTATIVES = load_drug_representatives()
+
+
+def representative_active_ingredients_for_group(group: str | None, limit: int = 3) -> list[str]:
+    """2-3 hoạt chất minh hoạ đã làm sạch cho nhóm; [] nếu nhóm rủi ro/chuyên khoa hoặc chưa map."""
+    if not group:
+        return []
+    entry = DRUG_REPRESENTATIVES.get(group)
+    if not entry:
+        return []
+    return entry["active_ingredients"][:limit]
+
+
+def representative_note_for_group(group: str | None) -> str:
+    if not group:
+        return ""
+    entry = DRUG_REPRESENTATIVES.get(group)
+    return entry["note"] if entry else ""
+
+
 def symptoms_from_text(text: str) -> set[str]:
     normalized_text = normalize(text)
     exact_text = normalize_exact(text)
@@ -1612,25 +1652,17 @@ def medication_reference_items_for_group(group: str | None, active_symptoms: set
     if not group:
         return []
 
+    # Vòng 6: ưu tiên 2-3 hoạt chất ĐÃ CURATE (sạch, tiếng Việt) thay cho dump dữ liệu thô.
+    reps = representative_active_ingredients_for_group(group)
+    if reps:
+        return [f"Hoạt chất minh hoạ trong nhóm: {', '.join(reps)}"]
+    note = representative_note_for_group(group)
+    if note:
+        return [note]
+
+    # Fallback (chỉ khi nhóm chưa được curate): danh sách thô, cap nhỏ để tránh dài dòng.
     items = list(references["medications"].get(group, [f"Nhóm thuốc dự đoán: {group}"]))
-    if group.lower() != "thuốc kháng histamin":
-        return items
-
-    has_eye = has_eye_allergy_symptom(active_symptoms)
-    has_nasal = has_nasal_allergy_symptom(active_symptoms)
-    if not has_nasal or has_eye:
-        return items[:6]
-
-    preferred = []
-    for item in items:
-        normalized_item = normalize(item)
-        if "loratadine" in normalized_item or "cetirizine" in normalized_item:
-            extend_unique(preferred, [item])
-
-    return preferred[:3] or [
-        "Thuốc trong dữ liệu: Antihistamines (e.g., Loratadine)",
-        "Thuốc trong dữ liệu: Oral antihistamines (e.g., Cetirizine)",
-    ]
+    return items[:3]
 
 
 def drug_group_guidance(group: str, active_symptoms: set[str] | None = None) -> dict[str, list[str] | str]:
@@ -2490,6 +2522,14 @@ def medication_names_for_group(
     if not can_suggest_drug or not group:
         return "Chưa đủ dữ liệu để gợi ý thuốc"
 
+    # Vòng 6: ưu tiên 2-3 hoạt chất ĐÃ CURATE (sạch, tiếng Việt) cho output trọng tâm.
+    reps = representative_active_ingredients_for_group(group)
+    if reps:
+        return "; ".join(reps)
+    note = representative_note_for_group(group)
+    if note:
+        return note  # nhóm rủi ro/chuyên khoa: hiện ghi chú thay vì tên thuốc cụ thể
+
     if group in RULE_MEDICATION_NAMES:
         return RULE_MEDICATION_NAMES[group]
 
@@ -2504,7 +2544,7 @@ def medication_names_for_group(
             names.append(text)
 
     if names:
-        return "; ".join(names[:4])
+        return "; ".join(names[:3])
     return "Chưa có tên thuốc cụ thể trong dữ liệu"
 
 
@@ -2525,6 +2565,21 @@ def case_summary(
         "medication_name": medication_names_for_group(predicted_group, can_suggest_drug, active_symptoms),
         "drug_group": drug_group,
     }
+
+
+def prediction_reason(matched_labels: list[str], confidence, score_type: str, group: str | None) -> str:
+    """Câu LÝ DO ngắn (triệu chứng -> nhóm) cho output. Không chẩn đoán quá mức, không nói 'nên dùng'."""
+    if not group:
+        return ""
+    syms = ", ".join(matched_labels[:4]) if matched_labels else "các dấu hiệu đã mô tả"
+    if score_type == "rule":
+        return f"Triệu chứng/ngữ cảnh đặc hiệu ({syms}) khớp quy tắc lâm sàng cho nhóm {group}."
+    if confidence is not None:
+        return (
+            f"Triệu chứng đã nhận diện ({syms}) phù hợp nhất với nhóm {group} "
+            f"trong các nhóm đã huấn luyện (độ tin cậy {confidence * 100:.0f}%)."
+        )
+    return f"Triệu chứng đã nhận diện ({syms}) phù hợp nhất với nhóm {group}."
 
 
 @app.get("/")
@@ -2959,12 +3014,24 @@ def predict():
             "đau ngực/khó thở.",
         ])
 
+    # Vòng 6: output trọng tâm — 1 nhóm + 2-3 hoạt chất sạch + lý do.
+    representative_ingredients = (
+        representative_active_ingredients_for_group(prediction)
+        if (LABEL_TYPE == "drug_group" and not needs_more_input)
+        else []
+    )
+    reason_text = "" if needs_more_input else prediction_reason(
+        matched_symptom_labels, confidence, score_type, prediction
+    )
+
     return jsonify(
         {
             "case_summary": summary,
             "disease": prediction,
             "disease_vi": predicted_label_vi(prediction),
             "display_title": display_title_for_prediction(prediction, needs_more_input),
+            "representative_active_ingredients": representative_ingredients,
+            "reason": reason_text,
             "confidence": confidence,
             "score_label": SCORE_LABEL,
             "score_type": score_type,
@@ -2982,9 +3049,14 @@ def predict():
             ],
             "description": description_text,
             "description_en": description,
-            "medications": treatment_guidance[:10],
-            "medications_en": treatment_guidance[:10],
-            "dataset_treatment": translate_items(references["medications"].get(prediction, [])) if LABEL_TYPE != "drug_group" else references["medications"].get(prediction, []),
+            "medications": treatment_guidance[:6],
+            "medications_en": treatment_guidance[:6],
+            # Vòng 6: KHÔNG đổ dump dữ liệu thô ra output chính. Giữ field nhỏ cho debug/tương thích.
+            "raw_dataset_treatment_debug": (
+                translate_items(references["medications"].get(prediction, []))[:3]
+                if LABEL_TYPE != "drug_group"
+                else references["medications"].get(prediction, [])[:3]
+            ),
             "diets": care_guidance[:10],
             "diets_en": care_guidance[:10],
             "precautions": precaution_guidance[:10],
