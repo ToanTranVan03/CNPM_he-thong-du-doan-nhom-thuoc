@@ -847,6 +847,21 @@ if SEMANTIC_ENABLED:
         SEMANTIC_READY = False
 
 
+# ── Lớp LLM trích xuất NGỮ CẢNH (vòng 5) — BỔ SUNG, mặc định TẮT ──────────────
+# Đọc env theo RUNTIME (mỗi request) để bật/tắt linh hoạt và dễ test/stub. LLM chỉ làm
+# giàu đầu vào; KHÔNG bao giờ là nguồn quyết định nhóm thuốc (xem /api/predict).
+try:
+    import llm_context
+except Exception:
+    llm_context = None
+
+
+def llm_context_enabled() -> bool:
+    if llm_context is None:
+        return False
+    return os.environ.get("LLM_CONTEXT_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+
+
 def has_phrase(text: str, phrase: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", text) is not None
 
@@ -1391,6 +1406,34 @@ def ordered_symptoms_from_text(text: str) -> list[str]:
     )
 
 
+def features_from_llm_symptoms(symptoms_vi) -> list[str]:
+    """Map triệu chứng (tiếng Việt) do LLM trích -> feature thật của model, TÁI DÙNG matcher
+    sẵn có (exact/keyword/semantic). Không viết matcher mới. Trả list feature, giữ thứ tự, khử trùng.
+    """
+    out: list[str] = []
+    if not isinstance(symptoms_vi, list):
+        return out
+    for item in symptoms_vi:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        mapped = ordered_symptoms_from_text(item)
+        if not mapped:
+            feature = feature_lookup.get(item.strip().lower())
+            mapped = [feature] if feature else []
+        for feature in mapped:
+            if feature not in out:
+                out.append(feature)
+    return out
+
+
+def apply_llm_negations(symptoms_order: list[str], negated_vi) -> list[str]:
+    """Loại feature mà LLM đánh dấu phủ định (map negated_vi -> feature rồi trừ khỏi danh sách)."""
+    negated_features = set(features_from_llm_symptoms(negated_vi))
+    if not negated_features:
+        return symptoms_order
+    return [symptom for symptom in symptoms_order if symptom not in negated_features]
+
+
 def symptom_complexity(symptom: str) -> tuple[int, int]:
     text = str(symptom)
     composite = int("," in text or "(" in text or ")" in text or len(text) > 70)
@@ -1930,6 +1973,80 @@ def has_headache_nausea_or_dizzy(active_symptoms: set[str], notes: str) -> bool:
         return True
     t = normalize(notes or "")
     return any(p in t for p in ("dau dau", "nhuc dau", "buon non", "non", "chong mat", "choang", "hoa mat"))
+
+
+# ── Helper LLM (vòng 5): đọc output đã-validate của tầng LLM để CỦNG CỐ lưới an toàn.
+# Không có hàm nào ở đây chọn nhóm thuốc; chỉ trả tín hiệu cảnh báo/ngữ cảnh.
+
+def llm_context_has(context: dict | None, type_name: str) -> bool:
+    if not isinstance(context, dict):
+        return False
+    return any(
+        isinstance(item, dict) and item.get("type") == type_name
+        for item in context.get("contexts", [])
+    )
+
+
+def llm_red_flag_has(context: dict | None, flag: str) -> bool:
+    if not isinstance(context, dict):
+        return False
+    return flag in (context.get("red_flags") or [])
+
+
+def llm_context_text(context: dict | None, type_name: str) -> str:
+    """Trả phần text của context type đầu tiên khớp (để đưa qua helper ngữ cảnh sẵn có)."""
+    if not isinstance(context, dict):
+        return ""
+    for item in context.get("contexts", []):
+        if isinstance(item, dict) and item.get("type") == type_name:
+            return str(item.get("text", ""))
+    return ""
+
+
+def llm_safety_red_flag_message(context: dict | None, notes: str, active_symptoms: set[str]) -> str | None:
+    """Cổng an toàn THỨ HAI dựa trên LLM (chạy SAU cổng cấp cứu lexicon). Chỉ kích hoạt khi cờ đỏ
+    của LLM được CHỨNG THỰC bằng triệu chứng/notes -> tránh báo động giả. Trả message hoặc None.
+    Lưu ý: cổng cấp cứu lexicon đã chạy trước; tới đây nghĩa là lexicon bỏ sót cách diễn đạt, nên
+    LLM bù vào phần đó.
+    """
+    if not isinstance(context, dict):
+        return None
+    flags = set(context.get("red_flags") or [])
+    if not flags:
+        return None
+    t = normalize(notes or "")
+    GO = " Đây có thể là CẤP CỨU; gọi 115 hoặc đến cơ sở y tế ngay, KHÔNG tự dùng thuốc theo gợi ý."
+
+    # Nhóm ý định/ngộ độc/phản vệ: ưu tiên an toàn (lexicon đã bỏ sót mới tới đây).
+    if "suicide_self_harm" in flags:
+        return ("Bạn đang mô tả ý định tự tử/tự hại. Bạn không đơn độc — hãy liên hệ NGAY người thân "
+                "tin cậy hoặc đường dây hỗ trợ tâm lý (vd Ngày Mai 096 306 1414) hoặc gọi cấp cứu 115. "
+                "Hệ thống này KHÔNG thay thế hỗ trợ y tế/khủng hoảng.")
+    if "poisoning_overdose" in flags:
+        return "Nghi ngộ độc/quá liều." + GO
+    if "anaphylaxis" in flags:
+        return "Nghi phản vệ (dị ứng nặng)." + GO
+
+    # Nhóm theo triệu chứng: BẮT BUỘC có bằng chứng chứng thực trong notes/triệu chứng.
+    if "head_trauma" in flags and has_headache_nausea_or_dizzy(active_symptoms, notes):
+        return "Nghi chấn thương đầu/sọ não kèm dấu hiệu thần kinh." + GO
+    if "stroke_neuro" in flags and has_neuro_danger_signs(active_symptoms):
+        return "Nghi đột quỵ/tổn thương thần kinh cấp." + GO
+    if "chest_pain_mi" in flags and any(p in t for p in ("dau nguc", "tuc nguc", "that nguc")):
+        return "Nghi hội chứng vành cấp (đau ngực)." + GO
+    if "severe_dyspnea" in flags and any(p in t for p in ("kho tho", "tho gap", "hut hoi", "ngat tho")):
+        return "Nghi suy hô hấp cấp (khó thở nặng)." + GO
+    if "seizure" in flags and any(p in t for p in ("co giat", "len con giat", "sui bot mep")):
+        return "Nghi co giật." + GO
+    if "altered_consciousness" in flags and any(p in t for p in ("lo mo", "lu lan", "bat tinh", "hon me", "li bi")):
+        return "Nghi rối loạn ý thức." + GO
+    if "gi_bleeding" in flags and any(p in t for p in ("non ra mau", "oi ra mau", "phan den", "di ngoai ra mau", "phan hac in")):
+        return "Nghi xuất huyết tiêu hóa." + GO
+    if "pregnancy_bleeding" in flags and any(p in t for p in ("mang thai", "co thai", "co bau", "thai")) and any(p in t for p in ("chay mau", "ra mau", "dau bung")):
+        return "Nghi cấp cứu sản khoa (có thai kèm chảy máu/đau bụng)." + GO
+    if "severe_dehydration" in flags and any(p in t for p in ("tieu it", "khong tieu", "mat nuoc", "li bi")):
+        return "Nghi mất nước nặng." + GO
+    return None
 
 
 def dermatology_rule_drug_group(active_symptoms: set[str]) -> str | None:
@@ -2584,6 +2701,15 @@ def predict():
             "top_predictions": [],
         }), 422
 
+    # ── Tầng LLM trích xuất NGỮ CẢNH (vòng 5, BỔ SUNG, mặc định TẮT). Chạy SAU cổng cấp cứu
+    # lexicon, chỉ làm giàu đầu vào. Mọi lỗi -> _llm_context=None (fallback im lặng, không crash).
+    _llm_context = None
+    if llm_context_enabled():
+        try:
+            _llm_context = llm_context.extract_context(notes)
+        except Exception:
+            _llm_context = None
+
     active_symptoms = set()
     active_symptoms_order = []
     for symptom in selected:
@@ -2598,9 +2724,33 @@ def predict():
         if symptom not in active_symptoms:
             active_symptoms.add(symptom)
             active_symptoms_order.append(symptom)
+    # Hợp nhất triệu chứng LLM trích được (đã map về feature space).
+    if _llm_context is not None:
+        for symptom in features_from_llm_symptoms(_llm_context.get("symptoms_vi", [])):
+            if symptom not in active_symptoms:
+                active_symptoms.add(symptom)
+                active_symptoms_order.append(symptom)
     unsupported_symptoms = unsupported_symptoms_from_text(notes)
+    # Phủ định: trừ feature LLM đánh dấu phủ định, rồi vẫn chạy lọc phủ định theo notes như cũ.
+    if _llm_context is not None:
+        active_symptoms_order = apply_llm_negations(active_symptoms_order, _llm_context.get("negated_vi", []))
     active_symptoms_order = filter_negated_symptoms(active_symptoms_order, notes)
     active_symptoms = set(active_symptoms_order)
+
+    # ── Cổng an toàn THỨ HAI (vòng 5): cờ đỏ LLM đã được chứng thực -> 422 cấp cứu, không kê thuốc.
+    if _llm_context is not None:
+        _llm_emergency = llm_safety_red_flag_message(_llm_context, notes, active_symptoms)
+        if _llm_emergency:
+            return jsonify({
+                "error": _llm_emergency,
+                "display_title": "⚠️ Cần hỗ trợ y tế khẩn cấp",
+                "needs_more_input": True,
+                "confidence": None,
+                "label_type": LABEL_TYPE,
+                "score_type": "emergency",
+                "matched_symptoms": active_symptoms_order,
+                "top_predictions": [],
+            }), 422
 
     if not active_symptoms:
         unsupported_labels = [symptom["label_vi"] for symptom in unsupported_symptoms]
@@ -2716,10 +2866,14 @@ def predict():
         )
     # Ngữ cảnh (vòng 4): rượu RÕ/NHIỀU + nhóm giảm đau hạ sốt -> KHÔNG kê vô điều kiện vì
     # paracetamol/acetaminophen tăng nguy cơ độc gan khi có rượu. Đẩy sang "cần thêm thông tin".
+    # Gộp ngữ cảnh rượu từ notes (vòng 4) + ngữ cảnh LLM (vòng 5). LLM chỉ làm giàu tín hiệu.
+    _llm_alcohol_text = llm_context_text(_llm_context, "alcohol") if _llm_context is not None else ""
+    strong_alcohol = has_strong_alcohol_context(notes) or has_strong_alcohol_context(_llm_alcohol_text)
+    weak_alcohol = has_weak_alcohol_context(notes) or has_weak_alcohol_context(_llm_alcohol_text)
     alcohol_blocks_analgesic = (
         LABEL_TYPE == "drug_group"
         and (prediction == "thuốc giảm đau hạ sốt" or "headache" in active_symptoms or "fatigue" in active_symptoms)
-        and has_strong_alcohol_context(notes)
+        and strong_alcohol
     )
     if alcohol_blocks_analgesic:
         quality_reasons.append(
@@ -2785,14 +2939,17 @@ def predict():
 
     # Ngữ cảnh động (vòng 4): bổ sung cảnh báo/chăm sóc theo "sau khi X" cho ca VẪN gợi ý nhóm.
     warning_text = guidance["warning"]
-    if LABEL_TYPE == "drug_group" and prediction == "thuốc giảm đau hạ sốt" and has_weak_alcohol_context(notes):
+    if LABEL_TYPE == "drug_group" and prediction == "thuốc giảm đau hạ sốt" and weak_alcohol:
         alcohol_caution = (
             "Lưu ý: không tự dùng paracetamol/acetaminophen nếu vừa uống rượu, uống rượu nhiều "
             "hoặc có bệnh gan; hỏi dược sĩ/bác sĩ và kiểm tra trùng hoạt chất."
         )
         precaution_guidance.insert(0, alcohol_caution)
         warning_text = alcohol_caution + " " + warning_text
-    if has_exertion_heat_context(notes) and has_headache_nausea_or_dizzy(active_symptoms, notes):
+    # Gắng sức/nắng nóng: gộp notes (vòng 4) + ngữ cảnh LLM (vòng 5).
+    _llm_exertion_text = llm_context_text(_llm_context, "exertion_heat") if _llm_context is not None else ""
+    exertion_heat = has_exertion_heat_context(notes) or has_exertion_heat_context(_llm_exertion_text)
+    if exertion_heat and has_headache_nausea_or_dizzy(active_symptoms, notes):
         extend_unique(care_guidance, [
             "Nghỉ ở nơi mát, uống từng ngụm nước/oresol nếu ra nhiều mồ hôi; theo dõi dấu mất nước "
             "(khát nhiều, tiểu ít, chóng mặt).",
