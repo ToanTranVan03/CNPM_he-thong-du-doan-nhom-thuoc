@@ -3,8 +3,8 @@
   "passed": 459,
   "failed": 41,
   "status_counts": {
-    "422": 88,
-    "200": 412
+    "422": 92,
+    "200": 408
   },
   "issue_counts": {
     "missing_summary_diagnosis": 9,
