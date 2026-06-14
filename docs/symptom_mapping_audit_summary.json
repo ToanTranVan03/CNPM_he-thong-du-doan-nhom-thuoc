@@ -1,0 +1,11 @@
+{
+  "features": 582,
+  "mapped": 255,
+  "unmapped": 327,
+  "source_counts": {
+    "unmapped": 327,
+    "manual+auto": 22,
+    "auto": 113,
+    "manual": 120
+  }
+}

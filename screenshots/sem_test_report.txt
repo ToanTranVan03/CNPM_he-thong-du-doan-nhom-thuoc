@@ -1,0 +1,25 @@
+UI SEMANTIC TEST (cau la): 8/12 PASS
+  PASS [normal] Mũi tắc tịt, hắt xì cả buổi sáng, chảy nướ
+        kỳ vọng=thuốc kháng histamin | nhận=thuốc kháng histamin
+  PASS [normal] Bụng trên đau cồn cào lúc đói, hay ợ chua
+        kỳ vọng=thuốc điều trị dạ dày | nhận=thuốc điều trị dạ dày
+  FAIL [normal] Đi cầu phân lỏng nhiều lần, người mệt lả, 
+        kỳ vọng=bù dịch và điện giải | nhận=Chưa đủ dữ liệu để gợi ý thuốc
+  PASS [normal] Khớp gối sưng đau, đi lại khó, sáng dậy cứ
+        kỳ vọng=thuốc kháng viêm không steroid | nhận=thuốc kháng viêm không steroid
+  PASS [normal] Lên cơn hen, thở rít, nặng ngực khó thở
+        kỳ vọng=thuốc giãn phế quản | nhận=thuốc giãn phế quản
+  FAIL [normal] Uống nước hoài vẫn khát, đi tiểu liên tục,
+        kỳ vọng=thuốc điều trị đái tháo đường | nhận=thuốc kháng sinh
+  PASS [normal] Răng sâu nhức buốt, lợi sưng đau
+        kỳ vọng=thuốc giảm đau nha khoa | nhận=thuốc giảm đau nha khoa
+  FAIL [normal] Tê rần hai bàn tay, đau buốt như kim châm 
+        kỳ vọng=thuốc chống co giật/đau thần kinh | nhận=Chưa đủ dữ liệu để gợi ý thuốc
+  FAIL [normal] Hồi hộp đánh trống ngực, đau thắt ngực khi
+        kỳ vọng=thuốc tim mạch/huyết áp | nhận=thuốc kháng viêm không steroid
+  PASS [normal] Mẩn ngứa nổi khắp người sau khi uống thuốc
+        kỳ vọng=thuốc kháng histamin | nhận=thuốc kháng histamin
+  PASS [safety] Đột nhiên nói đớ, yếu tay phải, méo một bê
+        kỳ vọng=WARN | nhận=Chưa đủ dữ liệu để gợi ý thuốc
+  PASS [vague] Trong người thấy oải oải khó tả
+        kỳ vọng=WARN | nhận=Chưa đủ dữ liệu để gợi ý thuốc

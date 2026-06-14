@@ -1,0 +1,20 @@
+# Core ML + API
+scikit-learn>=1.9    # model models/ đã retrain trên 1.9.x (2026-06-08)
+joblib
+flask
+flask-cors
+
+# Xử lý dữ liệu
+pandas
+pyarrow               # đọc file .parquet (dataset HuggingFace)
+
+# Hiểu ngữ nghĩa tiếng Việt (khớp triệu chứng câu lạ cùng nghĩa)
+# Lần đầu chạy sẽ tự tải model SBERT (~500MB). Thiếu 2 gói này app vẫn chạy (fallback keyword).
+torch                  # CPU: pip install torch --index-url https://download.pytorch.org/whl/cpu
+sentence-transformers  # model mặc định: keepitreal/vietnamese-sbert (đổi qua env VI_SBERT_MODEL)
+
+# Thu thập dữ liệu (scraping)
+requests
+beautifulsoup4
+lxml
+browser-use           # LLM điều khiển trình duyệt (cần Chrome + API key khi chạy)

@@ -1,0 +1,7 @@
+chan_doan_du_kien,nhom_thuoc_dung,ly_do
+arthritis,thuốc kháng viêm không steroid,Viêm khớp điều trị chính bằng NSAID; thiếu trong data gốc
+gastroesophageal reflux disease,thuốc điều trị dạ dày,Trào ngược dạ dày-thực quản dùng PPI/kháng acid; thiếu trong data gốc
+peptic ulcer disease,thuốc điều trị dạ dày,Loét dạ dày-tá tràng dùng PPI/kháng acid; thiếu trong data gốc
+dengue,thuốc giảm đau hạ sốt,Sốt xuất huyết do virus - điều trị hỗ trợ (paracetamol + bù dịch); KHÔNG dùng kháng sinh
+typhoid,thuốc kháng sinh,Thương hàn điều trị bằng kháng sinh (cipro/azithromycin); vắc-xin chỉ phòng ngừa
+varicose veins,EXCLUDE,Giãn tĩnh mạch điều trị chính bằng vật lý/phẫu thuật - không nhóm thuốc nào trong 24 nhóm phù hợp

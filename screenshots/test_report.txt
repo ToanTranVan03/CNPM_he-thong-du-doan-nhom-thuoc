@@ -1,0 +1,24 @@
+Khởi động: OK
+Đăng ký/đăng nhập: OK
+Mục 3a: 4/5 PASS
+  - Case 1: PASS (Title: Nhóm thuốc gợi ý: thuốc giảm đau hạ sốt, Group: thuốc giảm đau hạ sốt)
+  - Case 2: PASS (Title: Nhóm thuốc gợi ý: thuốc kháng histamin, Group: thuốc kháng histamin)
+  - Case 3: PASS (Title: Nhóm thuốc gợi ý: thuốc điều trị sốt rét, Group: thuốc điều trị sốt rét)
+  - Case 4: PASS (Title: Nhóm thuốc gợi ý: thuốc điều trị dạ dày, Group: thuốc điều trị dạ dày)
+  - Case 5: FAIL (Title: Nhóm thuốc gợi ý: thuốc giãn phế quản, Group: thuốc giãn phế quản)
+Mục 3b: 2/2 PASS | case6 -> ('PASS', 'thuốc kháng sinh') | case7 -> ('PASS', 'thuốc giảm đau hạ sốt')
+Mục 4 (UI/UX): 10/10 PASS
+  - example-case: PASS
+  - clear-case: PASS
+  - symptom-search: PASS
+  - save-result: PASS
+  - history-page: PASS
+  - navigation: PASS
+  - logout: PASS
+  - validation-empty: PASS
+  - meaningless-notes: PASS
+  - responsive: PASS
+Lỗi console/crash: Có 3 lỗi được ghi nhận:
+  - Failed to load resource: the server responded with a status of 409 (CONFLICT)
+  - Failed to load resource: the server responded with a status of 400 (BAD REQUEST)
+  - Failed to load resource: the server responded with a status of 400 (BAD REQUEST)

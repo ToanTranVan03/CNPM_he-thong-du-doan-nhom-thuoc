@@ -1,0 +1,131 @@
+{
+  "_README": "Vòng 6: mapping nhóm thuốc -> 2-3 HOẠT CHẤT minh hoạ (tiếng Việt), curate thủ công từ cột ten_thuoc (xem scripts/build_drug_group_representatives.py). Đây CHỈ là ví dụ tham khảo, KHÔNG phải đơn thuốc/liều. Nhóm rủi ro cao/chuyên khoa để rỗng + note. CẦN dược sĩ rà soát trước khi dùng production. Key bắt đầu bằng '_' bị backend bỏ qua.",
+  "_needs_clinical_signoff": true,
+
+  "thuốc giảm đau hạ sốt": {
+    "active_ingredients": ["paracetamol (acetaminophen)", "ibuprofen"],
+    "note": "",
+    "manual_reviewed": true
+  },
+  "thuốc kháng viêm không steroid": {
+    "active_ingredients": ["ibuprofen", "naproxen", "diclofenac"],
+    "note": "",
+    "manual_reviewed": true
+  },
+  "thuốc kháng histamin": {
+    "active_ingredients": ["cetirizin", "loratadin", "fexofenadin"],
+    "note": "Dạng uống cho dị ứng/mề đay; không dùng dạng nhỏ mắt cho ngứa da.",
+    "manual_reviewed": true
+  },
+  "thuốc điều trị dạ dày": {
+    "active_ingredients": ["omeprazol", "pantoprazol", "thuốc kháng acid (antacid)"],
+    "note": "",
+    "manual_reviewed": true
+  },
+  "thuốc kháng nấm/ký sinh trùng ngoài da": {
+    "active_ingredients": ["clotrimazol (bôi)", "terbinafin"],
+    "note": "",
+    "manual_reviewed": true
+  },
+  "thuốc corticosteroid/chống viêm": {
+    "active_ingredients": ["hydrocortison (bôi)", "prednisolon"],
+    "note": "Corticosteroid cần thận trọng, không tự dùng kéo dài.",
+    "manual_reviewed": true
+  },
+  "thuốc giãn phế quản": {
+    "active_ingredients": ["salbutamol", "ipratropium"],
+    "note": "",
+    "manual_reviewed": true
+  },
+  "thuốc thông mũi": {
+    "active_ingredients": ["xylometazolin (xịt mũi)", "pseudoephedrin"],
+    "note": "Thuốc xịt thông mũi không dùng quá 5-7 ngày.",
+    "manual_reviewed": true
+  },
+  "thuốc long đờm / giảm ho": {
+    "active_ingredients": ["acetylcystein", "bromhexin", "guaifenesin"],
+    "note": "Chọn long đờm hay giảm ho tùy loại ho (ho khan/ho đờm).",
+    "manual_reviewed": true
+  },
+  "thuốc chống nôn": {
+    "active_ingredients": ["domperidon", "ondansetron"],
+    "note": "",
+    "manual_reviewed": true
+  },
+  "thuốc nhuận tràng": {
+    "active_ingredients": ["macrogol (PEG)", "lactulose"],
+    "note": "",
+    "manual_reviewed": true
+  },
+  "bù dịch và điện giải": {
+    "active_ingredients": ["oresol (ORS)"],
+    "note": "Bù nước - điện giải đường uống; uống từng ngụm.",
+    "manual_reviewed": true
+  },
+  "thuốc chống co giật/đau thần kinh": {
+    "active_ingredients": ["gabapentin", "pregabalin"],
+    "note": "Đau thần kinh cần bác sĩ đánh giá; thuốc kê đơn.",
+    "manual_reviewed": true
+  },
+  "vitamin và khoáng chất": {
+    "active_ingredients": ["sắt (iron)", "acid folic", "vitamin B12"],
+    "note": "Bổ sung theo nguyên nhân thiếu (cần xét nghiệm), không tự dùng liều cao kéo dài.",
+    "manual_reviewed": true
+  },
+  "thuốc điều trị đái tháo đường": {
+    "active_ingredients": ["metformin"],
+    "note": "Cần chẩn đoán xác định và theo dõi; insulin do bác sĩ chỉ định.",
+    "manual_reviewed": true
+  },
+
+  "thuốc kháng sinh": {
+    "active_ingredients": [],
+    "note": "Kháng sinh phải do bác sĩ kê theo loại nhiễm khuẩn; KHÔNG tự dùng (nguy cơ kháng thuốc).",
+    "manual_reviewed": true
+  },
+  "thuốc kháng virus": {
+    "active_ingredients": [],
+    "note": "Tùy loại virus; cần bác sĩ chỉ định (vd herpes, cúm, viêm gan...).",
+    "manual_reviewed": true
+  },
+  "thuốc tim mạch/huyết áp": {
+    "active_ingredients": [],
+    "note": "Cần bác sĩ đánh giá và kê đơn, theo dõi huyết áp/tim mạch.",
+    "manual_reviewed": true
+  },
+  "thuốc thần kinh/tâm thần": {
+    "active_ingredients": [],
+    "note": "Cần khám chuyên khoa tâm thần kinh; thuốc kê đơn, không tự dùng.",
+    "manual_reviewed": true
+  },
+  "thuốc nội tiết tuyến giáp": {
+    "active_ingredients": [],
+    "note": "Tùy cường hay suy giáp; cần xét nghiệm và bác sĩ nội tiết.",
+    "manual_reviewed": true
+  },
+  "thuốc điều trị sốt rét": {
+    "active_ingredients": [],
+    "note": "Cần xét nghiệm máu xác định và bác sĩ kê theo chủng ký sinh trùng.",
+    "manual_reviewed": true
+  },
+  "thuốc chống đông/kháng tiểu cầu": {
+    "active_ingredients": [],
+    "note": "Thuốc nguy cơ cao, cần theo dõi chặt (vd INR); chỉ dùng theo bác sĩ.",
+    "manual_reviewed": true
+  },
+  "thuốc điều hòa/ức chế miễn dịch": {
+    "active_ingredients": [],
+    "note": "Điều trị chuyên khoa, cần bác sĩ theo dõi.",
+    "manual_reviewed": true
+  },
+  "thuốc/điều trị ung thư": {
+    "active_ingredients": [],
+    "note": "Điều trị chuyên khoa ung bướu; không có gợi ý tự dùng.",
+    "manual_reviewed": true
+  },
+  "vắc-xin": {
+    "active_ingredients": [],
+    "note": "Theo lịch tiêm chủng/khuyến cáo của cơ sở y tế.",
+    "manual_reviewed": true
+  }
+}
