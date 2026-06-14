@@ -1,0 +1,583 @@
+﻿feature_en,label_vi,keywords_vi,mapping_source
+"Abdominal or back pain, unexplained weight loss, hormonal imbalances","Abdominal or back pain, unexplained weight loss, hormonal imbalances",,unmapped
+abdominal pain,Đau bụng,đau bụng; bụng đau; đau vùng bụng; đau quặn bụng; bụng đau quặn; nhức bụng,manual+auto
+"Abdominal pain (often in the upper right quadrant), jaundice, dark urine, pale stools, nausea, vomiting, endoscopic retrograde cholangiopancreatography (ERCP) with stone removal, sphincterotomy, Cholecystectomy","Abdominal pain (often in the upper right quadrant), jaundice, dark urine, pale stools, nausea, vomiting, endoscopic retrograde cholangiopancreatography (ercp) with stone removal, sphincterotomy, cholecystectomy",,unmapped
+"Abdominal pain or discomfort, difficulty swallowing, choking or gagging, drooling, nausea or vomiting, loss of appetite, chest pain or pressure, respiratory distress, coughing or wheezing, gastrointestinal bleeding, bowel obstruction, perforation of the digestive tract","Abdominal pain or discomfort, difficulty swallowing, choking or gagging, drooling, nausea or vomiting, loss of appetite, chest pain or pressure, respiratory distress, coughing or wheezing, gastrointestinal bleeding, bowel obstruction, perforation of the digestive tract",,unmapped
+"Abdominal pain, bloating, changes in bowel movements","Abdominal pain, bloating, changes in bowel movements",,unmapped
+"Abdominal pain, bloating, heartburn, nausea, acidic taste","Abdominal pain, bloating, heartburn, nausea, acidic taste",,unmapped
+"Abdominal pain, jaundice (yellowing of the skin and eyes), unexplained weight loss, loss of appetite, fatigue, nausea, vomiting","Abdominal pain, jaundice (yellowing of the skin and eyes), unexplained weight loss, loss of appetite, fatigue, nausea, vomiting",,unmapped
+"Abdominal pain, tenderness, bruising, swelling, difficulty breathing, nausea, vomiting, changes in bowel movements, blood in urine or stool","Abdominal pain, tenderness, bruising, swelling, difficulty breathing, nausea, vomiting, changes in bowel movements, blood in urine or stool",,unmapped
+abnormal appearing skin,Da bất thường,da bất thường; bất thường trên da,auto
+abnormal breathing sounds,Tiếng thở bất thường,tiếng thở bất thường; khò khè,auto
+abnormal involuntary movements,Cử động không tự chủ,cử động không tự chủ; vận động bất thường,auto
+abnormal menstruation,Kinh nguyệt bất thường,kinh nguyệt bất thường; rối loạn kinh nguyệt,manual
+abnormal movement of eyelid,Mí mắt co giật,mí mắt co giật; cử động mí mắt bất thường,auto
+"Abnormal vaginal bleeding, pelvic pain or discomfort, changes in bowel or bladder habits","Abnormal vaginal bleeding, pelvic pain or discomfort, changes in bowel or bladder habits",,unmapped
+abusing alcohol,Lạm dụng rượu,lạm dụng rượu; uống rượu nhiều,auto
+ache all over,Đau nhức toàn thân,đau nhức toàn thân; đau mỏi toàn thân,auto
+acidity,Ợ chua,ợ chua; trào ngược; nóng rát dạ dày,manual
+acne or pimples,Mụn trứng cá,mụn trứng cá; mụn,auto
+acute liver failure,Suy gan cấp,suy gan cấp,manual
+allergic reaction,Dị ứng,dị ứng; phản ứng dị ứng,auto
+"Altered perception of reality, visual or auditory hallucinations, changes in sensory experiences, introspective thoughts, feelings of connection or disconnection, anxiety or paranoia (in some individuals), flashbacks (in some individuals)","Altered perception of reality, visual or auditory hallucinations, changes in sensory experiences, introspective thoughts, feelings of connection or disconnection, anxiety or paranoia (in some individuals), flashbacks (in some individuals)",,unmapped
+altered sensorium,Rối loạn ý thức,rối loạn ý thức; lơ mơ,manual
+ankle pain,Đau cổ chân,đau cổ chân; nhức cổ chân; đau mắt cá chân; nhức mắt cá chân,auto
+ankle swelling,Sưng cổ chân,sưng cổ chân; phù cổ chân; sưng mắt cá chân; phù mắt cá chân,auto
+anxiety,Lo âu,lo âu; bồn chồn; hồi hộp lo lắng,manual
+anxiety and nervousness,Anxiety and nervousness,,unmapped
+"Anxiety, restlessness, irritability, tremors, sweating, nausea, vomiting, insomnia, drug cravings","Anxiety, restlessness, irritability, tremors, sweating, nausea, vomiting, insomnia, drug cravings",,unmapped
+arm lump or mass,Khối ở tay,khối ở tay; u cục ở tay; khối ở cánh tay; u cục ở cánh tay,auto
+arm pain,Đau tay,đau tay; nhức tay; đau cánh tay; nhức cánh tay,auto
+arm stiffness or tightness,Cứng tay,cứng tay; căng tay; cứng cánh tay; căng cánh tay,auto
+arm swelling,Sưng tay,sưng tay; phù tay; sưng cánh tay; phù cánh tay,auto
+arm weakness,Yếu tay,yếu tay; yếu cánh tay,auto
+back cramps or spasms,Co thắt lưng,co thắt lưng; chuột rút lưng,auto
+back mass or lump,Khối ở lưng,khối ở lưng; u cục ở lưng,auto
+back pain,Đau lưng,đau lưng; nhức lưng,manual+auto
+back stiffness or tightness,Cứng lưng,cứng lưng; căng lưng,auto
+belly pain,Đau bụng dưới,đau bụng dưới; đau bụng; nhức bụng,manual+auto
+blackheads,Mụn đầu đen,mụn đầu đen,manual
+bladder discomfort,Khó chịu bàng quang,khó chịu bàng quang; đau bàng quang,manual
+bleeding from ear,Chảy máu tai,chảy máu tai,auto
+bleeding from eye,Chảy máu mắt,chảy máu mắt,auto
+bleeding gums,Chảy máu nướu,chảy máu nướu; chảy máu lợi; nướu chảy máu; lợi chảy máu,manual+auto
+blindness,Mất thị lực,mất thị lực,auto
+blister,Mụn nước,mụn nước; bọng nước,manual
+blood clots during menstrual periods,Máu cục khi hành kinh,máu cục khi hành kinh; kinh nguyệt có máu cục,auto
+blood in sputum,Ho ra máu,ho ra máu; đờm có máu,manual
+blood in stool,Đi ngoài ra máu,đi ngoài ra máu; phân có máu,auto
+blood in urine,Tiểu ra máu,tiểu ra máu; nước tiểu có máu,auto
+"Blood in urine, frequent urination, pelvic pain","Blood in urine, frequent urination, pelvic pain",,unmapped
+bloody stool,Đi ngoài ra máu,đi ngoài ra máu; phân máu,manual
+blurred and distorted vision,Nhìn mờ,nhìn mờ; mờ mắt,manual
+"Blurred or distorted vision, floaters, impaired color vision, dark or empty areas in the visual field, vision loss","Blurred or distorted vision, floaters, impaired color vision, dark or empty areas in the visual field, vision loss",,unmapped
+"Blurred or hazy vision, eye pain or discomfort, redness or irritation of the eye, excessive tearing, sensitivity to light (photophobia), foreign body sensation, dryness or excessive tearing, corneal abrasions or ulcers, distorted or irregular corneal shape, vision loss","Blurred or hazy vision, eye pain or discomfort, redness or irritation of the eye, excessive tearing, sensitivity to light (photophobia), foreign body sensation, dryness or excessive tearing, corneal abrasions or ulcers, distorted or irregular corneal shape, vision loss",,unmapped
+"Blurred vision, halos around lights, eye pain","Blurred vision, halos around lights, eye pain",,unmapped
+"Bone pain, fractures, fatigue, unexplained weight loss","Bone pain, fractures, fatigue, unexplained weight loss",,unmapped
+bones are painful,Bones are painful,,unmapped
+"Breast lump, changes in breast size or shape, nipple changes, breast pain","Breast lump, changes in breast size or shape, nipple changes, breast pain",,unmapped
+breathing fast,Thở nhanh,thở nhanh,auto
+breathlessness,Khó thở,khó thở; hụt hơi; thở gấp,manual
+brittle nails,Móng giòn,móng giòn; móng dễ gãy,manual
+bruising,Bầm tím,bầm tím; vết bầm,manual
+burning abdominal pain,Đau bụng,đau bụng; nhức bụng; nóng rát bụng; bỏng rát bụng,auto
+burning chest pain,Đau ngực,đau ngực; nhức ngực; nóng rát ngực; bỏng rát ngực,auto
+burning micturition,Tiểu buốt,tiểu buốt; tiểu rát; đái buốt,manual
+changes in stool appearance,Thay đổi tính chất phân,thay đổi tính chất phân; phân bất thường,auto
+"Chest or back pain, shortness of breath, hoarseness, difficulty swallowing","Chest or back pain, shortness of breath, hoarseness, difficulty swallowing",,unmapped
+chest pain,Đau ngực,đau ngực; tức ngực; nhức ngực,manual+auto
+"Chest pain (sharp and stabbing), worsens with deep breaths or lying down, fever","Chest pain (sharp and stabbing), worsens with deep breaths or lying down, fever",,unmapped
+"Chest pain (sharp or dull), difficulty breathing or shortness of breath, rapid or shallow breathing, coughing up blood or pink-tinged sputum, decreased oxygen levels, wheezing, cyanosis (bluish discoloration of the skin), chest wall bruising, rib fractures (associated injuries)","Chest pain (sharp or dull), difficulty breathing or shortness of breath, rapid or shallow breathing, coughing up blood or pink-tinged sputum, decreased oxygen levels, wheezing, cyanosis (bluish discoloration of the skin), chest wall bruising, rib fractures (associated injuries)",,unmapped
+"Chest pain or discomfort (angina), shortness of breath, fatigue, irregular heartbeat, dizziness, nausea, sweating, jaw or arm pain (in some cases), heart attack (when a coronary artery becomes completely blocked)","Chest pain or discomfort (angina), shortness of breath, fatigue, irregular heartbeat, dizziness, nausea, sweating, jaw or arm pain (in some cases), heart attack (when a coronary artery becomes completely blocked)",,unmapped
+"Chest pain, difficulty breathing, tenderness or swelling over the ribcage","Chest pain, difficulty breathing, tenderness or swelling over the ribcage",,unmapped
+"Chest pain, swelling and tenderness of the cartilage connecting the ribs to the breastbone","Chest pain, swelling and tenderness of the cartilage connecting the ribs to the breastbone",,unmapped
+chest tightness,Tức ngực,tức ngực; nặng ngực; đè nặng ngực; căng tức ngực; cứng ngực; căng ngực,manual+auto
+chills,Ớn lạnh,ớn lạnh; lạnh run; rét,manual
+"Chronic back pain and stiffness, especially in the morning or after periods of inactivity, limited range of motion in the spine, fatigue, inflammation and pain in other joints (such as hips, shoulders, knees), discomfort or pain in the neck, difficulty maintaining proper posture, tenderness or swelling in affected areas, tingling or numbness in extremities in severe cases","Chronic back pain and stiffness, especially in the morning or after periods of inactivity, limited range of motion in the spine, fatigue, inflammation and pain in other joints (such as hips, shoulders, knees), discomfort or pain in the neck, difficulty maintaining proper posture, tenderness or swelling in affected areas, tingling or numbness in extremities in severe cases",,unmapped
+"Chronic diarrhea, weight loss, abdominal pain or bloating, nutrient deficiencies (vitamins, minerals), fatigue, failure to thrive","Chronic diarrhea, weight loss, abdominal pain or bloating, nutrient deficiencies (vitamins, minerals), fatigue, failure to thrive",,unmapped
+cold hands and feets,Tay chân lạnh,tay chân lạnh; bàn tay lạnh; bàn chân lạnh,manual
+coma,Hôn mê,hôn mê,manual
+"Compulsive use of opioids, strong desire or cravings for opioids, inability to control or reduce opioid use, withdrawal symptoms (such as nausea, muscle aches, anxiety) when attempting to stop or reduce use, tolerance to opioids, continued use despite negative consequences (such as legal issues, health problems)","Compulsive use of opioids, strong desire or cravings for opioids, inability to control or reduce opioid use, withdrawal symptoms (such as nausea, muscle aches, anxiety) when attempting to stop or reduce use, tolerance to opioids, continued use despite negative consequences (such as legal issues, health problems)",,unmapped
+congestion,Nghẹt mũi,nghẹt mũi; tắc mũi,manual
+congestion in chest,Congestion in chest,,unmapped
+constipation,Táo bón,táo bón,manual
+continuous feel of urine,Cảm giác muốn tiểu liên tục,cảm giác muốn tiểu liên tục; mắc tiểu liên tục,manual
+continuous sneezing,Hắt hơi,hắt hơi; hắt hơi liên tục; nhảy mũi; nhảy mũi liên tục,manual
+coryza,Sổ mũi,sổ mũi; chảy nước mũi,auto
+cough,Ho,ho; ho khan; ho nhiều,manual
+"Cough with phlegm or pus, chest pain, fever, shortness of breath, fatigue","Cough with phlegm or pus, chest pain, fever, shortness of breath, fatigue",,unmapped
+"Cough, fever, chest pain, difficulty breathing","Cough, fever, chest pain, difficulty breathing",,unmapped
+"Cough, shortness of breath, wheezing, chest pain, fever, night sweats, fatigue, weight loss, elevated eosinophil count in the blood or sputum","Cough, shortness of breath, wheezing, chest pain, fever, night sweats, fatigue, weight loss, elevated eosinophil count in the blood or sputum",,unmapped
+"cough, sore throat, runny nose, sneezing","Cough, sore throat, runny nose, sneezing",,unmapped
+"cough, weight loss, fever, night sweats","Cough, weight loss, fever, night sweats",,unmapped
+coughing up sputum,Ho có đờm,ho có đờm; khạc đờm,auto
+cramps,Chuột rút,chuột rút; co rút cơ,manual
+cramps and spasms,Cramps and spasms,,unmapped
+"Cravings for alcohol, inability to control or limit alcohol consumption, withdrawal symptoms (such as tremors, anxiety, sweating) when attempting to stop or reduce alcohol use, continued use despite negative consequences (such as relationship problems, health issues), neglecting responsibilities, tolerance to alcohol","Cravings for alcohol, inability to control or limit alcohol consumption, withdrawal symptoms (such as tremors, anxiety, sweating) when attempting to stop or reduce alcohol use, continued use despite negative consequences (such as relationship problems, health issues), neglecting responsibilities, tolerance to alcohol",,unmapped
+dark urine,Nước tiểu sẫm,nước tiểu sẫm; tiểu sẫm màu; nước tiểu đậm,manual
+decreased appetite,Chán ăn,chán ăn; ăn kém,auto
+"Decreased urine output, fluid retention, fatigue, shortness of breath, nausea, confusion, chest pain, seizures","Decreased urine output, fluid retention, fatigue, shortness of breath, nausea, confusion, chest pain, seizures",,unmapped
+dehydration,Mất nước,mất nước; khô môi; khát nước nhiều,manual
+delusions or hallucinations,Hoang tưởng,hoang tưởng; ảo giác,auto
+Depends on the specific cranial nerve involved,Depends on the specific cranial nerve involved,,unmapped
+depression,Trầm cảm,trầm cảm; buồn bã kéo dài,manual
+depressive or psychotic symptoms,Depressive or psychotic symptoms,,unmapped
+diaper rash,Hăm tã,hăm tã,auto
+diarrhea,Tiêu chảy,tiêu chảy; đi ngoài phân lỏng,auto
+diarrhoea,Tiêu chảy,tiêu chảy; đi ngoài phân lỏng; đi ngoài lỏng; đi phân lỏng,manual
+difficulty breathing,Khó thở,khó thở; thở khó; hụt hơi,auto
+"Difficulty breathing, rapid breathing, chest pain","Difficulty breathing, rapid breathing, chest pain",,unmapped
+"Difficulty falling asleep or staying asleep, daytime sleepiness, irritability, difficulty concentrating","Difficulty falling asleep or staying asleep, daytime sleepiness, irritability, difficulty concentrating",,unmapped
+difficulty in swallowing,Khó nuốt,khó nuốt; nuốt khó,auto
+difficulty speaking,Difficulty speaking,,unmapped
+"Difficulty swallowing, unintentional weight loss, chest pain, hoarseness","Difficulty swallowing, unintentional weight loss, chest pain, hoarseness",,unmapped
+diminished hearing,Giảm thính lực,giảm thính lực; nghe kém,auto
+diminished vision,Giảm thị lực,giảm thị lực; nhìn kém,auto
+dischromic patches,Mảng đổi màu da,mảng đổi màu da; da đổi màu; mảng trắng loang; da loang màu; loang da,manual+auto
+distention of abdomen,Chướng bụng,chướng bụng; bụng căng,manual
+disturbance of memory,Rối loạn trí nhớ,rối loạn trí nhớ; giảm trí nhớ,auto
+dizziness,Chóng mặt,chóng mặt; hoa mắt; choáng; choáng váng,manual
+double vision,Nhìn đôi,nhìn đôi,auto
+drug abuse,Lạm dụng thuốc,lạm dụng thuốc; lạm dụng chất,auto
+drying and tingling lips,Khô môi,khô môi; tê môi,manual
+ear pain,Đau tai,đau tai; nhức tai,auto
+"Ear pain (particularly behind the ear), swelling and redness of the ear or the area behind the ear, fever, headache, hearing loss or impaired hearing, drainage of fluid or pus from the ear, earache, irritability (in infants and young children), tenderness or pain when touching the area, mastoid bone protrusion or swelling","Ear pain (particularly behind the ear), swelling and redness of the ear or the area behind the ear, fever, headache, hearing loss or impaired hearing, drainage of fluid or pus from the ear, earache, irritability (in infants and young children), tenderness or pain when touching the area, mastoid bone protrusion or swelling",,unmapped
+"Ear pain, fever, fluid drainage from the ear","Ear pain, fever, fluid drainage from the ear",,unmapped
+"Ear pain, fever, fluid drainage from the ear, hearing loss or muffled hearing in the affected ear","Ear pain, fever, fluid drainage from the ear, hearing loss or muffled hearing in the affected ear",,unmapped
+"Ear pain, hearing loss, ear drainage, dizziness or vertigo, tinnitus","Ear pain, hearing loss, ear drainage, dizziness or vertigo, tinnitus",,unmapped
+"Ear pain, hearing loss, recurrent ear infections","Ear pain, hearing loss, recurrent ear infections",,unmapped
+"Easy bruising, prolonged bleeding from cuts, petechiae (red or purple spots on the skin), nosebleeds, excessive menstrual bleeding","Easy bruising, prolonged bleeding from cuts, petechiae (red or purple spots on the skin), nosebleeds, excessive menstrual bleeding",,unmapped
+elbow pain,Đau khuỷu tay,đau khuỷu tay; nhức khuỷu tay,auto
+elbow swelling,Sưng khuỷu tay,sưng khuỷu tay; phù khuỷu tay,auto
+"Elevated intraocular pressure, visual field loss","Elevated intraocular pressure, visual field loss",,unmapped
+enlarged thyroid,Bướu cổ,bướu cổ; tuyến giáp to,manual
+"Enlarged thyroid gland in the neck, swelling or visible protrusion, difficulty swallowing or breathing","Enlarged thyroid gland in the neck, swelling or visible protrusion, difficulty swallowing or breathing",,unmapped
+excessive anger,Dễ tức giận,dễ tức giận; giận dữ quá mức,auto
+"Excessive body weight, increased risk of chronic conditions","Excessive body weight, increased risk of chronic conditions",,unmapped
+"Excessive daytime sleepiness, sudden loss of muscle tone (cataplexy)","Excessive daytime sleepiness, sudden loss of muscle tone (cataplexy)",,unmapped
+excessive hunger,Đói nhiều,đói nhiều; ăn nhiều,manual
+"Excessive sweating (beyond what is necessary for temperature regulation), typically in specific areas (such as palms, soles, underarms), may interfere with daily activities","Excessive sweating (beyond what is necessary for temperature regulation), typically in specific areas (such as palms, soles, underarms), may interfere with daily activities",,unmapped
+excessive urination at night,Tiểu đêm nhiều,tiểu đêm nhiều; đi tiểu nhiều ban đêm,auto
+"Excessive worrying, restlessness, increased heart rate, panic attacks","Excessive worrying, restlessness, increased heart rate, panic attacks",,unmapped
+"Excessively concentrated urine, low blood sodium levels","Excessively concentrated urine, low blood sodium levels",,unmapped
+extra marital contacts,Quan hệ ngoài luồng,quan hệ ngoài luồng; quan hệ tình dục nguy cơ,manual
+eye burns or stings,Nóng rát mắt,nóng rát mắt; bỏng rát mắt,auto
+"Eye pain, blurred vision, sensitivity to light","Eye pain, blurred vision, sensitivity to light",,unmapped
+"Eye pain, redness, foreign body sensation, sensitivity to light","Eye pain, redness, foreign body sensation, sensitivity to light",,unmapped
+"Eye pain, redness, swelling, blurred vision, decreased vision, floaters (dark spots or cobwebs in the vision), increased sensitivity to light (photophobia), discharge from the eye, excessive tearing, fever","Eye pain, redness, swelling, blurred vision, decreased vision, floaters (dark spots or cobwebs in the vision), increased sensitivity to light (photophobia), discharge from the eye, excessive tearing, fever",,unmapped
+"Eye pain, swelling, redness, vision changes","Eye pain, swelling, redness, vision changes",,unmapped
+eye redness,Đỏ mắt,đỏ mắt; mắt đỏ,auto
+"Eye redness, pain or discomfort, blurred or decreased vision, increased sensitivity to light","Eye redness, pain or discomfort, blurred or decreased vision, increased sensitivity to light",,unmapped
+"Eye redness, severe eye pain, blurred vision","Eye redness, severe eye pain, blurred vision",,unmapped
+eyelid lesion or rash,Tổn thương mí mắt,tổn thương mí mắt; phát ban mí mắt,auto
+eyelid swelling,Sưng mí mắt,sưng mí mắt; phù mí mắt,auto
+facial pain,Đau mặt,đau mặt; nhức mặt,auto
+"Facial pain or pressure, nasal congestion, thick nasal discharge, post-nasal drip, cough, headache, fatigue, fever (in some cases)","Facial pain or pressure, nasal congestion, thick nasal discharge, post-nasal drip, cough, headache, fatigue, fever (in some cases)",,unmapped
+"Facial pain or pressure, nasal congestion, thick nasal discharge, postnasal drip, cough, fatigue","Facial pain or pressure, nasal congestion, thick nasal discharge, postnasal drip, cough, fatigue",,unmapped
+"Facial weakness or paralysis, drooping of the mouth or eyelid","Facial weakness or paralysis, drooping of the mouth or eyelid",,unmapped
+fainting,Ngất,ngất; xỉu,auto
+family history,Tiền sử gia đình,tiền sử gia đình,manual
+fast heart rate,Tim đập nhanh,tim đập nhanh; mạch nhanh,manual
+fatigue,Mệt mỏi,mệt mỏi; mệt; đuối sức,manual
+"Fatigue, abdominal pain or swelling, jaundice, neurological symptoms (tremors, difficulty speaking or walking)","Fatigue, abdominal pain or swelling, jaundice, neurological symptoms (tremors, difficulty speaking or walking)",,unmapped
+"Fatigue, dizziness, fainting, chest pain or discomfort, shortness of breath, irregular heart rhythms","Fatigue, dizziness, fainting, chest pain or discomfort, shortness of breath, irregular heart rhythms",,unmapped
+"Fatigue, Increased hunger, Slow healing of wounds","Fatigue, increased hunger, slow healing of wounds",,unmapped
+"Fatigue, jaundice, abdominal swelling (ascites), easy bruising and bleeding, confusion, loss of appetite, weight loss","Fatigue, jaundice, abdominal swelling (ascites), easy bruising and bleeding, confusion, loss of appetite, weight loss",,unmapped
+"Fatigue, nausea, excessive thirst, kidney stones","Fatigue, nausea, excessive thirst, kidney stones",,unmapped
+"Fatigue, pale skin, frequent infections, easy bleeding or bruising","Fatigue, pale skin, frequent infections, easy bleeding or bruising",,unmapped
+"Fatigue, shortness of breath, chest pain or discomfort, heart palpitations, fainting or lightheadedness, swollen legs or ankles","Fatigue, shortness of breath, chest pain or discomfort, heart palpitations, fainting or lightheadedness, swollen legs or ankles",,unmapped
+"Fatigue, sore throat, swollen lymph nodes","Fatigue, sore throat, swollen lymph nodes",,unmapped
+"Fatigue, swelling of the legs or ankles, decreased appetite, difficulty concentrating, increased urination or urine changes, blood in urine, high blood pressure","Fatigue, swelling of the legs or ankles, decreased appetite, difficulty concentrating, increased urination or urine changes, blood in urine, high blood pressure",,unmapped
+"Fatigue, swollen and bleeding gums, joint pain","Fatigue, swollen and bleeding gums, joint pain",,unmapped
+"Fatigue, weakness, bone pain, frequent urination, kidney stones","Fatigue, weakness, bone pain, frequent urination, kidney stones",,unmapped
+"Fatigue, weakness, pale skin","Fatigue, weakness, pale skin",,unmapped
+"Fatigue, weakness, pale skin, shortness of breath","Fatigue, weakness, pale skin, shortness of breath",,unmapped
+"Fatigue, weakness, pale skin, shortness of breath, jaundice","Fatigue, weakness, pale skin, shortness of breath, jaundice",,unmapped
+"Fatigue, weakness, pale skin, shortness of breath, tingling or numbness in the hands and feet, balance problems, sore tongue","Fatigue, weakness, pale skin, shortness of breath, tingling or numbness in the hands and feet, balance problems, sore tongue",,unmapped
+"Fatigue, weakness, shortness of breath, pale skin","Fatigue, weakness, shortness of breath, pale skin",,unmapped
+"Fatigue, weight changes, mood swings, dry skin","Fatigue, weight changes, mood swings, dry skin",,unmapped
+"Fatigue, weight gain, constipation, dry skin, depression, muscle aches and stiffness, sensitivity to cold","Fatigue, weight gain, constipation, dry skin, depression, muscle aches and stiffness, sensitivity to cold",,unmapped
+"Fatigue, weight gain, sensitivity to cold, dry skin, constipation, depression, muscle weakness, elevated cholesterol levels","Fatigue, weight gain, sensitivity to cold, dry skin, constipation, depression, muscle weakness, elevated cholesterol levels",,unmapped
+fears and phobias,Fears and phobias,,unmapped
+feeling ill,Cảm thấy mệt,cảm thấy mệt; khó chịu trong người,auto
+fever,Sốt,sốt,manual
+"Fever, chest pain, productive cough with foul-smelling or bloody sputum","Fever, chest pain, productive cough with foul-smelling or bloody sputum",,unmapped
+"Fever, chills, back or flank pain, frequent urination","Fever, chills, back or flank pain, frequent urination",,unmapped
+"Flu-like symptoms (fever, headache, fatigue), anxiety, confusion, hallucinations, difficulty swallowing","Flu-like symptoms (fever, headache, fatigue), anxiety, confusion, hallucinations, difficulty swallowing",,unmapped
+flu-like syndrome,Triệu chứng giống cúm,triệu chứng giống cúm; hội chứng giống cúm,auto
+fluid in ear,Dịch trong tai,dịch trong tai; chảy dịch tai,auto
+fluid overload.1,Quá tải dịch,quá tải dịch; ứ dịch,manual
+fluid retention,Giữ nước,giữ nước; ứ dịch; phù,auto
+focal weakness,Yếu khu trú,yếu khu trú; yếu một vùng cơ thể,auto
+foot or toe pain,Đau ngón chân,đau ngón chân; nhức ngón chân,auto
+foot or toe swelling,Sưng ngón chân,sưng ngón chân; phù ngón chân,auto
+"Foot pain or achiness, difficulty with foot and ankle movement, foot fatigue, swelling","Foot pain or achiness, difficulty with foot and ankle movement, foot fatigue, swelling",,unmapped
+foreign body sensation in eye,Cộm mắt,cộm mắt; cảm giác dị vật trong mắt,auto
+foul smell of urine,Nước tiểu hôi,nước tiểu hôi; tiểu hôi,auto
+"Fragile bones, loss of height over time, back pain, fractures","Fragile bones, loss of height over time, back pain, fractures",,unmapped
+Frequent episodes of stone formation,Frequent episodes of stone formation,,unmapped
+frequent menstruation,Frequent menstruation,,unmapped
+"Frequent urinary tract infections, urinary urgency or frequency, bedwetting (in children), high blood pressure (in severe cases)","Frequent urinary tract infections, urinary urgency or frequency, bedwetting (in children), high blood pressure (in severe cases)",,unmapped
+frequent urination,Tiểu nhiều,tiểu nhiều; đi tiểu thường xuyên,auto
+"Frequent urination, burning sensation during urination, cloudy or bloody urine, pelvic pain","Frequent urination, burning sensation during urination, cloudy or bloody urine, pelvic pain",,unmapped
+"Frequent urination, Increased thirst, Weight loss","Frequent urination, increased thirst, weight loss",,unmapped
+frontal headache,Đau đầu vùng trán,đau đầu vùng trán; đau trán,manual+auto
+"Gradual loss of peripheral vision, tunnel vision","Gradual loss of peripheral vision, tunnel vision",,unmapped
+"Gradual loss of vision, visual field defects","Gradual loss of vision, visual field defects",,unmapped
+groin pain,Đau bẹn,đau bẹn; nhức bẹn,auto
+gum pain,Đau nướu,đau nướu; đau lợi; nướu đau; lợi đau; nhức nướu; nhức lợi,manual+auto
+"Hair loss or balding, patchy or generalized hair loss","Hair loss or balding, patchy or generalized hair loss",,unmapped
+hand or finger lump or mass,Khối ở ngón tay,khối ở ngón tay; u cục ở ngón tay,auto
+hand or finger pain,Đau ngón tay,đau ngón tay; nhức ngón tay,auto
+hand or finger stiffness or tightness,Cứng ngón tay,cứng ngón tay; căng ngón tay,auto
+hand or finger swelling,Sưng ngón tay,sưng ngón tay; phù ngón tay,auto
+hand or finger weakness,Yếu ngón tay,yếu ngón tay,auto
+headache,Đau đầu,đau đầu; nhức đầu,manual
+"Headache, dizziness, nausea or vomiting, confusion, memory problems, sensitivity to light or noise, mood changes","Headache, dizziness, nausea or vomiting, confusion, memory problems, sensitivity to light or noise, mood changes",,unmapped
+"Headache, fever, confusion, seizures, neurological symptoms","Headache, fever, confusion, seizures, neurological symptoms",,unmapped
+"Headache, fever, fatigue, cough, meningitis, pneumonia","Headache, fever, fatigue, cough, meningitis, pneumonia",,unmapped
+"Headache, fever, neurological deficits","Headache, fever, neurological deficits",,unmapped
+"Headaches, nausea, seizures, changes in coordination or balance","Headaches, nausea, seizures, changes in coordination or balance",,unmapped
+"Headaches, vision problems (such as blurred vision or loss of peripheral vision), hormonal imbalances (such as excessive production or deficiency of specific hormones), fatigue, weight gain or loss, menstrual irregularities, infertility, erectile dysfunction, growth abnormalities in children, mood changes, cognitive impairments","Headaches, vision problems (such as blurred vision or loss of peripheral vision), hormonal imbalances (such as excessive production or deficiency of specific hormones), fatigue, weight gain or loss, menstrual irregularities, infertility, erectile dysfunction, growth abnormalities in children, mood changes, cognitive impairments",,unmapped
+heartburn,Ợ nóng,ợ nóng; nóng rát thượng vị; nóng rát sau xương ức,manual+auto
+"Heartburn, acid reflux, chest pain","Heartburn, acid reflux, chest pain",,unmapped
+"Heartburn, chest pain, difficulty swallowing","Heartburn, chest pain, difficulty swallowing",,unmapped
+heavy menstrual flow,Heavy menstrual flow,,unmapped
+"Heel pain, especially when walking or standing, tenderness, swelling, inflammation of the surrounding tissue","Heel pain, especially when walking or standing, tenderness, swelling, inflammation of the surrounding tissue",,unmapped
+"Hemangioblastomas (tumors in the brain, spinal cord, or other organs), retinal angiomas (abnormal blood vessel growth in the retina), renal cell carcinomas (kidney tumors), pheochromocytomas (adrenal gland tumors), pancreatic cysts/tumors, other tumors or cysts","Hemangioblastomas (tumors in the brain, spinal cord, or other organs), retinal angiomas (abnormal blood vessel growth in the retina), renal cell carcinomas (kidney tumors), pheochromocytomas (adrenal gland tumors), pancreatic cysts/tumors, other tumors or cysts",,unmapped
+hemoptysis,Ho ra máu,ho ra máu,auto
+hesitancy,Hesitancy,,unmapped
+High blood pressure during pregnancy,High blood pressure during pregnancy,,unmapped
+High blood pressure without proteinuria (preeclampsia),High blood pressure without proteinuria (preeclampsia),,unmapped
+"High blood pressure, chest pain or discomfort, shortness of breath, fatigue","High blood pressure, chest pain or discomfort, shortness of breath, fatigue",,unmapped
+"High blood pressure, increased need to urinate, swelling in the legs and ankles, fatigue, nausea, loss of appetite","High blood pressure, increased need to urinate, swelling in the legs and ankles, fatigue, nausea, loss of appetite",,unmapped
+"High blood pressure, proteinuria, swelling, headaches, visual disturbances","High blood pressure, proteinuria, swelling, headaches, visual disturbances",,unmapped
+High blood sugar levels during pregnancy,High blood sugar levels during pregnancy,,unmapped
+high fever,Sốt cao,sốt cao; sốt 39; sốt 40; sốt trên 39,manual
+"High fever, body aches, fatigue, cough, sore throat, congestion","High fever, body aches, fatigue, cough, sore throat, congestion",,unmapped
+"High fever, severe headache, joint and muscle pain, rash, nausea or vomiting, bleeding tendencies","High fever, severe headache, joint and muscle pain, rash, nausea or vomiting, bleeding tendencies",,unmapped
+"High levels of cholesterol in the blood, fatty deposits (xanthomas) on the skin or tendons, chest pain or angina, heart attacks, strokes","High levels of cholesterol in the blood, fatty deposits (xanthomas) on the skin or tendons, chest pain or angina, heart attacks, strokes",,unmapped
+hip joint pain,Đau khớp háng,đau khớp háng; đau hông; nhức hông,manual+auto
+hip pain,Đau hông,đau hông; nhức hông,auto
+hip stiffness or tightness,Cứng hông,cứng hông; căng hông,auto
+history of alcohol consumption,Uống rượu,uống rượu; nghiện rượu; tiền sử rượu,manual
+hoarse voice,Khàn tiếng,khàn tiếng,auto
+hostile behavior,Hostile behavior,,unmapped
+hot flashes,Bốc hỏa,bốc hỏa,auto
+hurts to breath,Đau khi thở,đau khi thở; thở đau,auto
+"Hypocalcemia (low calcium levels), tetany (muscle spasms), short stature, rounded face","Hypocalcemia (low calcium levels), tetany (muscle spasms), short stature, rounded face",,unmapped
+hysterical behavior,Hysterical behavior,,unmapped
+impotence,Impotence,,unmapped
+increased appetite,Tăng cảm giác thèm ăn,tăng cảm giác thèm ăn; ăn nhiều,manual
+"Increased appetite, relaxation, altered perception of time, impaired memory and concentration, bloodshot eyes, anxiety or paranoia (in some individuals), withdrawal symptoms (such as irritability, insomnia) when attempting to stop or reduce cannabis use, continued use despite negative consequences (such as relationship problems, job difficulties)","Increased appetite, relaxation, altered perception of time, impaired memory and concentration, bloodshot eyes, anxiety or paranoia (in some individuals), withdrawal symptoms (such as irritability, insomnia) when attempting to stop or reduce cannabis use, continued use despite negative consequences (such as relationship problems, job difficulties)",,unmapped
+"Increased blood sugar levels, increased ketone production, excessive thirst, frequent urination, fatigue, confusion, fruity breath odor","Increased blood sugar levels, increased ketone production, excessive thirst, frequent urination, fatigue, confusion, fruity breath odor",,unmapped
+"Increased energy and alertness, euphoria, decreased appetite, increased heart rate and blood pressure, insomnia, restlessness, irritability, paranoia, psychosis (in severe cases)","Increased energy and alertness, euphoria, decreased appetite, increased heart rate and blood pressure, insomnia, restlessness, irritability, paranoia, psychosis (in severe cases)",,unmapped
+increased heart rate,Tim đập nhanh,tim đập nhanh; mạch nhanh,auto
+"Increased red blood cell count, fatigue, headache, dizziness, itching, enlarged spleen","Increased red blood cell count, fatigue, headache, dizziness, itching, enlarged spleen",,unmapped
+"increased thirst, frequent urination, fatigue","Increased thirst, frequent urination, fatigue",,unmapped
+indigestion,Khó tiêu,khó tiêu; đầy bụng,manual
+infant feeding problem,Trẻ bú kém,trẻ bú kém; vấn đề ăn bú ở trẻ,auto
+infertility,Vô sinh,vô sinh; hiếm muộn,auto
+"Inflammation of blood vessels leading to various symptoms depending on the affected organs, including rash, fever, fatigue, muscle and joint pain, shortness of breath, weight loss","Inflammation of blood vessels leading to various symptoms depending on the affected organs, including rash, fever, fatigue, muscle and joint pain, shortness of breath, weight loss",,unmapped
+"Inflammation of the glans penis (tip of the penis), redness, swelling, pain","Inflammation of the glans penis (tip of the penis), redness, swelling, pain",,unmapped
+inflammatory nails,Viêm móng,viêm móng,manual
+insomnia,Mất ngủ,mất ngủ; khó ngủ; ngủ không được; ngủ kém; trằn trọc; thức giấc nhiều,manual
+"Intense itching, especially at night, small blisters or bumps","Intense itching, especially at night, small blisters or bumps",,unmapped
+"Intense joint pain, swelling, redness","Intense joint pain, swelling, redness",,unmapped
+intermenstrual bleeding,Ra máu giữa kỳ kinh,ra máu giữa kỳ kinh; chảy máu giữa chu kỳ,auto
+involuntary urination,Tiểu không tự chủ,tiểu không tự chủ; són tiểu,auto
+irregular appearing nails,Irregular appearing nails,,unmapped
+irregular appearing scalp,Irregular appearing scalp,,unmapped
+irregular heartbeat,Nhịp tim không đều,nhịp tim không đều; loạn nhịp,auto
+"Irregular or rapid heartbeat, palpitations, shortness of breath, chest pain or discomfort, dizziness or lightheadedness, fatigue","Irregular or rapid heartbeat, palpitations, shortness of breath, chest pain or discomfort, dizziness or lightheadedness, fatigue",,unmapped
+irregular sugar level,Đường huyết bất thường,đường huyết bất thường; đường máu bất thường,manual
+irritability,Dễ cáu,dễ cáu; cáu gắt,manual
+irritable infant,Irritable infant,,unmapped
+irritation in anus,Ngứa hậu môn,ngứa hậu môn; kích ứng hậu môn,manual
+itchiness of eye,Ngứa mắt,ngứa mắt,auto
+itching,Ngứa,ngứa; ngứa da,manual
+"Itching and irritation in the vagina and vulva, redness and swelling of the vulva, white, thick, clumpy vaginal discharge (resembling cottage cheese), burning sensation during urination, pain during sexual intercourse, rash or soreness in the affected area","Itching and irritation in the vagina and vulva, redness and swelling of the vulva, white, thick, clumpy vaginal discharge (resembling cottage cheese), burning sensation during urination, pain during sexual intercourse, rash or soreness in the affected area",,unmapped
+itching of skin,Ngứa da,ngứa da,auto
+itching of the anus,Ngứa hậu môn,ngứa hậu môn,auto
+itchy ear(s),Ngứa tai,ngứa tai,auto
+itchy scalp,Ngứa da đầu,ngứa da đầu,auto
+"Itchy, red rash caused by contact with irritants or allergens","Itchy, red rash caused by contact with irritants or allergens",,unmapped
+"Itchy, red, inflamed skin, rash","Itchy, red, inflamed skin, rash",,unmapped
+jaundice,Vàng da,vàng da; vàng mắt,auto
+jaw swelling,Sưng hàm,sưng hàm; sưng vùng hàm; sưng mặt do răng; phù hàm,manual+auto
+joint pain,Đau khớp,đau khớp; nhức khớp,manual
+"Joint pain, fatigue, skin rashes","Joint pain, fatigue, skin rashes",,unmapped
+"Joint pain, fever, rash, heart inflammation","Joint pain, fever, rash, heart inflammation",,unmapped
+"Joint pain, stiffness, swelling","Joint pain, stiffness, swelling",,unmapped
+"Joint pain, stiffness, swelling, fatigue, loss of appetite","Joint pain, stiffness, swelling, fatigue, loss of appetite",,unmapped
+"Joint pain, swelling, stiffness, limited range of motion, fever, rash","Joint pain, swelling, stiffness, limited range of motion, fever, rash",,unmapped
+"Joint pain, swelling, tenderness, limited range of motion","Joint pain, swelling, tenderness, limited range of motion",,unmapped
+"Joint swelling, pain, warmth, limited range of motion","Joint swelling, pain, warmth, limited range of motion",,unmapped
+kidney mass,Kidney mass,,unmapped
+knee pain,Đau gối,đau gối; đau khớp gối; nhức gối,manual+auto
+knee stiffness or tightness,Cứng gối,cứng gối; căng gối,auto
+knee swelling,Sưng gối,sưng gối; phù gối,auto
+lack of concentration,Kém tập trung,kém tập trung; giảm tập trung,manual
+lacrimation,Chảy nước mắt,chảy nước mắt,auto
+leg pain,Đau chân,đau chân; nhức chân,auto
+leg swelling,Sưng chân,sưng chân; phù chân,auto
+leg weakness,Yếu chân,yếu chân,auto
+lethargy,Lừ đừ,lừ đừ; uể oải; li bì nhẹ,manual
+lip swelling,Sưng môi,sưng môi,auto
+"Localized muscle pain, trigger points","Localized muscle pain, trigger points",,unmapped
+long menstrual periods,Long menstrual periods,,unmapped
+loss of appetite,Chán ăn,chán ăn; ăn kém,manual
+loss of balance,Mất thăng bằng,mất thăng bằng,manual
+loss of sensation,Mất cảm giác,mất cảm giác; giảm cảm giác,auto
+loss of smell,Mất khứu giác,mất khứu giác; mất mùi,manual
+low back pain,Đau lưng,đau lưng; nhức lưng,auto
+"Low blood sugar (hypoglycemia) symptoms (e.g., confusion, sweating)","Low blood sugar (hypoglycemia) symptoms (e.g., confusion, sweating)",,unmapped
+low self-esteem,Tự ti,tự ti; mặc cảm,auto
+low urine output,Tiểu ít,tiểu ít; lượng nước tiểu ít,manual+auto
+lower abdominal pain,Đau bụng,đau bụng; nhức bụng,auto
+Lower abdominal pain and discomfort occurring around the time of ovulation,Lower abdominal pain and discomfort occurring around the time of ovulation,,unmapped
+"Lower back pain, leg pain, numbness or tingling","Lower back pain, leg pain, numbness or tingling",,unmapped
+lower body pain,Lower body pain,,unmapped
+"Lump or swelling in the testicles, pain or discomfort, changes in testicular size or shape","Lump or swelling in the testicles, pain or discomfort, changes in testicular size or shape",,unmapped
+"Lump, swelling, Difficulty, pain when swallowing and speaking, Facial weakness, Facial paralysis","Lump, swelling, difficulty, pain when swallowing and speaking, facial weakness, facial paralysis",,unmapped
+"Lump, swelling, Facial changes","Lump, swelling, facial changes",,unmapped
+"Lump, swelling, Facial numbness, tingling","Lump, swelling, facial numbness, tingling",,unmapped
+malaise,Khó chịu,khó chịu; mệt lả,manual
+mass on eyelid,Khối ở mí mắt,khối ở mí mắt; u cục ở mí mắt,auto
+mass or swelling around the anus,Mass or swelling around the anus,,unmapped
+melena,Phân đen,phân đen; đi ngoài phân đen; phân hắc ín,manual+auto
+mild fever,Sốt nhẹ,sốt nhẹ; sốt 37; sốt 38,manual
+"Mild to moderate head pain, tightness or pressure sensation on both sides of head","Mild to moderate head pain, tightness or pressure sensation on both sides of head",,unmapped
+mood swings,Thay đổi tâm trạng,thay đổi tâm trạng; tâm trạng thất thường,manual
+"Mood swings, bloating, breast tenderness, irritability","Mood swings, bloating, breast tenderness, irritability",,unmapped
+"Mood swings, manic episodes, depressive episodes","Mood swings, manic episodes, depressive episodes",,unmapped
+mouth pain,Đau miệng,đau miệng; nhức miệng,auto
+mouth ulcer,Loét miệng,loét miệng; lở miệng,auto
+mucoid sputum,Đờm nhầy,đờm nhầy; đàm nhầy,manual
+muscle pain,Đau cơ,đau cơ; nhức mỏi cơ,manual
+"Muscle pain and stiffness, joint pain, fatigue","Muscle pain and stiffness, joint pain, fatigue",,unmapped
+"Muscle twitches or cramps, fatigue, weakness, loss of appetite, nausea, vomiting, irritability, mental confusion, irregular heartbeat, tingling or numbness, personality changes, seizures","Muscle twitches or cramps, fatigue, weakness, loss of appetite, nausea, vomiting, irritability, mental confusion, irregular heartbeat, tingling or numbness, personality changes, seizures",,unmapped
+muscle wasting,Teo cơ,teo cơ; mất cơ,manual
+"Muscle wasting, fatigue, weakness, delayed wound healing, swelling of the limbs, hair loss, impaired immunity","Muscle wasting, fatigue, weakness, delayed wound healing, swelling of the limbs, hair loss, impaired immunity",,unmapped
+"Muscle weakness, fatigue, difficulty speaking","Muscle weakness, fatigue, difficulty speaking",,unmapped
+"Muscle weakness, loss of sensation, chronic pain","Muscle weakness, loss of sensation, chronic pain",,unmapped
+"Muscle weakness, pain, inflammation","Muscle weakness, pain, inflammation",,unmapped
+nasal congestion,Nasal congestion,,unmapped
+"Nasal congestion, runny nose, sneezing, facial pain or pressure, loss of smell","Nasal congestion, runny nose, sneezing, facial pain or pressure, loss of smell",,unmapped
+nausea,Buồn nôn,buồn nôn; nôn nao,manual
+"Nausea, vomiting, diarrhea, abdominal pain or cramps, fever","Nausea, vomiting, diarrhea, abdominal pain or cramps, fever",,unmapped
+neck mass,Khối ở cổ,khối ở cổ; u cục ở cổ; khối ở gáy; u cục ở gáy,auto
+"Neck or back pain, stiffness, limited range of motion, numbness or weakness in the extremities","Neck or back pain, stiffness, limited range of motion, numbness or weakness in the extremities",,unmapped
+neck pain,Đau cổ,đau cổ; đau gáy; nhức cổ; nhức gáy,manual+auto
+"Neck pain, stiffness, and abnormal head positioning","Neck pain, stiffness, and abnormal head positioning",,unmapped
+neck swelling,Sưng cổ,sưng cổ; phù cổ; sưng gáy; phù gáy,auto
+"Neurological symptoms that cannot be explained by a medical condition or injury, such as paralysis, blindness, seizures, or difficulty speaking","Neurological symptoms that cannot be explained by a medical condition or injury, such as paralysis, blindness, seizures, or difficulty speaking",,unmapped
+"Night blindness, dry eyes, dry or rough skin, poor wound healing, weakened immune system","Night blindness, dry eyes, dry or rough skin, poor wound healing, weakened immune system",,unmapped
+nodal skin eruptions,Nổi nốt trên da,nổi nốt trên da; sẩn da; nốt da,manual
+nosebleed,Nosebleed,,unmapped
+"Numbness or tingling in fingers or around the mouth, muscle cramps","Numbness or tingling in fingers or around the mouth, muscle cramps",,unmapped
+obesity,Béo phì,béo phì; thừa cân,manual
+"Optic neuritis (vision loss, pain with eye movement), transverse myelitis (weakness, numbness, or paralysis of the limbs, loss of bladder or bowel control)","Optic neuritis (vision loss, pain with eye movement), transverse myelitis (weakness, numbness, or paralysis of the limbs, loss of bladder or bowel control)",,unmapped
+pain behind the eyes,Đau sau mắt,đau sau mắt; đau hốc mắt,manual
+pain during bowel movements,Đau khi đi ngoài,đau khi đi ngoài; đau khi đại tiện,manual
+"Pain during bowel movements, rectal bleeding","Pain during bowel movements, rectal bleeding",,unmapped
+pain during intercourse,Pain during intercourse,,unmapped
+pain during pregnancy,Pain during pregnancy,,unmapped
+pain in anal region,Đau hậu môn,đau hậu môn,manual
+pain in eye,Đau mắt,đau mắt; nhức mắt,auto
+pain in gums,Đau nướu,đau nướu; đau lợi; nướu đau; lợi đau; nhức nướu; nhức lợi,manual+auto
+pain in testicles,Pain in testicles,,unmapped
+pain of the anus,Pain of the anus,,unmapped
+"Pain or discomfort in the tailbone area, swelling, redness, drainage of pus or blood, abscess formation","Pain or discomfort in the tailbone area, swelling, redness, drainage of pus or blood, abscess formation",,unmapped
+"Pain or tenderness on the outer side of the elbow, weak grip strength, difficulty with forearm movements","Pain or tenderness on the outer side of the elbow, weak grip strength, difficulty with forearm movements",,unmapped
+"Pain, swelling, deformity, limited mobility or difficulty moving the arm, bruising","Pain, swelling, deformity, limited mobility or difficulty moving the arm, bruising",,unmapped
+"Pain, swelling, redness, discharge from the nose","Pain, swelling, redness, discharge from the nose",,unmapped
+Painful blisters on the skin and mucous membranes,Painful blisters on the skin and mucous membranes,,unmapped
+"Painful lump or swelling on the eyelid, redness, tenderness","Painful lump or swelling on the eyelid, redness, tenderness",,unmapped
+painful menstruation,Painful menstruation,,unmapped
+painful sinuses,Painful sinuses,,unmapped
+"Painful ulcers or sores on the genital area, swollen lymph nodes in the groin","Painful ulcers or sores on the genital area, swollen lymph nodes in the groin",,unmapped
+painful urination,Tiểu đau,tiểu đau; đau khi đi tiểu; đau khi tiểu,manual
+"Painful urination, abnormal discharge from the genitals, pelvic pain","Painful urination, abnormal discharge from the genitals, pelvic pain",,unmapped
+"Painful urination, frequent urination, pelvic pain, cloudy urine","Painful urination, frequent urination, pelvic pain, cloudy urine",,unmapped
+painful walking,Đau khi đi bộ,đau khi đi bộ; đi lại đau,manual
+"Painful, red lump or swelling on the eyelid, usually on the upper eyelid, sensitivity to light, blurred vision (if the chalazion affects the line of sight), mild discomfort, tenderness, localized inflammation and swelling","Painful, red lump or swelling on the eyelid, usually on the upper eyelid, sensitivity to light, blurred vision (if the chalazion affects the line of sight), mild discomfort, tenderness, localized inflammation and swelling",,unmapped
+palpitations,Đánh trống ngực,đánh trống ngực; hồi hộp,manual
+"Palpitations, Sweating, Trembling, Shortness of breath, Fear of losing control, Dizziness","Palpitations, sweating, trembling, shortness of breath, fear of losing control, dizziness",,unmapped
+paresthesia,Paresthesia,,unmapped
+patches in throat,Mảng trong họng,mảng trong họng; đốm trong họng,manual
+pelvic pain,Đau vùng chậu,đau vùng chậu; nhức vùng chậu,auto
+"Pelvic pain (during menstruation, intercourse, or bowel movements), heavy menstrual bleeding, infertility","Pelvic pain (during menstruation, intercourse, or bowel movements), heavy menstrual bleeding, infertility",,unmapped
+peripheral edema,Peripheral edema,,unmapped
+"Persistent cough with thick mucus, recurrent lung infections, poor growth or weight gain, salty-tasting skin","Persistent cough with thick mucus, recurrent lung infections, poor growth or weight gain, salty-tasting skin",,unmapped
+"Persistent cough with yellow or green mucus, chest congestion, fatigue","Persistent cough with yellow or green mucus, chest congestion, fatigue",,unmapped
+"Persistent depressive symptoms (low mood, lack of interest, changes in sleep and appetite), lasting for at least two years","Persistent depressive symptoms (low mood, lack of interest, changes in sleep and appetite), lasting for at least two years",,unmapped
+"Persistent feelings of sadness, emptiness, or hopelessness, frequent crying, irritability, loss of interest or pleasure in activities, difficulty bonding with the baby, changes in appetite or sleep patterns, overwhelming fatigue, feelings of guilt or worthlessness, trouble concentrating or making decisions, thoughts of self-harm or harming the baby","Persistent feelings of sadness, emptiness, or hopelessness, frequent crying, irritability, loss of interest or pleasure in activities, difficulty bonding with the baby, changes in appetite or sleep patterns, overwhelming fatigue, feelings of guilt or worthlessness, trouble concentrating or making decisions, thoughts of self-harm or harming the baby",,unmapped
+"Persistent knee pain, stiffness, swelling, limited range of motion","Persistent knee pain, stiffness, swelling, limited range of motion",,unmapped
+"Persistent pain or discomfort in the vulva, burning, stinging, rawness, itching","Persistent pain or discomfort in the vulva, burning, stinging, rawness, itching",,unmapped
+"Persistent sore throat, difficulty swallowing, voice changes, ear pain, neck mass, weight loss","Persistent sore throat, difficulty swallowing, voice changes, ear pain, neck mass, weight loss",,unmapped
+phlegm,Đờm,đờm; có đờm; ho đờm,manual
+plugged feeling in ear,Plugged feeling in ear,,unmapped
+polyuria,Tiểu nhiều,tiểu nhiều; đái nhiều,manual
+"Primary stage: painless sores (chancre) at the site of infection, secondary stage: skin rash, fever, swollen lymph nodes, sore throat, latent stage: no symptoms, tertiary stage: severe complications affecting the heart, brain, and other organs","Primary stage: painless sores (chancre) at the site of infection, secondary stage: skin rash, fever, swollen lymph nodes, sore throat, latent stage: no symptoms, tertiary stage: severe complications affecting the heart, brain, and other organs",,unmapped
+problems during pregnancy,Problems during pregnancy,,unmapped
+problems with movement,Problems with movement,,unmapped
+prominent veins on calf,Tĩnh mạch nổi ở bắp chân,tĩnh mạch nổi ở bắp chân; gân xanh bắp chân,manual
+puffy face and eyes,Mặt phù,mặt phù; mắt phù; sưng mặt,manual
+pulling at ears,Pulling at ears,,unmapped
+pus draining from ear,Pus draining from ear,,unmapped
+pus filled pimples,Mụn mủ,mụn mủ,manual
+"Raised, itchy welts on the skin","Raised, itchy welts on the skin",,unmapped
+"Rash, itching, redness, peeling skin","Rash, itching, redness, peeling skin",,unmapped
+"Rash, itching, swelling, difficulty breathing, gastrointestinal symptoms","Rash, itching, swelling, difficulty breathing, gastrointestinal symptoms",,unmapped
+"Rash, itching, swelling, fever, respiratory symptoms","Rash, itching, swelling, fever, respiratory symptoms",,unmapped
+receiving blood transfusion,Truyền máu,truyền máu,manual
+receiving unsterile injections,Tiêm không vô trùng,tiêm không vô trùng; tiêm bẩn,manual
+recent pregnancy,Recent pregnancy,,unmapped
+rectal bleeding,Rectal bleeding,,unmapped
+"Recurrent episodes of wheezing, shortness of breath, chest tightness, coughing, especially at night or in response to triggers such as allergens or exercise","Recurrent episodes of wheezing, shortness of breath, chest tightness, coughing, especially at night or in response to triggers such as allergens or exercise",,unmapped
+"Recurrent, disabling migraines","Recurrent, disabling migraines",,unmapped
+red sore around nose,Loét đỏ quanh mũi,loét đỏ quanh mũi; đỏ đau quanh mũi,manual
+red spots over body,Đốm đỏ toàn thân,đốm đỏ toàn thân; chấm đỏ trên da,manual
+"Red, itchy, and oily patches of skin, dandruff, flaky scalp","Red, itchy, and oily patches of skin, dandruff, flaky scalp",,unmapped
+"Red, raw, or inflamed skin in skin folds (such as armpits or groin), itching or burning sensation","Red, raw, or inflamed skin in skin folds (such as armpits or groin), itching or burning sensation",,unmapped
+"Red, scaly patches on the skin, itching","Red, scaly patches on the skin, itching",,unmapped
+"Red, swollen, itchy bumps","Red, swollen, itchy bumps",,unmapped
+redness in ear,Đỏ tai,đỏ tai,auto
+redness of eyes,Đỏ mắt,đỏ mắt; mắt đỏ,manual
+"Redness, itching, rash, blistering","Redness, itching, rash, blistering",,unmapped
+"Redness, itching, watery discharge, swollen eyelids","Redness, itching, watery discharge, swollen eyelids",,unmapped
+"Redness, Pain, tenderness, Swelling, Skin changes, Lymph node enlargement","Redness, pain, tenderness, swelling, skin changes, lymph node enlargement",,unmapped
+"Redness, swelling, discharge from the wound","Redness, swelling, discharge from the wound",,unmapped
+"Redness, swelling, discharge, foul odor around the umbilical area","Redness, swelling, discharge, foul odor around the umbilical area",,unmapped
+"Redness, swelling, warmth, pain or tenderness at the wound site, pus or drainage from the wound, fever, malaise","Redness, swelling, warmth, pain or tenderness at the wound site, pus or drainage from the wound, fever, malaise",,unmapped
+"Redness, warmth, swelling, and tenderness along a vein, pain or discomfort, skin discoloration, visible veins, fever","Redness, warmth, swelling, and tenderness along a vein, pain or discomfort, skin discoloration, visible veins, fever",,unmapped
+regurgitation,Regurgitation,,unmapped
+regurgitation.1,Regurgitation.1,,unmapped
+"Respiratory distress, chest pain, confusion, petechial rash (small red or purple spots), neurological symptoms","Respiratory distress, chest pain, confusion, petechial rash (small red or purple spots), neurological symptoms",,unmapped
+restlessness,Bứt rứt,bứt rứt; không yên,manual
+retention of urine,Bí tiểu,bí tiểu; không tiểu được,manual
+rib pain,Rib pain,,unmapped
+ringing in ear,Ringing in ear,,unmapped
+"Rough, scaly patches on the skin, usually in sun-exposed areas","Rough, scaly patches on the skin, usually in sun-exposed areas",,unmapped
+runny nose,Sổ mũi,sổ mũi; chảy nước mũi,manual
+rusty sputum,Đờm màu gỉ sắt,đờm màu gỉ sắt; đàm gỉ sắt,manual
+scurring,Sẹo,sẹo; sẹo mụn,manual
+"Sedation, relaxation, reduced anxiety, drowsiness, poor coordination, memory impairment, withdrawal symptoms (such as rebound anxiety, insomnia, tremors) when attempting to stop or reduce benzodiazepine use, continued use despite negative consequences (such as relationship problems, health risks)","Sedation, relaxation, reduced anxiety, drowsiness, poor coordination, memory impairment, withdrawal symptoms (such as rebound anxiety, insomnia, tremors) when attempting to stop or reduce benzodiazepine use, continued use despite negative consequences (such as relationship problems, health risks)",,unmapped
+"Sedation, relaxation, reduced anxiety, drowsiness, poor coordination, memory impairment, withdrawal symptoms (such as rebound anxiety, insomnia, tremors) when attempting to stop or reduce use, continued use despite negative consequences (such as relationship problems, health risks)","Sedation, relaxation, reduced anxiety, drowsiness, poor coordination, memory impairment, withdrawal symptoms (such as rebound anxiety, insomnia, tremors) when attempting to stop or reduce use, continued use despite negative consequences (such as relationship problems, health risks)",,unmapped
+seizures,Seizures,,unmapped
+"Severe abdominal or back pain, blood in urine, frequent urination, pain during urination","Severe abdominal or back pain, blood in urine, frequent urination, pain during urination",,unmapped
+"Severe abdominal pain, bloody stools, diarrhea, nausea, vomiting, fever, rapid heart rate, low blood pressure","Severe abdominal pain, bloody stools, diarrhea, nausea, vomiting, fever, rapid heart rate, low blood pressure",,unmapped
+"Severe abdominal pain, tenderness, bloating, fever, nausea, vomiting, loss of appetite, increased heart rate","Severe abdominal pain, tenderness, bloating, fever, nausea, vomiting, loss of appetite, increased heart rate",,unmapped
+"Severe and chronic pain, often in the limbs, with associated swelling, changes in skin color or temperature, abnormal sweating, limited range of motion","Severe and chronic pain, often in the limbs, with associated swelling, changes in skin color or temperature, abnormal sweating, limited range of motion",,unmapped
+"Severe and persistent pain, changes in skin color or temperature, swelling, stiffness","Severe and persistent pain, changes in skin color or temperature, swelling, stiffness",,unmapped
+"Severe eye pain, headache, blurred vision, halos around lights, nausea and vomiting","Severe eye pain, headache, blurred vision, halos around lights, nausea and vomiting",,unmapped
+Severe nausea and vomiting during pregnancy,Severe nausea and vomiting during pregnancy,,unmapped
+"Severe neck pain, swelling, tenderness, difficulty moving or turning the head, numbness or weakness in the arms or legs","Severe neck pain, swelling, tenderness, difficulty moving or turning the head, numbness or weakness in the arms or legs",,unmapped
+"Severe pain in the side or back, blood in the urine, frequent urination","Severe pain in the side or back, blood in the urine, frequent urination",,unmapped
+"Severe pain, swelling, bruising, difficulty straightening or bending the knee, deformity","Severe pain, swelling, bruising, difficulty straightening or bending the knee, deformity",,unmapped
+"Severe pain, swelling, deformity, bruising, difficulty moving or using the affected area","Severe pain, swelling, deformity, bruising, difficulty moving or using the affected area",,unmapped
+"Severe pain, visible deformity, swelling, inability to move the elbow, numbness or tingling in the hand/arm","Severe pain, visible deformity, swelling, inability to move the elbow, numbness or tingling in the hand/arm",,unmapped
+"Severe sore throat, difficulty swallowing, fever, swollen tonsils, voice changes, neck pain or stiffness","Severe sore throat, difficulty swallowing, fever, swollen tonsils, voice changes, neck pain or stiffness",,unmapped
+"Severe swelling of the floor of the mouth, fever, difficulty swallowing, drooling","Severe swelling of the floor of the mouth, fever, difficulty swallowing, drooling",,unmapped
+"Severe upper abdominal pain, nausea, vomiting, fever, rapid pulse, swollen and tender abdomen, jaundice","Severe upper abdominal pain, nausea, vomiting, fever, rapid pulse, swollen and tender abdomen, jaundice",,unmapped
+"Shaking, dizziness, confusion, sweating","Shaking, dizziness, confusion, sweating",,unmapped
+sharp abdominal pain,Đau bụng,đau bụng; nhức bụng,auto
+sharp chest pain,Đau ngực,đau ngực; nhức ngực,auto
+"Sharp pain, tingling, or numbness that radiates from the lower back through the hips and down the leg","Sharp pain, tingling, or numbness that radiates from the lower back through the hips and down the leg",,unmapped
+"Sharp, shooting pain along the affected nerve","Sharp, shooting pain along the affected nerve",,unmapped
+shivering,Run rẩy,run rẩy; rét run; run lạnh,manual
+"Shooting or burning pain, tingling or numbness","Shooting or burning pain, tingling or numbness",,unmapped
+shortness of breath,Khó thở,khó thở; hụt hơi,auto
+"Shortness of breath, cough, wheezing, fatigue, chest discomfort or tightness","Shortness of breath, cough, wheezing, fatigue, chest discomfort or tightness",,unmapped
+"Shortness of breath, dry cough, fatigue","Shortness of breath, dry cough, fatigue",,unmapped
+"Shortness of breath, especially during physical activity or exertion, chest pain or discomfort, dizziness or lightheadedness, fainting or near-fainting episodes, heart palpitations (rapid or irregular heartbeat), fatigue, swelling in the ankles, feet, or legs","Shortness of breath, especially during physical activity or exertion, chest pain or discomfort, dizziness or lightheadedness, fainting or near-fainting episodes, heart palpitations (rapid or irregular heartbeat), fatigue, swelling in the ankles, feet, or legs",,unmapped
+"Shortness of breath, wheezing, chronic cough, chest tightness, fatigue, weight loss","Shortness of breath, wheezing, chronic cough, chest tightness, fatigue, weight loss",,unmapped
+shoulder pain,Đau vai,đau vai; nhức vai,auto
+"Shoulder pain, swelling, limited range of motion","Shoulder pain, swelling, limited range of motion",,unmapped
+shoulder stiffness or tightness,Cứng vai,cứng vai; căng vai,auto
+side pain,Side pain,,unmapped
+silver like dusting,Vảy bạc,vảy bạc; vảy trắng bạc,manual
+sinus congestion,Sinus congestion,,unmapped
+sinus pressure,Đau xoang,đau xoang; tức xoang,manual
+"skin dryness, peeling, scaliness, or roughness","Skin dryness, peeling, scaliness, or roughness",,unmapped
+skin growth,Skin growth,,unmapped
+skin irritation,Skin irritation,,unmapped
+skin lesion,Skin lesion,,unmapped
+skin moles,Skin moles,,unmapped
+skin peeling,Bong tróc da,bong tróc da; da bong tróc; tróc da; da tróc,manual
+skin rash,Phát ban,phát ban; nổi ban; mẩn đỏ; nổi mẩn; ban đỏ,manual
+skin swelling,Skin swelling,,unmapped
+"Skipped or extra heartbeats, palpitations, lightheadedness","Skipped or extra heartbeats, palpitations, lightheadedness",,unmapped
+sleepiness,Sleepiness,,unmapped
+slurred speech,Nói khó,nói khó; nói líu; nói đớ,manual
+"Slurred speech, impaired coordination, confusion","Slurred speech, impaired coordination, confusion",,unmapped
+small dents in nails,Lõm móng,lõm móng; rỗ móng,manual
+"Small, painful blisters on the lips or around the mouth","Small, painful blisters on the lips or around the mouth",,unmapped
+sneezing,Sneezing,,unmapped
+sore throat,Đau họng,đau họng; rát họng; viêm họng,manual
+"Sore throat, difficulty swallowing, swollen lymph nodes","Sore throat, difficulty swallowing, swollen lymph nodes",,unmapped
+"Sore throat, fever, painful sores or blisters in the mouth and throat, difficulty swallowing, loss of appetite","Sore throat, fever, painful sores or blisters in the mouth and throat, difficulty swallowing, loss of appetite",,unmapped
+"Sore throat, fever, rash (red, sandpaper-like), swollen glands","Sore throat, fever, rash (red, sandpaper-like), swollen glands",,unmapped
+spinning movements,Chóng mặt xoay,chóng mặt xoay; cảm giác quay cuồng,manual
+spots or clouds in vision,Spots or clouds in vision,,unmapped
+spotting or bleeding during pregnancy,Spotting or bleeding during pregnancy,,unmapped
+spotting urination,Spotting urination,,unmapped
+stiff neck,Cứng cổ,cứng cổ; cứng gáy; căng cổ; căng gáy,manual+auto
+stomach bleeding,Xuất huyết dạ dày,xuất huyết dạ dày; chảy máu dạ dày,manual+auto
+stomach bloating,Stomach bloating,,unmapped
+stomach pain,Đau dạ dày,đau dạ dày; đau bao tử; đau thượng vị; nhức dạ dày,manual+auto
+"Sudden and severe abdominal or pelvic pain on one side, sharp or stabbing pain, nausea, vomiting, fever, rapid heartbeat, abdominal tenderness, bloating, swelling, pain during intercourse, abnormal bleeding or spotting","Sudden and severe abdominal or pelvic pain on one side, sharp or stabbing pain, nausea, vomiting, fever, rapid heartbeat, abdominal tenderness, bloating, swelling, pain during intercourse, abnormal bleeding or spotting",,unmapped
+"Sudden numbness or weakness of the face, arm, or leg (typically on one side of the body), confusion, trouble speaking or understanding, severe headache","Sudden numbness or weakness of the face, arm, or leg (typically on one side of the body), confusion, trouble speaking or understanding, severe headache",,unmapped
+Sudden onset of neurological symptoms that resolve within 24 hours,Sudden onset of neurological symptoms that resolve within 24 hours,,unmapped
+"Sudden, involuntary muscle contractions, muscle pain, stiffness, limited range of motion","Sudden, involuntary muscle contractions, muscle pain, stiffness, limited range of motion",,unmapped
+"Sunburn-like rash, redness, itching","Sunburn-like rash, redness, itching",,unmapped
+sunken eyes,Mắt trũng,mắt trũng,manual
+suprapubic pain,Suprapubic pain,,unmapped
+sweating,Đổ mồ hôi,đổ mồ hôi; vã mồ hôi,manual
+swelled lymph nodes,Sưng hạch,sưng hạch; nổi hạch,manual
+swelling joints,Sưng khớp,sưng khớp,manual
+swelling of scrotum,Swelling of scrotum,,unmapped
+swelling of stomach,Bụng sưng,bụng sưng; bụng chướng; sưng dạ dày; phù dạ dày,manual+auto
+"Swelling, pain, dry mouth, bad taste","Swelling, pain, dry mouth, bad taste",,unmapped
+"Swelling, pain, redness, fever, pus formation","Swelling, pain, redness, fever, pus formation",,unmapped
+swollen blood vessels,Mạch máu sưng,mạch máu sưng; tĩnh mạch sưng,manual
+"Swollen blood vessels in the esophagus, vomiting blood, black, tarry stools","Swollen blood vessels in the esophagus, vomiting blood, black, tarry stools",,unmapped
+swollen extremeties,Sưng tay chân,sưng tay chân; phù chi,manual
+swollen eye,Sưng mắt,sưng mắt; phù mắt,auto
+swollen legs,Sưng chân,sưng chân; phù chân,manual
+"Swollen lymph nodes, fever, fatigue, headache, rash","Swollen lymph nodes, fever, fatigue, headache, rash",,unmapped
+"Swollen lymph nodes, unexplained weight loss, fatigue","Swollen lymph nodes, unexplained weight loss, fatigue",,unmapped
+swollen or red tonsils,Swollen or red tonsils,,unmapped
+"Swollen salivary glands (usually parotid), fever, headache, fatigue","Swollen salivary glands (usually parotid), fever, headache, fatigue",,unmapped
+"Swollen, itchy, or painful veins in the rectal area","Swollen, itchy, or painful veins in the rectal area",,unmapped
+"symptoms can include vision changes, eye movement abnormalities, facial weakness or paralysis, difficulty swallowing or speaking, loss of sensation in the face or other areas","Symptoms can include vision changes, eye movement abnormalities, facial weakness or paralysis, difficulty swallowing or speaking, loss of sensation in the face or other areas",,unmapped
+symptoms of bladder,Symptoms of bladder,,unmapped
+symptoms of eye,Symptoms of eye,,unmapped
+symptoms of prostate,Symptoms of prostate,,unmapped
+symptoms of the face,Symptoms of the face,,unmapped
+symptoms of the kidneys,Symptoms of the kidneys,,unmapped
+symptoms of the scrotum and testes,Symptoms of the scrotum and testes,,unmapped
+temper problems,Temper problems,,unmapped
+"Thickening of the skin, Raynaud's phenomenon","Thickening of the skin, raynaud's phenomenon",,unmapped
+throat irritation,Rát họng,rát họng; ngứa họng,manual
+throat swelling,Sưng họng,sưng họng; phù họng,auto
+toothache,Đau răng,đau răng; nhức răng; răng đau,manual
+toxic look (typhos),Vẻ nhiễm độc,vẻ nhiễm độc; nhiễm độc,manual
+ulcers on tongue,Loét lưỡi,loét lưỡi; lở lưỡi,manual
+"Uncomfortable sensation in the legs, usually in the evening or at night, urge to move legs for relief","Uncomfortable sensation in the legs, usually in the evening or at night, urge to move legs for relief",,unmapped
+unpredictable menstruation,Unpredictable menstruation,,unmapped
+unsteadiness,Đi không vững,đi không vững; loạng choạng,manual
+unusual color or odor to urine,Unusual color or odor to urine,,unmapped
+upper abdominal pain,Đau bụng,đau bụng; nhức bụng,auto
+uterine contractions,Uterine contractions,,unmapped
+vaginal discharge,Vaginal discharge,,unmapped
+vaginal itching,Vaginal itching,,unmapped
+vaginal pain,Vaginal pain,,unmapped
+vaginal redness,Vaginal redness,,unmapped
+"Vertigo, dizziness, nausea, hearing loss, ear pain","Vertigo, dizziness, nausea, hearing loss, ear pain",,unmapped
+"Vertigo, hearing loss, tinnitus, ear fullness","Vertigo, hearing loss, tinnitus, ear fullness",,unmapped
+"Vision loss or blurry vision, eye pain with eye movement, color vision impairment, flashing lights or floaters","Vision loss or blurry vision, eye pain with eye movement, color vision impairment, flashing lights or floaters",,unmapped
+visual disturbances,Rối loạn thị giác,rối loạn thị giác; nhìn bất thường; sợ ánh sáng; nhạy cảm ánh sáng; sợ tiếng ồn; nhạy cảm tiếng ồn,manual
+vomiting,Nôn,nôn; nôn ói; buồn nôn và nôn,manual
+vomiting blood,Nôn ra máu,nôn ra máu; ói ra máu; nôn ra máu tươi,manual
+warts,Warts,,unmapped
+watering from eyes,Chảy nước mắt,chảy nước mắt; mắt chảy nước,manual
+weakness,Weakness,,unmapped
+weakness in limbs,Yếu tay chân,yếu tay chân; yếu chi,manual
+weakness of one body side,Yếu nửa người,yếu nửa người; liệt nửa người,manual
+"Weakness, numbness, tingling in limbs","Weakness, numbness, tingling in limbs",,unmapped
+weight gain,Tăng cân,tăng cân,manual
+weight loss,Sụt cân,sụt cân; giảm cân,manual
+wheezing,Khò khè,khò khè; thở rít; thở khò khè,manual+auto
+"Wheezing, shortness of breath, chest tightness","Wheezing, shortness of breath, chest tightness",,unmapped
+white discharge from eye,White discharge from eye,,unmapped
+"White patches or plaques in the mouth, often on the tongue or inside of the cheeks, that cannot be scraped off","White patches or plaques in the mouth, often on the tongue or inside of the cheeks, that cannot be scraped off",,unmapped
+"Widespread musculoskeletal pain, fatigue, sleep disturbances","Widespread musculoskeletal pain, fatigue, sleep disturbances",,unmapped
+"Widespread musculoskeletal pain, fatigue, sleep disturbances, cognitive difficulties (fibro fog), mood changes","Widespread musculoskeletal pain, fatigue, sleep disturbances, cognitive difficulties (fibro fog), mood changes",,unmapped
+wrist pain,Wrist pain,,unmapped
+wrist swelling,Wrist swelling,,unmapped
+yellow crust ooze,Chảy dịch vàng,chảy dịch vàng; đóng vảy vàng,manual
+yellow urine,Nước tiểu vàng,nước tiểu vàng; tiểu vàng,manual
+yellowing of eyes,Vàng mắt,vàng mắt; mắt vàng,manual
+yellowish skin,Vàng da,vàng da,manual

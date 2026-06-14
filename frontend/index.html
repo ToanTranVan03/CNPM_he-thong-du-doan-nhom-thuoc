@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PharmaPredict - Hệ thống gợi ý nhóm thuốc tham khảo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
+      <div class="auth-panel">
+        <div class="auth-copy">
+          <span class="sidebar-logo">AI</span>
+          <p class="eyebrow">Medical Diagnostic</p>
+          <h1 id="auth-title">Đăng nhập để sử dụng hệ thống gợi ý nhóm thuốc.</h1>
+          <p class="lead">Tài khoản được lưu cục bộ trong project. Kết quả dự đoán và lịch sử của bạn được giữ riêng theo phiên đăng nhập trên trình duyệt.</p>
+        </div>
+
+        <div class="auth-card" data-auth-view="login">
+          <div class="auth-card-head">
+            <div>
+              <p class="eyebrow">Tài khoản</p>
+              <h2>Đăng nhập</h2>
+            </div>
+            <span class="status-pill status-secure">
+              <span class="material-symbols-outlined" aria-hidden="true">lock</span>
+              Bảo mật
+            </span>
+          </div>
+          <form id="login-form" class="auth-form">
+            <label for="login-email">Email</label>
+            <input id="login-email" type="email" autocomplete="email" required placeholder="you@example.com" />
+            <label for="login-password">Mật khẩu</label>
+            <input id="login-password" type="password" autocomplete="current-password" required placeholder="Tối thiểu 6 ký tự" />
+            <p class="form-message" id="login-message" role="status"></p>
+            <button class="primary-button" type="submit">
+              <span class="material-symbols-outlined" aria-hidden="true">login</span>
+              Đăng nhập
+            </button>
+          </form>
+          <div class="auth-links">
+            <button class="text-button" type="button" data-auth-target="register">Tạo tài khoản</button>
+            <button class="text-button" type="button" data-auth-target="forgot">Quên mật khẩu?</button>
+          </div>
+        </div>
+
+        <div class="auth-card is-hidden" data-auth-view="register">
+          <div class="auth-card-head">
+            <div>
+              <p class="eyebrow">Người dùng mới</p>
+              <h2>Đăng ký</h2>
+            </div>
+          </div>
+          <form id="register-form" class="auth-form">
+            <label for="register-name">Họ tên</label>
+            <input id="register-name" type="text" autocomplete="name" required placeholder="Nguyễn Văn A" />
+            <label for="register-email">Email</label>
+            <input id="register-email" type="email" autocomplete="email" required placeholder="you@example.com" />
+            <label for="register-password">Mật khẩu</label>
+            <input id="register-password" type="password" autocomplete="new-password" minlength="6" required placeholder="Tối thiểu 6 ký tự" />
+            <p class="form-message" id="register-message" role="status"></p>
+            <button class="primary-button" type="submit">
+              <span class="material-symbols-outlined" aria-hidden="true">person_add</span>
+              Tạo tài khoản
+            </button>
+          </form>
+          <div class="auth-links">
+            <button class="text-button" type="button" data-auth-target="login">Đã có tài khoản</button>
+          </div>
+        </div>
+
+        <div class="auth-card is-hidden" data-auth-view="forgot">
+          <div class="auth-card-head">
+            <div>
+              <p class="eyebrow">Khôi phục</p>
+              <h2>Quên mật khẩu</h2>
+            </div>
+          </div>
+          <form id="forgot-form" class="auth-form">
+            <label for="forgot-email">Email đã đăng ký</label>
+            <input id="forgot-email" type="email" autocomplete="email" required placeholder="you@example.com" />
+            <p class="form-message" id="forgot-message" role="status"></p>
+            <button class="primary-button" type="submit">
+              <span class="material-symbols-outlined" aria-hidden="true">key</span>
+              Lấy mã đặt lại
+            </button>
+          </form>
+          <div class="auth-links">
+            <button class="text-button" type="button" data-auth-target="reset">Nhập mã đặt lại</button>
+            <button class="text-button" type="button" data-auth-target="login">Quay lại đăng nhập</button>
+          </div>
+        </div>
+
+        <div class="auth-card is-hidden" data-auth-view="reset">
+          <div class="auth-card-head">
+            <div>
+              <p class="eyebrow">Mật khẩu mới</p>
+              <h2>Đặt lại mật khẩu</h2>
+            </div>
+          </div>
+          <form id="reset-form" class="auth-form">
+            <label for="reset-email">Email</label>
+            <input id="reset-email" type="email" autocomplete="email" required placeholder="you@example.com" />
+            <label for="reset-code">Mã đặt lại</label>
+            <input id="reset-code" type="text" inputmode="numeric" required placeholder="6 chữ số" />
+            <label for="reset-password">Mật khẩu mới</label>
+            <input id="reset-password" type="password" autocomplete="new-password" minlength="6" required placeholder="Tối thiểu 6 ký tự" />
+            <p class="form-message" id="reset-message" role="status"></p>
+            <button class="primary-button" type="submit">
+              <span class="material-symbols-outlined" aria-hidden="true">lock_reset</span>
+              Đặt lại mật khẩu
+            </button>
+          </form>
+          <div class="auth-links">
+            <button class="text-button" type="button" data-auth-target="login">Quay lại đăng nhập</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="app-shell is-hidden">
+      <aside class="app-sidebar" aria-label="Dieu huong chinh">
+        <a class="sidebar-brand" href="#home" aria-label="PharmaPredict">
+          <span class="sidebar-logo">AI</span>
+          <span>Medical Diagnostic</span>
+        </a>
+        <nav class="side-nav">
+          <button class="nav-link is-active" type="button" data-page="home">
+            <span class="material-symbols-outlined" aria-hidden="true">home</span>
+            <span>Trang Chủ</span>
+          </button>
+          <button class="nav-link" type="button" data-page="history">
+            <span class="material-symbols-outlined" aria-hidden="true">history</span>
+            <span>Lịch Sử Dự Đoán</span>
+          </button>
+          <button class="nav-link" type="button" data-page="result">
+            <span class="material-symbols-outlined" aria-hidden="true">medical_services</span>
+            <span>Quản Lý Thuốc</span>
+          </button>
+          <button class="nav-link" type="button" data-page="about">
+            <span class="material-symbols-outlined" aria-hidden="true">person</span>
+            <span>Hồ Sơ Của Tôi</span>
+          </button>
+        </nav>
+        <div class="sidebar-user">
+          <div class="avatar" id="user-avatar">ND</div>
+          <div>
+            <strong id="user-name">Người dùng</strong>
+            <span id="user-email">user@example.com</span>
+          </div>
+          <button class="icon-button" type="button" id="logout-button" aria-label="Dang xuat">
+            <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+          </button>
+        </div>
+      </aside>
+
+      <main class="app-main">
+      <section class="page is-active" id="page-home" aria-labelledby="home-title">
+        <div class="container hero-grid">
+          <div class="intro">
+            <p class="eyebrow">Hệ thống hỗ trợ lâm sàng</p>
+            <h1 id="home-title">Gợi ý nhóm thuốc từ triệu chứng tiếng Việt.</h1>
+                <p class="lead">Mô tả triệu chứng bằng tiếng Việt, hệ thống sẽ map sang cụm triệu chứng tiếng Anh trong dataset và chỉ trả nhóm thuốc khi dữ liệu đủ tin cậy.</p>
+          </div>
+
+          <form class="diagnosis-panel" id="diagnosis-form">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Bệnh án đầu vào</p>
+                <h2>Mô tả ca lâm sàng</h2>
+              </div>
+              <span class="status-pill status-secure">
+                <span class="material-symbols-outlined" aria-hidden="true">lock</span>
+                Bảo mật
+              </span>
+            </div>
+            <label class="sr-only" for="case-description">Mô tả ca lâm sàng</label>
+            <div class="textarea-wrap">
+              <textarea id="case-description" maxlength="2000" rows="11" placeholder="Ví dụ: Bệnh nhân sốt cao, ho có đờm, đau ngực, khó thở, mệt mỏi..."></textarea>
+              <span id="char-count">0 / 2000 ký tự</span>
+            </div>
+            <div class="symptom-picker">
+              <div class="picker-head">
+                <div>
+                  <p class="eyebrow">Tùy chọn</p>
+                  <h2>Chọn thêm triệu chứng</h2>
+                </div>
+                <span id="selected-count">0 đã chọn</span>
+              </div>
+              <label class="search-box compact-search" for="symptom-search">
+                <span class="material-symbols-outlined" aria-hidden="true">search</span>
+                <input id="symptom-search" type="search" placeholder="Tìm triệu chứng bằng tiếng Việt..." />
+              </label>
+              <div class="symptom-list" id="symptom-list" aria-live="polite">
+                <p class="muted-text">Đang tải danh sách triệu chứng từ dữ liệu huấn luyện...</p>
+              </div>
+            </div>
+            <p class="form-message" id="form-message" role="status"></p>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">
+                <span class="material-symbols-outlined" aria-hidden="true">analytics</span>
+                Gợi ý nhóm thuốc
+              </button>
+              <button class="secondary-button" type="button" id="clear-case">
+                <span class="material-symbols-outlined" aria-hidden="true">restart_alt</span>
+                Xóa trắng
+              </button>
+            </div>
+          </form>
+
+          <aside class="side-stack" aria-label="Goi y nhap lieu">
+            <div class="metric-strip">
+              <div>
+                <strong>8.421</strong>
+                <span>Ca huấn luyện</span>
+              </div>
+              <div>
+                <strong>16.766</strong>
+                <span>Triệu chứng có thể map</span>
+              </div>
+            </div>
+            <div class="tip-card">
+              <div class="tip-title">
+                <span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>
+                <h2>Mẹo viết bệnh án</h2>
+              </div>
+              <ul>
+                <li>Nêu triệu chứng chính, thời điểm khởi phát và mức độ nặng.</li>
+                <li>Bổ sung bệnh nền, dị ứng thuốc, thuốc đang dùng.</li>
+                <li>Thêm xét nghiệm liên quan như CRP, bạch cầu, men gan, creatinine.</li>
+              </ul>
+              <button class="text-button" type="button" id="example-case">Dùng thử ví dụ</button>
+            </div>
+          </aside>
+        </div>
+
+        <div class="container">
+          <div class="section-heading">
+            <h2>Hoạt động gần đây</h2>
+            <button class="text-button" type="button" data-page="history">Xem tất cả</button>
+          </div>
+          <div class="activity-grid">
+            <article class="activity-card">
+              <span class="activity-icon material-symbols-outlined" aria-hidden="true">medication</span>
+              <h3>Kháng sinh</h3>
+              <p>Viêm phổi cộng đồng, sốt cao, bạch cầu tăng.</p>
+              <span>Hôm nay, 09:20</span>
+            </article>
+            <article class="activity-card">
+              <span class="activity-icon material-symbols-outlined" aria-hidden="true">monitor_heart</span>
+              <h3>ACE Inhibitors</h3>
+              <p>Tăng huyết áp kèm microalbumin niệu.</p>
+              <span>Hôm qua, 16:45</span>
+            </article>
+            <article class="activity-card">
+              <span class="activity-icon material-symbols-outlined" aria-hidden="true">science</span>
+              <h3>NSAIDs</h3>
+              <p>Đau viêm khớp gối sau chấn thương nhẹ.</p>
+              <span>28/05/2026</span>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-result" aria-labelledby="result-title">
+        <div class="container result-layout">
+          <div class="result-summary">
+            <p class="eyebrow">Nhóm thuốc tham khảo</p>
+            <div class="result-title-row">
+              <span class="result-icon material-symbols-outlined" aria-hidden="true">medication</span>
+              <div>
+                <h1 id="result-title">Chưa có kết quả</h1>
+                <p id="result-subtitle">Chọn triệu chứng và bấm dự đoán</p>
+              </div>
+            </div>
+            <div class="confidence-box" aria-label="Do tin cay">
+              <div>
+                <span id="score-label">Độ tương đồng</span>
+                <strong id="confidence-value">0%</strong>
+              </div>
+              <div class="progress-bar"><span id="confidence-bar"></span></div>
+            </div>
+            <p class="result-note" id="result-note">Kết quả chỉ hiển thị khi hệ thống có đủ triệu chứng và độ tin cậy để gợi ý nhóm thuốc tham khảo.</p>
+            <div class="suggested-symptoms-card is-hidden" id="suggested-symptoms-card">
+              <h2>Chọn thêm triệu chứng</h2>
+              <p>Những thông tin này giúp hệ thống phân biệt nguyên nhân tốt hơn.</p>
+              <div class="suggested-symptoms-list" id="suggested-symptoms-list"></div>
+            </div>
+            <div class="form-actions">
+              <button class="primary-button" type="button" id="save-result">
+                <span class="material-symbols-outlined" aria-hidden="true">save</span>
+                Lưu kết quả
+              </button>
+              <button class="secondary-button" type="button" data-page="home">
+                <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                Dự đoán mới
+              </button>
+            </div>
+          </div>
+
+          <div class="result-details">
+            <article class="detail-card summary-table-card">
+              <h2>Tóm tắt bệnh án</h2>
+              <div class="summary-table-wrap">
+                <table class="case-summary-table">
+                  <thead>
+                    <tr>
+                      <th>Chẩn đoán dự kiến</th>
+                      <th>Tên thuốc</th>
+                      <th>Nhóm thuốc phù hợp</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td id="summary-diagnosis">Chưa có dữ liệu.</td>
+                      <td id="summary-medication-name">Chưa có dữ liệu.</td>
+                      <td id="summary-drug-group">Chưa có dữ liệu.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+            <article class="detail-card">
+              <h2>Hướng xử trí và thuốc tham khảo</h2>
+              <ul id="medication-list">
+                <li>Chưa có dữ liệu dự đoán.</li>
+              </ul>
+            </article>
+            <article class="detail-card">
+              <h2>Lưu ý phòng ngừa</h2>
+              <ul id="precaution-list">
+                <li>Chưa có dữ liệu dự đoán.</li>
+              </ul>
+            </article>
+            <article class="detail-card warning-card">
+              <h2>Cảnh báo</h2>
+              <p id="warning-text">Không thay thế chẩn đoán của bác sĩ. Dữ liệu này phù hợp cho học máy và hỗ trợ tham khảo, không dùng để kê đơn thật.</p>
+            </article>
+            <article class="detail-card">
+              <h2>Chăm sóc tại nhà</h2>
+              <ul id="care-list">
+                <li>Chưa có dữ liệu dự đoán.</li>
+              </ul>
+            </article>
+            <article class="molecule-card">
+              <div>
+                <p class="eyebrow">Các khả năng cao nhất</p>
+                <h2 id="top-predictions-title">Xác suất từ mô hình</h2>
+                <ul class="top-predictions" id="top-predictions"></ul>
+              </div>
+              <div class="molecule-art" aria-hidden="true">
+                <span></span><span></span><span></span><span></span>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-history" aria-labelledby="history-title">
+        <div class="container">
+          <div class="history-head">
+            <div>
+              <p class="eyebrow">Lịch sử hệ thống</p>
+              <h1 id="history-title">Lịch sử dự đoán</h1>
+              <p class="lead">Tra cứu và quản lý các phân loại nhóm thuốc đã thực hiện.</p>
+            </div>
+            <div class="history-actions">
+              <button class="secondary-button compact" type="button">
+                <span class="material-symbols-outlined" aria-hidden="true">filter_list</span>
+                Lọc
+              </button>
+              <button class="secondary-button compact" type="button">
+                <span class="material-symbols-outlined" aria-hidden="true">download</span>
+                Xuất
+              </button>
+            </div>
+          </div>
+
+          <label class="search-box" for="history-search">
+            <span class="material-symbols-outlined" aria-hidden="true">search</span>
+            <input id="history-search" type="search" placeholder="Tìm theo nhóm thuốc, mô tả hoặc ngày..." />
+          </label>
+
+          <div class="history-grid" id="history-list">
+            <article class="history-card" data-search="nsaids analgesics đau viêm khớp 28/05/2026">
+              <div class="card-topline">
+                <span class="status-pill status-success">Đã lưu</span>
+                <time>28/05/2026</time>
+              </div>
+              <h2>NSAIDs / Analgesics</h2>
+              <p>Đau viêm khớp gối sau chấn thương, không ghi nhận loét dạ dày tiến triển.</p>
+              <button class="icon-button" type="button" aria-label="Xem chi tiet">
+                <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+              </button>
+            </article>
+            <article class="history-card" data-search="ace inhibitors tăng huyết áp 29/05/2026">
+              <div class="card-topline">
+                <span class="status-pill status-success">Đã lưu</span>
+                <time>29/05/2026</time>
+              </div>
+              <h2>Antihypertensives (ACE Inhibitors)</h2>
+              <p>Tăng huyết áp dai dẳng, nguy cơ thận do đái tháo đường type 2.</p>
+              <button class="icon-button" type="button" aria-label="Xem chi tiet">
+                <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+              </button>
+            </article>
+            <article class="history-card featured" data-search="molecular profile sulfonamide 30/05/2026">
+              <div class="card-topline">
+                <span class="status-pill status-review">Cần xem lại</span>
+                <time>30/05/2026</time>
+              </div>
+              <h2>Molecular Profile Scan #884</h2>
+              <p>Phân tích dẫn xuất sulfonamide, cần kiểm tra thêm chống chỉ định và tương tác thuốc.</p>
+              <button class="white-button" type="button">Xem hồ sơ</button>
+            </article>
+            <article class="history-card" data-search="antipsychotics neuroleptics thần kinh 31/05/2026">
+              <div class="card-topline">
+                <span class="status-pill status-success">Đã lưu</span>
+                <time>31/05/2026</time>
+              </div>
+              <h2>Antipsychotics / Neuroleptics</h2>
+              <p>Cấu trúc dị vòng phức tạp, hồ sơ gắn kết D2 và 5-HT2A chưa rõ ràng.</p>
+              <button class="icon-button" type="button" aria-label="Xem chi tiet">
+                <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+              </button>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-about" aria-labelledby="about-title">
+        <div class="container about-layout">
+          <div class="about-copy">
+            <p class="eyebrow">Hồ sơ cá nhân</p>
+            <h1 id="about-title">Thông tin tài khoản</h1>
+            <p class="lead" id="profile-summary">Bạn đang đăng nhập vào hệ thống hỗ trợ nhập triệu chứng tiếng Việt và gợi ý nhóm thuốc khi dữ liệu đủ tin cậy.</p>
+            <div class="form-actions">
+              <button class="primary-button" type="button" id="profile-logout-button">
+                <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+                Đăng xuất
+              </button>
+              <button class="secondary-button" type="button" data-page="home">Bắt đầu nhập liệu</button>
+            </div>
+          </div>
+          <div class="about-cards">
+            <article class="feature-card">
+              <span class="feature-icon material-symbols-outlined" aria-hidden="true">psychology</span>
+              <h2>Dữ liệu tiếng Anh</h2>
+              <p>Model dùng trường trieu_chung trong CSV mới để học quan hệ giữa cụm triệu chứng và nhóm thuốc.</p>
+            </article>
+            <article class="feature-card dark">
+              <span class="feature-icon material-symbols-outlined" aria-hidden="true">verified</span>
+              <h2>Tiền xử lý tiếng Việt</h2>
+              <p>Triệu chứng người dùng nhập được map sang đúng mã đặc trưng tiếng Anh trước khi gọi model.</p>
+            </article>
+            <article class="feature-card">
+              <span class="feature-icon material-symbols-outlined" aria-hidden="true">encrypted</span>
+              <h2>Kết quả tiếng Việt</h2>
+              <p>Tên bệnh, mô tả, thuốc, lưu ý phòng ngừa và chăm sóc được dịch hoặc ánh xạ sang tiếng Việt.</p>
+            </article>
+          </div>
+        </div>
+
+        <div class="container faq-grid">
+          <article class="faq-item">
+            <h2>Cần nhập dữ liệu gì?</h2>
+            <p>Triệu chứng chính, tiền sử bệnh, dị ứng, thuốc đang dùng và chỉ số xét nghiệm liên quan.</p>
+          </article>
+          <article class="faq-item">
+            <h2>Kết quả có thay bác sĩ không?</h2>
+            <p>Không. Đây là lớp hỗ trợ quyết định, cần bác sĩ xác nhận trước khi dùng trong điều trị.</p>
+          </article>
+          <article class="faq-item contact-card">
+            <h2>Hỗ trợ</h2>
+            <input type="text" placeholder="Chủ đề cần hỗ trợ" />
+            <textarea rows="3" placeholder="Nội dung trao đổi..."></textarea>
+            <button class="primary-button" type="button">Gửi yêu cầu</button>
+          </article>
+        </div>
+      </section>
+      </main>
+    </div>
+
+    <nav class="bottom-nav" aria-label="Dieu huong mobile">
+      <button class="bottom-link is-active" type="button" data-page="home">
+        <span class="material-symbols-outlined" aria-hidden="true">home</span>
+        <span>Trang chủ</span>
+      </button>
+      <button class="bottom-link" type="button" data-page="result">
+        <span class="material-symbols-outlined" aria-hidden="true">medical_services</span>
+        <span>Thuốc</span>
+      </button>
+      <button class="bottom-link" type="button" data-page="history">
+        <span class="material-symbols-outlined" aria-hidden="true">history</span>
+        <span>Lịch sử</span>
+      </button>
+      <button class="bottom-link" type="button" data-page="about">
+        <span class="material-symbols-outlined" aria-hidden="true">person</span>
+        <span>Hồ sơ</span>
+      </button>
+    </nav>
+
+    <script src="script.js"></script>
+  </body>
+</html>

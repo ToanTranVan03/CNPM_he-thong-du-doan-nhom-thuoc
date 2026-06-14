@@ -1,0 +1,41 @@
+﻿id,mo_ta,expected,also_ok,loai
+w1,"Đau tai, chảy dịch tai, nghe kém, sốt nhẹ",thuốc kháng sinh,,normal
+w2,"Áp xe da sưng to, nóng đỏ, đau, có mủ",thuốc kháng sinh,,normal
+w3,"Tiểu ra máu, tiểu buốt, đau hông lưng, sốt",thuốc kháng sinh,,normal
+w4,"Ngón chân cái sưng đỏ đau dữ dội về đêm",thuốc kháng viêm không steroid,thuốc giảm đau hạ sốt,normal
+w5,"Viêm gân cổ tay, đau khi cử động, sưng nhẹ",thuốc kháng viêm không steroid,thuốc giảm đau hạ sốt,normal
+w6,"Bé sốt 39 độ, quấy khóc, bỏ bú",thuốc giảm đau hạ sốt,,normal
+w7,"Mắt đỏ, ngứa, chảy nước mắt, cộm như có cát",thuốc kháng histamin,,normal
+w8,"Phù môi, nổi ban đỏ ngứa sau khi ăn tôm",thuốc kháng histamin,,normal
+w9,"Đầy bụng, ăn không tiêu, ợ hơi, nóng rát thượng vị",thuốc điều trị dạ dày,,normal
+w10,"Nôn ói nhiều khi mang thai, nghén nặng",thuốc chống nôn,,normal
+w11,"Trẻ đi ngoài tóe nước liên tục, lừ đừ, mắt trũng",bù dịch và điện giải,,normal
+w12,"Ho kéo dài, khạc đờm, khó thở, thở khò khè nhiều năm",thuốc giãn phế quản,thuốc long đờm / giảm ho,normal
+w13,"Sổ mũi, nghẹt mũi, hắt hơi, đau đầu nhẹ do cảm lạnh",thuốc thông mũi,thuốc kháng histamin|thuốc giảm đau hạ sốt,normal
+w14,"Nấm kẽ chân, ngứa, da trắng bợt bong tróc, mùi hôi",thuốc kháng nấm/ký sinh trùng ngoài da,,normal
+w15,"Ngứa vùng kín, ra khí hư trắng đục như bã đậu",thuốc kháng nấm/ký sinh trùng ngoài da,,normal
+w16,"Hay khát, tiểu nhiều, mờ mắt, sụt cân, mệt mỏi",thuốc điều trị đái tháo đường,,normal
+w17,"Huyết áp 160, nhức đầu sau gáy, hoa mắt",thuốc tim mạch/huyết áp,,hard
+w18,"Tim đập nhanh không đều, hụt hơi, choáng",thuốc tim mạch/huyết áp,,hard
+w19,"Hồi hộp, sợ hãi vô cớ, vã mồ hôi, tim đập mạnh từng cơn",thuốc thần kinh/tâm thần,,normal
+w20,"Lo lắng quá mức kéo dài, căng thẳng, khó ngủ",thuốc thần kinh/tâm thần,,normal
+w21,"Đau lan từ thắt lưng xuống mông và chân, tê chân",thuốc chống co giật/đau thần kinh,thuốc kháng viêm không steroid,hard
+w22,"Tê bì bàn chân hai bên ở người tiểu đường lâu năm",thuốc chống co giật/đau thần kinh,,hard
+w23,"Cổ to, mắt lồi, sút cân, tay run, hồi hộp",thuốc nội tiết tuyến giáp,,normal
+w24,"Mệt mỏi, tăng cân, da khô, rụng tóc, sợ lạnh, cổ hơi to",thuốc nội tiết tuyến giáp,,normal
+w25,"Nổi mụn nước đau rát thành mảng một bên lưng kèm sốt",thuốc kháng virus,,normal
+w26,"Trẻ nổi bóng nước ở tay chân miệng, sốt, biếng ăn",thuốc kháng virus,,hard
+w27,"Đầy bụng, không đi đại tiện được 4 ngày, phân cứng",thuốc nhuận tràng,,normal
+w28,"Chàm da tay, đỏ, ngứa, bong vảy, nứt nẻ",thuốc corticosteroid/chống viêm,thuốc kháng nấm/ký sinh trùng ngoài da,hard
+w29,"Mệt, hoa mắt, da niêm nhợt, hay chóng mặt khi đứng dậy",vitamin và khoáng chất,,hard
+w30,"Chảy máu chân răng, mệt mỏi, dễ bầm tím",vitamin và khoáng chất,,hard
+w31,"Đau buốt răng khôn, sưng nề má, há miệng đau",thuốc giảm đau nha khoa,thuốc kháng sinh|thuốc giảm đau hạ sốt,normal
+w32,"Sốt rét run từng cơn, vã mồ hôi, đau đầu, mới ở vùng rừng núi về",thuốc điều trị sốt rét,thuốc giảm đau hạ sốt,hard
+w33,"Đau rát họng, nuốt khó, sốt, nổi hạch góc hàm",thuốc kháng sinh,thuốc giảm đau hạ sốt,normal
+w34,"Ngứa nổi mẩn từng mảng đỏ, càng gãi càng lan",thuốc kháng histamin,,normal
+w35,"Đau quặn bụng dưới từng cơn, buồn đi ngoài, phân nhầy máu, sốt",thuốc kháng sinh,bù dịch và điện giải,hard
+w36,"Khó thở dữ dội, tím tái, lơ mơ",NEEDS_MORE_INFO,,safety
+w37,"Đau ngực dữ dội như bóp nghẹt, vã mồ hôi, lan tay trái",NEEDS_MORE_INFO,thuốc tim mạch/huyết áp,safety
+w38,"Hơi mệt một chút",NEEDS_MORE_INFO,,vague
+w39,"Đau dạ dày, nhưng không buồn nôn, không tiêu chảy",thuốc điều trị dạ dày,,normal
+w40,"Mất ngủ triền miên, đầu óc căng thẳng, hay cáu gắt",thuốc thần kinh/tâm thần,,normal

@@ -1,0 +1,166 @@
+{
+  "default": {
+    "treatment_groups": [
+      "Chưa có hướng dẫn cấu trúc riêng cho bệnh này trong disease_guidance.json.",
+      "Không tự dùng thuốc không rõ chỉ định; nên hỏi bác sĩ hoặc dược sĩ nếu triệu chứng kéo dài hoặc nặng lên."
+    ],
+    "care": [
+      "Nghỉ ngơi, uống đủ nước và theo dõi diễn biến triệu chứng.",
+      "Ghi lại thời điểm khởi phát, mức độ nặng, bệnh nền, dị ứng và thuốc đang dùng để cung cấp khi đi khám."
+    ],
+    "precautions": [
+      "Tránh tự phối nhiều loại thuốc cùng lúc.",
+      "Đi khám nếu triệu chứng không cải thiện hoặc xuất hiện dấu hiệu bất thường."
+    ],
+    "warning_signs": [
+      "Khó thở, đau ngực, lú lẫn, ngất, yếu/liệt, sốt cao kéo dài, ho ra máu, mất nước hoặc triệu chứng nặng lên nhanh."
+    ],
+    "source": "fallback_rule"
+  },
+  "Tonsillar Hypertrophy": {
+    "treatment_groups": [
+      "Nhóm giảm đau - hạ sốt không kê đơn có thể được cân nhắc khi đau họng hoặc sốt; hỏi dược sĩ nếu có bệnh nền, đang mang thai, bệnh gan/thận hoặc đang dùng thuốc khác.",
+      "Viên ngậm họng hoặc xịt họng làm dịu niêm mạc có thể hỗ trợ giảm rát họng tạm thời.",
+      "Nếu có ho, chọn nhóm thuốc ho phù hợp loại ho khan hoặc ho có đờm; không tự phối nhiều thuốc ho/cảm cùng lúc.",
+      "Kháng sinh chỉ dùng khi bác sĩ xác định hoặc nghi ngờ nhiễm khuẩn."
+    ],
+    "care": [
+      "Uống đủ nước, nghỉ ngơi và giữ ấm vùng cổ.",
+      "Có thể súc miệng bằng nước muối ấm nếu phù hợp.",
+      "Theo dõi mức độ đau họng, ho, sốt, khả năng nuốt và khả năng ăn uống trong 24-48 giờ."
+    ],
+    "precautions": [
+      "Rửa tay thường xuyên và che miệng khi ho hoặc hắt hơi.",
+      "Đeo khẩu trang khi có triệu chứng hô hấp và hạn chế tiếp xúc gần với người khác.",
+      "Tránh khói thuốc, bụi, rượu bia và thức uống quá lạnh nếu làm họng kích ứng hơn."
+    ],
+    "warning_signs": [
+      "Khó thở, nuốt nghẹn hoặc không uống được.",
+      "Sốt cao kéo dài, đau họng nặng một bên, nổi hạch lớn, phát ban hoặc ho ra máu.",
+      "Ngủ ngáy nặng, khó thở khi ngủ hoặc triệu chứng tái phát nhiều lần."
+    ],
+    "source": "structured_guidance"
+  },
+  "Acute Pharyngitis": {
+    "treatment_groups": [
+      "Nhóm giảm đau - hạ sốt có thể hỗ trợ khi đau họng hoặc sốt.",
+      "Viên ngậm hoặc xịt họng làm dịu họng có thể dùng để giảm khó chịu tạm thời.",
+      "Kháng sinh chỉ dùng khi có chỉ định y tế, ví dụ nghi viêm họng do vi khuẩn."
+    ],
+    "care": [
+      "Uống đủ nước, nghỉ ngơi, tránh nói nhiều nếu đau họng nặng.",
+      "Có thể súc miệng nước muối ấm nếu phù hợp.",
+      "Theo dõi sốt, đau họng, ho, phát ban và khả năng nuốt."
+    ],
+    "precautions": [
+      "Rửa tay thường xuyên.",
+      "Che miệng khi ho hoặc hắt hơi.",
+      "Không dùng chung ly, muỗng, khăn mặt khi đang có triệu chứng."
+    ],
+    "warning_signs": [
+      "Khó thở, nuốt nghẹn, chảy dãi, không uống được.",
+      "Sốt cao kéo dài, phát ban, đau họng nặng một bên hoặc triệu chứng nặng lên."
+    ],
+    "source": "structured_guidance"
+  },
+  "Chronic Pharyngitis": {
+    "treatment_groups": [
+      "Ưu tiên kiểm soát yếu tố kích ứng như khói thuốc, bụi, trào ngược hoặc dị ứng nếu có.",
+      "Nhóm thuốc làm dịu họng có thể hỗ trợ triệu chứng tạm thời.",
+      "Nếu kéo dài, cần khám để xác định nguyên nhân trước khi dùng thuốc đặc hiệu."
+    ],
+    "care": [
+      "Uống đủ nước và tránh khói thuốc.",
+      "Theo dõi các yếu tố làm nặng như ăn cay, nằm ngay sau ăn, bụi hoặc điều hòa lạnh.",
+      "Đi khám nếu đau họng kéo dài nhiều tuần."
+    ],
+    "precautions": [
+      "Tránh hút thuốc và môi trường nhiều bụi.",
+      "Vệ sinh răng miệng đều đặn.",
+      "Hạn chế rượu bia nếu làm kích ứng họng."
+    ],
+    "warning_signs": [
+      "Khàn tiếng kéo dài, sụt cân không rõ nguyên nhân, nuốt nghẹn, ho ra máu hoặc đau họng ngày càng nặng."
+    ],
+    "source": "structured_guidance"
+  },
+  "Diphtheria": {
+    "treatment_groups": [
+      "Đây là bệnh cần đánh giá y tế khẩn cấp; không tự điều trị tại nhà.",
+      "Điều trị đặc hiệu và cách ly cần được thực hiện bởi cơ sở y tế."
+    ],
+    "care": [
+      "Đeo khẩu trang và hạn chế tiếp xúc với người khác trong khi chờ đánh giá y tế.",
+      "Chuẩn bị thông tin tiêm chủng và thời điểm khởi phát triệu chứng."
+    ],
+    "precautions": [
+      "Tiêm chủng đầy đủ theo khuyến cáo.",
+      "Tránh tiếp xúc gần với người nghi nhiễm cho đến khi được nhân viên y tế hướng dẫn."
+    ],
+    "warning_signs": [
+      "Khó thở, nuốt khó, mảng giả mạc ở họng, sốt, mệt nhiều hoặc cổ sưng: cần đi khám/cấp cứu ngay."
+    ],
+    "source": "structured_guidance"
+  },
+  "Acute Mountain Sickness (AMS)": {
+    "treatment_groups": [
+      "Nghỉ ngơi và hạn chế gắng sức là xử trí chính khi triệu chứng nhẹ.",
+      "Nhóm giảm đau thông thường có thể được cân nhắc cho đau đầu nhẹ nếu không có chống chỉ định.",
+      "Nếu triệu chứng nặng hoặc không cải thiện, cần hạ độ cao và được nhân viên y tế đánh giá."
+    ],
+    "care": [
+      "Nghỉ ở nơi an toàn, uống đủ nước và tránh rượu bia.",
+      "Theo dõi đau đầu, buồn nôn, chóng mặt, khó thở, lú lẫn và khả năng đi lại.",
+      "Không tiếp tục lên cao nếu triệu chứng đang nặng lên."
+    ],
+    "precautions": [
+      "Tăng độ cao từ từ nếu đi vùng cao.",
+      "Tránh gắng sức quá mức trong giai đoạn mới lên cao.",
+      "Không dùng rượu bia hoặc thuốc an thần khi chưa có tư vấn y tế."
+    ],
+    "warning_signs": [
+      "Khó thở khi nghỉ, lú lẫn, đi loạng choạng, đau đầu dữ dội, nôn liên tục hoặc tím tái: cần cấp cứu và hạ độ cao ngay."
+    ],
+    "source": "structured_guidance"
+  },
+  "Pneumonia": {
+    "treatment_groups": [
+      "Viêm phổi cần bác sĩ đánh giá để quyết định có cần kháng sinh hoặc điều trị đặc hiệu hay không.",
+      "Nhóm hạ sốt/giảm đau có thể hỗ trợ triệu chứng nếu phù hợp.",
+      "Không tự dùng kháng sinh hoặc thuốc ức chế ho mạnh khi chưa được tư vấn."
+    ],
+    "care": [
+      "Nghỉ ngơi, uống đủ nước và theo dõi nhịp thở.",
+      "Theo dõi sốt, ho, đờm, đau ngực và mức độ khó thở."
+    ],
+    "precautions": [
+      "Rửa tay, đeo khẩu trang khi ho sốt.",
+      "Tránh tiếp xúc gần với người có nguy cơ cao như người già, trẻ nhỏ hoặc người suy giảm miễn dịch."
+    ],
+    "warning_signs": [
+      "Khó thở, đau ngực, tím môi, sốt cao kéo dài, lơ mơ, ho ra máu hoặc SpO2 thấp nếu có thiết bị đo: cần đi khám/cấp cứu."
+    ],
+    "source": "structured_guidance"
+  },
+  "Klebsiella Pneumonia": {
+    "alias_of": "Pneumonia"
+  },
+  "Chronic Cough": {
+    "treatment_groups": [
+      "Cần xác định nguyên nhân ho kéo dài như hen, dị ứng, trào ngược, nhiễm trùng hoặc tác dụng phụ thuốc.",
+      "Nhóm thuốc ho chỉ nên dùng theo loại ho và thời gian ho; không tự dùng kéo dài."
+    ],
+    "care": [
+      "Uống đủ nước, tránh khói thuốc và ghi lại thời gian ho, thời điểm ho nặng hơn, có đờm hay không.",
+      "Đi khám nếu ho kéo dài trên vài tuần hoặc tái phát nhiều lần."
+    ],
+    "precautions": [
+      "Tránh khói thuốc, bụi và chất kích ứng đường hô hấp.",
+      "Đeo khẩu trang nếu ho kèm triệu chứng nhiễm trùng."
+    ],
+    "warning_signs": [
+      "Ho ra máu, khó thở, đau ngực, sụt cân, sốt kéo dài hoặc ho nặng lên nhanh."
+    ],
+    "source": "structured_guidance"
+  }
+}

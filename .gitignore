@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+node_modules/
+.env
+_commitmsg.txt
+
+# Dữ liệu người dùng (chứa mật khẩu hash + token phiên) — KHÔNG đẩy lên
+data/users.json
+
+# File train trung gian (tái tạo được bằng scripts/) — bỏ để repo gọn
+data/train_clean.csv
+data/train_combined.csv
+
+# Thư mục model dư thừa (models/ là bản chính đang dùng)
+models_old/
+models_v2/
