@@ -2,7 +2,7 @@
 
 Ứng dụng Flask + giao diện tĩnh để dự đoán nhóm thuốc tham khảo từ mô tả triệu chứng tiếng Việt bằng model TF-IDF + Linear SVM.
 
-## Cấu trúc thư mụccc
+## Cấu trúc thư mụccc.c
 
 ```text
 CNPM/
