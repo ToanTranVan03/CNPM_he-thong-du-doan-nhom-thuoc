@@ -865,6 +865,13 @@ SEMANTIC_ENABLED = os.environ.get("SEMANTIC_MATCH", "1") != "0"
 SEMANTIC_THRESHOLD = float(os.environ.get("SEMANTIC_THRESHOLD", "0.62"))
 # Lớp ngữ nghĩa chỉ chạy khi exact-match thu được < ngưỡng này (fallback).
 SEMANTIC_FALLBACK_MAX = int(os.environ.get("SEMANTIC_FALLBACK_MAX", "2"))
+# P4.4: feature thần kinh "nguy hiểm" KHÔNG được nhận từ semantic match mờ (dễ false-positive,
+# vd "bê vật nặng" -> "weakness of one body side"). Chỉ nhận qua khớp từ khóa chính xác; ca thật
+# vẫn được cổng cờ đỏ raw-text (đột quỵ/co giật...) bắt độc lập với feature extraction.
+SEMANTIC_BLOCKLIST = {
+    "weakness of one body side", "altered sensorium", "coma", "slurred speech", "seizures",
+    "loss of balance", "unsteadiness", "lack of concentration",
+}
 SEMANTIC_READY = False
 if SEMANTIC_ENABLED:
     try:
@@ -1430,12 +1437,17 @@ def symptoms_from_text(text: str) -> set[str]:
     if any(has_phrase(normalized_text, phrase) for phrase in ["mat ca chan sung", "co chan sung"]):
         if "ankle swelling" in feature_lookup:
             matches.add(feature_lookup["ankle swelling"])
+    # P4.4: "mỏi/đau vai gáy" -> neck pain (cơ-xương), tránh trả rỗng -> 400.
+    if any(has_phrase(normalized_text, phrase) for phrase in ["vai gay", "moi vai", "dau vai gay", "moi vai gay", "dau vai"]):
+        if "neck pain" in feature_lookup:
+            matches.add(feature_lookup["neck pain"])
 
     # Lớp ngữ nghĩa (fallback): chỉ kích hoạt khi khớp từ khóa thu được ÍT triệu chứng,
     # để giữ độ chính xác cho ca rõ ràng (exact đủ) và cứu ca lạ (exact bỏ sót).
     if SEMANTIC_READY and len(matches) < SEMANTIC_FALLBACK_MAX:
         try:
-            matches.update(semantic_matcher.match(text, threshold=SEMANTIC_THRESHOLD))
+            sem = semantic_matcher.match(text, threshold=SEMANTIC_THRESHOLD)
+            matches.update(s for s in sem if s not in SEMANTIC_BLOCKLIST)
         except Exception:
             pass
     return matches
