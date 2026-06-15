@@ -69,13 +69,27 @@ LABEL_TYPE = metadata.get("label_type", "disease")
 MIN_RELIABLE_CONFIDENCE = 0.5
 # Ngưỡng scoped (vòng 3): nhóm thuốc "rủi ro cao" (sai gây hại) cần độ tin cậy cao hơn
 # khi do MODEL đoán (score_type != "rule"). Lớp phòng thủ phụ ngoài các rule đặc hiệu.
-MIN_HIGH_RISK_MODEL_CONFIDENCE = 0.6
+MIN_HIGH_RISK_MODEL_CONFIDENCE = 0.75
 HIGH_RISK_DRUG_GROUPS = {
     "thuốc kháng sinh",
     "thuốc tim mạch/huyết áp",
     "thuốc thần kinh/tâm thần",
     "thuốc kháng virus",
+    "thuốc/điều trị ung thư",
 }
+# P2.3: bắt thêm nhóm rủi ro cao theo TỪ KHÓA (kể cả khi tên nhóm khác chính tả/biến thể).
+# Các nhóm này cần kê đơn/bác sĩ -> không auto-suggest tự tin dù do rule hay model.
+HIGH_RISK_GROUP_KEYWORDS = (
+    "kháng sinh", "tim mạch", "huyết áp", "tâm thần", "thần kinh", "kháng virus",
+    "ung thư", "chống đông", "kháng tiểu cầu", "nội tiết", "miễn dịch", "opioid",
+)
+
+
+def is_high_risk_group(group) -> bool:
+    if not group:
+        return False
+    g = str(group).lower()
+    return group in HIGH_RISK_DRUG_GROUPS or any(k in g for k in HIGH_RISK_GROUP_KEYWORDS)
 # Ngưỡng top-gap (vòng 6 Phần A): khi top-1 và top-2 của model SÁT nhau -> model phân vân
 # giữa các nhóm chồng lấn. Phán đoán "trọng" hơn: hạ tin cậy/xin thêm thông tin thay vì đoán
 # bừa. Đặt 0 để TẮT. Đọc env để dễ chỉnh/đo.
@@ -2977,12 +2991,19 @@ def predict():
     if (
         score_type != "rule"
         and confidence is not None
-        and prediction in HIGH_RISK_DRUG_GROUPS
+        and is_high_risk_group(prediction)
         and confidence < MIN_HIGH_RISK_MODEL_CONFIDENCE
     ):
         quality_reasons.append(
             f"Nhóm '{prediction}' là nhóm rủi ro cao, nhưng độ tin cậy chỉ {confidence * 100:.1f}% "
             f"(< {MIN_HIGH_RISK_MODEL_CONFIDENCE * 100:.0f}%); cần thêm triệu chứng để khẳng định."
+        )
+    # P2.3: nhóm rủi ro cao KHI DO RULE đoán cũng cần bác sĩ xác nhận (kê đơn) -> không tự dùng.
+    # Rule vẫn ngăn model đoán bừa, nhưng output chuyển sang "đi khám" thay vì kê thuốc tự tin.
+    if score_type == "rule" and is_high_risk_group(prediction):
+        quality_reasons.append(
+            f"Nhóm '{prediction}' là nhóm thuốc cần kê đơn/chỉ định của bác sĩ; không tự dùng theo "
+            "gợi ý. Hãy đi khám để được đánh giá và chỉ định đúng."
         )
     # Top-gap (vòng 6): model phân vân giữa 2 nhóm sát nhau -> phán đoán "trọng" hơn bằng cách
     # xin thêm thông tin thay vì đoán bừa. Chỉ áp cho model path, khi top-1 chưa vượt trội.
