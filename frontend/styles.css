@@ -1406,3 +1406,53 @@ input:focus {
   border-radius: inherit;
   background: var(--primary);
 }
+
+/* ============================================================
+   GIAI ĐOẠN 2/3 — Empty state & trạng thái nút
+   ============================================================ */
+.empty-state {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 48px 24px;
+  border: 1px dashed var(--outline);
+  border-radius: var(--radius-md);
+  background: var(--surface-lowest);
+  color: var(--text-muted);
+}
+
+.empty-state.is-hidden {
+  display: none;
+}
+
+.empty-state h2 {
+  margin: 0;
+}
+
+.empty-state p {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+}
+
+.empty-icon {
+  font-size: 40px;
+  color: var(--text-subtle);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.primary-button:disabled:hover,
+.secondary-button:disabled:hover {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+  filter: none;
+  background: var(--primary-action);
+}
+
+.secondary-button:disabled,
+.secondary-button:disabled:hover {
+  background: var(--surface-lowest);
+}
