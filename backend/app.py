@@ -2524,6 +2524,20 @@ def heuristic_diagnosis(active_symptoms: set[str]) -> str | None:
     if has_any_symptom(active_symptoms, ["itching", "skin rash", "nodal skin eruptions", "dischromic patches"]):
         return "Nấm da / viêm da (tham khảo)"
 
+    # P2 (2026-06-15): nhãn hội chứng cho các khoảng trống thường gặp, tránh rơi xuống
+    # dataset_diagnosis trả nhãn thô vô nghĩa (spinal stenosis, hemorrhoids, gout...).
+    if has_any_symptom(active_symptoms, ["muscle pain", "joint pain", "knee pain", "hip joint pain", "neck pain", "back pain", "cramps", "painful walking", "swelling joints", "movement stiffness", "muscle weakness"]):
+        return "Đau cơ-xương-khớp (tham khảo)"
+
+    if has_any_symptom(active_symptoms, ["constipation"]):
+        return "Táo bón (tham khảo)"
+
+    if has_any_symptom(active_symptoms, ["acidity", "indigestion", "passage of gases"]):
+        return "Khó tiêu / trào ngược dạ dày (tham khảo)"
+
+    if has_any_symptom(active_symptoms, ["burning micturition", "bladder discomfort", "spotting urination", "foul smell of urine", "continuous feel of urine"]):
+        return "Triệu chứng tiết niệu (tham khảo)"
+
     return None
 
 
@@ -2595,7 +2609,15 @@ def case_summary(
     predicted_group: str | None,
     can_suggest_drug: bool,
 ) -> dict[str, str]:
-    diagnosis = heuristic_diagnosis(active_symptoms) or dataset_diagnosis(active_symptoms) or "Cần bổ sung thông tin"
+    # P2: ưu tiên nhãn hội chứng đã curate (tiếng Việt). Chỉ dùng nhãn dataset nếu nó đã
+    # được CURATE sang tiếng Việt (DIAGNOSIS_VI); nhãn thô tiếng Anh (spinal stenosis, gout,
+    # hemorrhoids, Drug Reaction...) KHÔNG hiển thị như chẩn đoán chắc chắn.
+    diagnosis = heuristic_diagnosis(active_symptoms)
+    if not diagnosis:
+        raw = dataset_diagnosis(active_symptoms)
+        diagnosis = DIAGNOSIS_VI.get(raw) if raw else None
+    if not diagnosis:
+        diagnosis = "Chưa đủ cơ sở cho chẩn đoán cụ thể (tham khảo theo triệu chứng)"
     diagnosis = DIAGNOSIS_VI.get(diagnosis, diagnosis)
     drug_group = predicted_group if can_suggest_drug and predicted_group else "Chưa đủ dữ liệu để gợi ý thuốc"
     return {

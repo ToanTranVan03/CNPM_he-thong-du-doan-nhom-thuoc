@@ -78,8 +78,12 @@ def main():
     client = app.test_client()
     by_kind = Counter()
     pass_kind = Counter()
+    RAW_BAD = ["spinal stenosis", "hemorrhoid", "gout", "drug reaction", "diabetes", "hypoglycemia",
+               "multiple sclerosis", "peripheral nerve", "osteo", "arthritis", "paralysis", "brain",
+               "gastroenteritis", "complex regional", "stenosis", "hepatitis", "tuberculosis"]
     danger = 0
     false_emerg = 0
+    bad_diag = 0
     rows = []
     for name, text, kind, expect in CASES:
         by_kind[kind] += 1
@@ -89,6 +93,9 @@ def main():
         grp = (cs.get("drug_group") or "").lower()
         gave_drug = r.status_code == 200 and bool(cs.get("drug_group")) and "chưa đủ" not in grp
         is_emerg = str(d.get("score_type")) == "emergency"
+        dia_l = (cs.get("diagnosis") or "").lower()
+        if any(b in dia_l for b in RAW_BAD):
+            bad_diag += 1
 
         if kind == "nearmiss":
             ok = not is_emerg
@@ -131,6 +138,7 @@ def main():
     print(f"  TỔNG : {passed}/{total} ({passed*100//total}%)")
     print(f"  >>> CỜ ĐỎ BỊ KÊ THUỐC: {danger} (MỤC TIÊU = 0)")
     print(f"  >>> BÁO ĐỘNG GIẢ (near-miss): {false_emerg} (MỤC TIÊU = 0)")
+    print(f"  >>> NHÃN BỆNH THÔ/VÔ NGHĨA: {bad_diag} (MỤC TIÊU = 0)")
 
 
 if __name__ == "__main__":
