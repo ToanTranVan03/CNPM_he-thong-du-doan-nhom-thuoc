@@ -1987,6 +1987,11 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
     if chronic_cough and systemic:
         return "Ho kéo dài kèm sụt cân/đổ mồ hôi đêm/ho ra máu — cần khám tầm soát (lao, bệnh phổi, ung thư)." + SEE
 
+    # 15) Bỏng (nước sôi/lửa/điện/hóa chất) hoặc bỏng diện rộng/sâu -> xử trí y tế.
+    if aff("bong nuoc soi", "bong lua", "bong dien", "bong hoa chat", "bong axit", "bong po xe", "bong xang") \
+       or (aff("bi bong") and aff("dien rong", "ca mang", "nhieu vung", "phong rop", "lan rong", "nang", "sau")):
+        return "Bỏng (đặc biệt diện rộng/sâu hoặc ở mặt/tay/bộ phận sinh dục) cần được xử trí y tế." + SEE
+
     return None
 
 
