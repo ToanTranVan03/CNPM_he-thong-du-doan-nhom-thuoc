@@ -1,0 +1,54 @@
+{
+  "summary": {
+    "split": "all",
+    "cases": 48,
+    "cases_checksum": "3412dfb8a2d572d6",
+    "red_flag_drug_count": 0,
+    "safety_recall_pct": 100.0,
+    "false_emergency_count": 0,
+    "bad_label_count": 0,
+    "contract_failure_count": 0,
+    "group_accuracy_pct": 94.1,
+    "abstain_accuracy_pct": 93.8,
+    "counts": {
+      "urgent": 15,
+      "urgent_blocked": 15,
+      "red_flag_drug": 0,
+      "suggest": 17,
+      "suggest_correct": 16,
+      "suggest_wrong": 0,
+      "suggest_abstained": 1,
+      "abstain": 16,
+      "abstain_ok": 15,
+      "false_emergency": 0,
+      "bad_label": 0,
+      "contract_fail": 0
+    }
+  },
+  "failures": [
+    {
+      "id": "drg14",
+      "text": "Tôi đau đầu nhẹ kiểu căng thẳng sau ngày làm việc, không sốt.",
+      "action": "suggest",
+      "status": 422,
+      "score_type": "rule",
+      "drug_group": "Chưa đủ dữ liệu để gợi ý thuốc",
+      "diagnosis": "Đau đầu/chóng mặt chưa rõ nguyên nhân (cần bổ sung thông tin)",
+      "why": "né (lẽ ra gợi ý)",
+      "bad_label": false,
+      "contract": []
+    },
+    {
+      "id": "ctl03",
+      "text": "Tôi đau bụng nhẹ lan tỏa, không sốt, không đau khu trú.",
+      "action": "abstain",
+      "status": 200,
+      "score_type": "rule",
+      "drug_group": "thuốc điều trị dạ dày",
+      "diagnosis": "Đau bụng/khó chịu tiêu hóa (cần bổ sung thông tin)",
+      "why": "quá tự tin (lẽ ra hỏi thêm)",
+      "bad_label": false,
+      "contract": []
+    }
+  ]
+}

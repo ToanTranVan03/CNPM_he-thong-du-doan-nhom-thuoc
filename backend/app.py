@@ -69,13 +69,38 @@ LABEL_TYPE = metadata.get("label_type", "disease")
 MIN_RELIABLE_CONFIDENCE = 0.5
 # Ngưỡng scoped (vòng 3): nhóm thuốc "rủi ro cao" (sai gây hại) cần độ tin cậy cao hơn
 # khi do MODEL đoán (score_type != "rule"). Lớp phòng thủ phụ ngoài các rule đặc hiệu.
-MIN_HIGH_RISK_MODEL_CONFIDENCE = 0.6
+MIN_HIGH_RISK_MODEL_CONFIDENCE = 0.85
 HIGH_RISK_DRUG_GROUPS = {
     "thuốc kháng sinh",
     "thuốc tim mạch/huyết áp",
     "thuốc thần kinh/tâm thần",
     "thuốc kháng virus",
+    "thuốc/điều trị ung thư",
 }
+# P2.3: bắt thêm nhóm rủi ro cao theo TỪ KHÓA (kể cả khi tên nhóm khác chính tả/biến thể).
+# Các nhóm này cần kê đơn/bác sĩ -> không auto-suggest tự tin dù do rule hay model.
+HIGH_RISK_GROUP_KEYWORDS = (
+    "kháng sinh", "tim mạch", "huyết áp", "tâm thần", "thần kinh", "kháng virus",
+    "ung thư", "chống đông", "kháng tiểu cầu", "nội tiết", "miễn dịch", "opioid",
+)
+
+
+def is_high_risk_group(group) -> bool:
+    if not group:
+        return False
+    g = str(group).lower()
+    return group in HIGH_RISK_DRUG_GROUPS or any(k in g for k in HIGH_RISK_GROUP_KEYWORDS)
+
+
+# P4: nhóm KHÔNG BAO GIỜ tự gợi ý qua công cụ OTC (điều trị chuyên sâu) -> luôn chuyển khám.
+NEVER_SUGGEST_KEYWORDS = ("ung thư", "ung bướu", "hóa trị", "miễn dịch")
+
+
+def is_never_suggest_group(group) -> bool:
+    if not group:
+        return False
+    g = str(group).lower()
+    return any(k in g for k in NEVER_SUGGEST_KEYWORDS)
 # Ngưỡng top-gap (vòng 6 Phần A): khi top-1 và top-2 của model SÁT nhau -> model phân vân
 # giữa các nhóm chồng lấn. Phán đoán "trọng" hơn: hạ tin cậy/xin thêm thông tin thay vì đoán
 # bừa. Đặt 0 để TẮT. Đọc env để dễ chỉnh/đo.
@@ -840,6 +865,13 @@ SEMANTIC_ENABLED = os.environ.get("SEMANTIC_MATCH", "1") != "0"
 SEMANTIC_THRESHOLD = float(os.environ.get("SEMANTIC_THRESHOLD", "0.62"))
 # Lớp ngữ nghĩa chỉ chạy khi exact-match thu được < ngưỡng này (fallback).
 SEMANTIC_FALLBACK_MAX = int(os.environ.get("SEMANTIC_FALLBACK_MAX", "2"))
+# P4.4: feature thần kinh "nguy hiểm" KHÔNG được nhận từ semantic match mờ (dễ false-positive,
+# vd "bê vật nặng" -> "weakness of one body side"). Chỉ nhận qua khớp từ khóa chính xác; ca thật
+# vẫn được cổng cờ đỏ raw-text (đột quỵ/co giật...) bắt độc lập với feature extraction.
+SEMANTIC_BLOCKLIST = {
+    "weakness of one body side", "altered sensorium", "coma", "slurred speech", "seizures",
+    "loss of balance", "unsteadiness", "lack of concentration",
+}
 SEMANTIC_READY = False
 if SEMANTIC_ENABLED:
     try:
@@ -1405,12 +1437,17 @@ def symptoms_from_text(text: str) -> set[str]:
     if any(has_phrase(normalized_text, phrase) for phrase in ["mat ca chan sung", "co chan sung"]):
         if "ankle swelling" in feature_lookup:
             matches.add(feature_lookup["ankle swelling"])
+    # P4.4: "mỏi/đau vai gáy" -> neck pain (cơ-xương), tránh trả rỗng -> 400.
+    if any(has_phrase(normalized_text, phrase) for phrase in ["vai gay", "moi vai", "dau vai gay", "moi vai gay", "dau vai"]):
+        if "neck pain" in feature_lookup:
+            matches.add(feature_lookup["neck pain"])
 
     # Lớp ngữ nghĩa (fallback): chỉ kích hoạt khi khớp từ khóa thu được ÍT triệu chứng,
     # để giữ độ chính xác cho ca rõ ràng (exact đủ) và cứu ca lạ (exact bỏ sót).
     if SEMANTIC_READY and len(matches) < SEMANTIC_FALLBACK_MAX:
         try:
-            matches.update(semantic_matcher.match(text, threshold=SEMANTIC_THRESHOLD))
+            sem = semantic_matcher.match(text, threshold=SEMANTIC_THRESHOLD)
+            matches.update(s for s in sem if s not in SEMANTIC_BLOCKLIST)
         except Exception:
             pass
     return matches
@@ -1913,6 +1950,47 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
     if has("mang thai", "co thai", "dang bau", "co bau", "thai ", "thai nhi", "bau "):
         if has("chay mau", "ra mau", "ra dich nau", "dau bung", "dau quan", "dau lung du doi"):
             return "Có thai kèm chảy máu/đau bụng — nguy cơ cấp cứu sản khoa (sảy thai/thai ngoài tử cung)." + GO
+
+    # ── P0 (2026-06-15): bổ sung cờ đỏ còn lọt, đo bằng scripts/independent_probe.py.
+    # Dùng affirmative_mention (aff) để phủ định "không sụt cân"/"không co giật"/"không tê"
+    # KHÔNG kích hoạt cờ đỏ sai (P0.6 near-miss).
+    SEE = " Hãy đi khám bác sĩ sớm để được đánh giá, KHÔNG tự dùng thuốc theo gợi ý."
+    def aff(*ps): return affirmative_mention(t, ps)
+
+    # 10) Đột quỵ (FAST): méo miệng / yếu-liệt nửa người / nói khó khởi phát đột ngột
+    if aff("meo mieng", "lech mat", "lech mieng", "mieng meo",
+           "yeu nua nguoi", "liet nua nguoi", "te nua nguoi", "yeu mot ben nguoi", "liet mot ben nguoi") \
+       or (aff("noi kho", "noi ngong", "kho noi", "noi dap") and has("dot ngot")):
+        return "Dấu hiệu nghi ĐỘT QUỴ (méo miệng, yếu/liệt nửa người, nói khó)." + GO
+
+    # 11) Chèn ép tủy/đuôi ngựa: yếu liệt 2 chân + bí tiểu / tê vùng yên ngựa
+    saddle = aff("te yen ngua", "te vung yen ngua", "te bo phan sinh duc", "mat cam giac yen ngua", "te hau mon")
+    leg_weak = aff("yeu hai chan", "liet hai chan", "yeu hai chi duoi", "liet hai chi duoi", "yeu chan dot ngot", "liet chan dot ngot")
+    bladder = aff("bi tieu", "tieu khong tu chu", "dai khong tu chu", "mat tu chu tieu", "khong di tieu duoc")
+    if saddle or (leg_weak and bladder):
+        return "Yếu/liệt hai chân kèm bí tiểu hoặc tê vùng yên ngựa — nghi chèn ép tủy/đuôi ngựa." + GO
+
+    # 12) Đau đầu sét đánh: khởi phát đột ngột + dữ dội (nghi xuất huyết dưới nhện)
+    if aff("dau dau", "nhuc dau", "dau nua dau") and aff("dot ngot", "bat ngo", "set danh", "ngay lap tuc") \
+       and aff("du doi", "du doi nhat", "nhat tu truoc toi nay", "te nhat", "khung khiep", "nang chua tung"):
+        return "Đau đầu dữ dội khởi phát đột ngột (đau đầu sét đánh) — nghi xuất huyết não/dưới nhện." + GO
+
+    # 13) Đau hố chậu phải khu trú — nghi viêm ruột thừa
+    if aff("ho chau phai", "hcp", "bung duoi ben phai", "bung duoi phai", "1/4 duoi phai", "vung chau phai") \
+       and aff("dau"):
+        return "Đau khu trú hố chậu phải — nghi viêm ruột thừa, cần khám ngoại khoa ngay." + GO
+
+    # 14) Ho kéo dài + sụt cân / mồ hôi đêm / ho ra máu — tầm soát lao/bệnh phổi/ung thư
+    chronic_cough = aff("ho keo dai", "ho dai dang", "ho man", "ho lau ngay", "ho nhieu tuan", "ho may tuan",
+                        "ho 2 tuan", "ho 3 tuan", "ho ba tuan", "ho hai tuan", "ho khan keo dai", "ho may thang")
+    systemic = aff("sut can", "giam can", "gay sut", "mo hoi dem", "do mo hoi dem", "ra mo hoi dem", "ho ra mau", "khac ra mau")
+    if chronic_cough and systemic:
+        return "Ho kéo dài kèm sụt cân/đổ mồ hôi đêm/ho ra máu — cần khám tầm soát (lao, bệnh phổi, ung thư)." + SEE
+
+    # 15) Bỏng (nước sôi/lửa/điện/hóa chất) hoặc bỏng diện rộng/sâu -> xử trí y tế.
+    if aff("bong nuoc soi", "bong lua", "bong dien", "bong hoa chat", "bong axit", "bong po xe", "bong xang") \
+       or (aff("bi bong") and aff("dien rong", "ca mang", "nhieu vung", "phong rop", "lan rong", "nang", "sau")):
+        return "Bỏng (đặc biệt diện rộng/sâu hoặc ở mặt/tay/bộ phận sinh dục) cần được xử trí y tế." + SEE
 
     return None
 
@@ -2488,6 +2566,20 @@ def heuristic_diagnosis(active_symptoms: set[str]) -> str | None:
     if has_any_symptom(active_symptoms, ["itching", "skin rash", "nodal skin eruptions", "dischromic patches"]):
         return "Nấm da / viêm da (tham khảo)"
 
+    # P2 (2026-06-15): nhãn hội chứng cho các khoảng trống thường gặp, tránh rơi xuống
+    # dataset_diagnosis trả nhãn thô vô nghĩa (spinal stenosis, hemorrhoids, gout...).
+    if has_any_symptom(active_symptoms, ["muscle pain", "joint pain", "knee pain", "hip joint pain", "neck pain", "back pain", "cramps", "painful walking", "swelling joints", "movement stiffness", "muscle weakness"]):
+        return "Đau cơ-xương-khớp (tham khảo)"
+
+    if has_any_symptom(active_symptoms, ["constipation"]):
+        return "Táo bón (tham khảo)"
+
+    if has_any_symptom(active_symptoms, ["acidity", "indigestion", "passage of gases"]):
+        return "Khó tiêu / trào ngược dạ dày (tham khảo)"
+
+    if has_any_symptom(active_symptoms, ["burning micturition", "bladder discomfort", "spotting urination", "foul smell of urine", "continuous feel of urine"]):
+        return "Triệu chứng tiết niệu (tham khảo)"
+
     return None
 
 
@@ -2559,7 +2651,15 @@ def case_summary(
     predicted_group: str | None,
     can_suggest_drug: bool,
 ) -> dict[str, str]:
-    diagnosis = heuristic_diagnosis(active_symptoms) or dataset_diagnosis(active_symptoms) or "Cần bổ sung thông tin"
+    # P2: ưu tiên nhãn hội chứng đã curate (tiếng Việt). Chỉ dùng nhãn dataset nếu nó đã
+    # được CURATE sang tiếng Việt (DIAGNOSIS_VI); nhãn thô tiếng Anh (spinal stenosis, gout,
+    # hemorrhoids, Drug Reaction...) KHÔNG hiển thị như chẩn đoán chắc chắn.
+    diagnosis = heuristic_diagnosis(active_symptoms)
+    if not diagnosis:
+        raw = dataset_diagnosis(active_symptoms)
+        diagnosis = DIAGNOSIS_VI.get(raw) if raw else None
+    if not diagnosis:
+        diagnosis = "Chưa đủ cơ sở cho chẩn đoán cụ thể (tham khảo theo triệu chứng)"
     diagnosis = DIAGNOSIS_VI.get(diagnosis, diagnosis)
     drug_group = predicted_group if can_suggest_drug and predicted_group else "Chưa đủ dữ liệu để gợi ý thuốc"
     return {
@@ -2919,12 +3019,35 @@ def predict():
     if (
         score_type != "rule"
         and confidence is not None
-        and prediction in HIGH_RISK_DRUG_GROUPS
+        and is_high_risk_group(prediction)
         and confidence < MIN_HIGH_RISK_MODEL_CONFIDENCE
     ):
         quality_reasons.append(
             f"Nhóm '{prediction}' là nhóm rủi ro cao, nhưng độ tin cậy chỉ {confidence * 100:.1f}% "
             f"(< {MIN_HIGH_RISK_MODEL_CONFIDENCE * 100:.0f}%); cần thêm triệu chứng để khẳng định."
+        )
+    # P2.3: nhóm rủi ro cao KHI DO RULE đoán cũng cần bác sĩ xác nhận (kê đơn) -> không tự dùng.
+    # Rule vẫn ngăn model đoán bừa, nhưng output chuyển sang "đi khám" thay vì kê thuốc tự tin.
+    if score_type == "rule" and is_high_risk_group(prediction):
+        quality_reasons.append(
+            f"Nhóm '{prediction}' là nhóm thuốc cần kê đơn/chỉ định của bác sĩ; không tự dùng theo "
+            "gợi ý. Hãy đi khám để được đánh giá và chỉ định đúng."
+        )
+    # P4: nhóm KHÔNG BAO GIỜ tự gợi ý (ung thư/điều trị chuyên sâu) -> luôn chuyển khám.
+    if is_never_suggest_group(prediction):
+        quality_reasons.append(
+            "Nhóm này thuộc điều trị chuyên sâu (vd ung thư/miễn dịch), không thể tự gợi ý qua công cụ "
+            "tham khảo; cần bác sĩ chuyên khoa đánh giá trực tiếp."
+        )
+    # P4: triệu chứng tai -> khám tai mũi họng, chưa tự dùng thuốc.
+    if LABEL_TYPE == "drug_group" and has_any_symptom(active_symptoms, ["ear pain", "fluid in ear", "diminished hearing"]):
+        quality_reasons.append(
+            "Triệu chứng tai (đau tai/chảy dịch/nghe kém) nên được bác sĩ tai mũi họng đánh giá; chưa nên tự dùng thuốc."
+        )
+    # P4: chỉ có triệu chứng KHÔNG ĐẶC HIỆU (mệt mỏi/uể oải) -> cần thêm triệu chứng cụ thể.
+    if score_type != "rule" and active_symptoms and set(active_symptoms).issubset({"fatigue", "malaise", "lethargy"}):
+        quality_reasons.append(
+            "Chỉ ghi nhận triệu chứng không đặc hiệu (mệt mỏi/uể oải); cần thêm triệu chứng cụ thể để định hướng."
         )
     # Top-gap (vòng 6): model phân vân giữa 2 nhóm sát nhau -> phán đoán "trọng" hơn bằng cách
     # xin thêm thông tin thay vì đoán bừa. Chỉ áp cho model path, khi top-1 chưa vượt trội.
