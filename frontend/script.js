@@ -347,6 +347,25 @@ function renderSavedHistory() {
     });
 }
 
+function setConfidenceLevel(level) {
+  const box = confidenceBar.closest(".confidence-box");
+  if (!box) {
+    return;
+  }
+  box.dataset.level = level;
+  const tag = box.querySelector(".confidence-tag");
+  if (tag) {
+    const labels = {
+      high: "Tin cậy cao",
+      mid: "Tin cậy trung bình",
+      low: "Tin cậy thấp",
+      rule: "Theo rule an toàn",
+      none: "Chưa đủ dữ liệu",
+    };
+    tag.textContent = labels[level] || "";
+  }
+}
+
 function renderPrediction(result) {
   const isRuleBased = result.score_type === "rule";
   const confidence = result.confidence === null || result.confidence === undefined ? "0.0" : (result.confidence * 100).toFixed(1);
@@ -363,6 +382,18 @@ function renderPrediction(result) {
   }
   confidenceValue.textContent = isRuleBased ? "Theo rule" : `${confidence}%`;
   confidenceBar.style.width = isRuleBased ? "100%" : `${confidence}%`;
+  const confidencePct = parseFloat(confidence);
+  let confidenceLevel;
+  if (isRuleBased) {
+    confidenceLevel = "rule";
+  } else if (isUncertain || confidencePct < 50) {
+    confidenceLevel = "low";
+  } else if (confidencePct < 75) {
+    confidenceLevel = "mid";
+  } else {
+    confidenceLevel = "high";
+  }
+  setConfidenceLevel(confidenceLevel);
   resultTitle.textContent = result.display_title || result.disease_vi || result.disease;
   resultSubtitle.textContent = `${matchedCount} triệu chứng đã map sang đặc trưng tiếng Anh`;
   if (unsupportedLabels.length > 0) {
@@ -409,9 +440,28 @@ function renderPrediction(result) {
     topPredictions.appendChild(li);
   }
   (result.top_predictions || []).forEach((prediction) => {
-    const li = document.createElement("li");
     const score = prediction.similarity_score ?? prediction.probability;
-    li.textContent = `${prediction.disease_vi || prediction.disease}: ${Math.round(score * 100)}%`;
+    const pct = Math.max(0, Math.min(100, Math.round((score || 0) * 100)));
+
+    const li = document.createElement("li");
+    li.className = "prediction-row";
+
+    const name = document.createElement("span");
+    name.className = "prediction-name";
+    name.textContent = prediction.disease_vi || prediction.disease;
+
+    const value = document.createElement("span");
+    value.className = "prediction-value";
+    value.textContent = `${pct}%`;
+
+    const track = document.createElement("span");
+    track.className = "prediction-track";
+    const fill = document.createElement("span");
+    fill.className = "prediction-fill";
+    fill.style.width = `${pct}%`;
+    track.appendChild(fill);
+
+    li.append(name, value, track);
     topPredictions.appendChild(li);
   });
 
@@ -429,6 +479,7 @@ function renderInsufficientInput(result) {
   }
   confidenceValue.textContent = "Chưa đủ";
   confidenceBar.style.width = "0%";
+  setConfidenceLevel("none");
   resultTitle.textContent = "Chưa đủ dữ liệu để gợi ý nhóm thuốc";
   resultSubtitle.textContent = matchedLabels.length
     ? `${matchedLabels.length} triệu chứng đã map: ${matchedLabels.join(", ")}`
@@ -646,6 +697,52 @@ saveResultButton.addEventListener("click", () => {
   showPage("history");
 });
 
+const THEME_KEY = "pharmaPredictTheme";
+const themeToggles = document.querySelectorAll(".theme-toggle");
+
+function applyTheme(theme) {
+  const isDark = theme === "dark";
+  document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+  const actionLabel = isDark ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối";
+  themeToggles.forEach((button) => {
+    button.setAttribute("aria-pressed", String(isDark));
+    button.setAttribute("aria-label", actionLabel);
+    button.setAttribute("title", actionLabel);
+    const icon = button.querySelector(".material-symbols-outlined");
+    if (icon) {
+      icon.textContent = isDark ? "light_mode" : "dark_mode";
+    }
+    const label = button.querySelector(".theme-toggle-label");
+    if (label) {
+      label.textContent = isDark ? "Giao diện sáng" : "Giao diện tối";
+    }
+  });
+}
+
+function initTheme() {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(THEME_KEY);
+  } catch {
+    stored = null;
+  }
+  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(stored || (prefersDark ? "dark" : "light"));
+}
+
+themeToggles.forEach((button) => {
+  button.addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch {
+      // Bỏ qua nếu localStorage không khả dụng; vẫn đổi theme trong phiên.
+    }
+    applyTheme(next);
+  });
+});
+
+initTheme();
 updateCharCount();
 updateSelectedCount();
 initializeAuth();

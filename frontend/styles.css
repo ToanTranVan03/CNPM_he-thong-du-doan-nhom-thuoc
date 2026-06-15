@@ -1,24 +1,86 @@
 :root {
-  --surface: #f8f9ff;
-  --surface-lowest: #ffffff;
-  --surface-low: #eff4ff;
-  --surface-container: #e5eeff;
-  --surface-high: #dce9ff;
-  --surface-highest: #d3e4fe;
-  --text: #0b1c30;
-  --text-muted: #414753;
-  --outline: #c1c6d5;
-  --primary: #004e9f;
-  --primary-action: #0066cc;
-  --primary-soft: #d7e3ff;
-  --secondary: #006970;
-  --secondary-soft: #7af1fc;
-  --success: #136f46;
-  --warning: #946200;
-  --warning-bg: #fff3cf;
-  --error: #ba1a1a;
-  --shadow: 0 18px 40px rgba(0, 64, 128, 0.08);
+  /* Surfaces — tên token cũ giữ nguyên, làm mới theo bảng màu lâm sàng (DESIGN_SYSTEM.md) */
+  --surface: #f5f7fb;          /* nền trang (bg) */
+  --surface-lowest: #ffffff;   /* card / panel */
+  --surface-low: #eef2f8;      /* field, chip nền */
+  --surface-container: #e8eef7;
+  --surface-high: #dde7f5;
+  --surface-highest: #d7e6fb;  /* nhấn nhẹ primary */
+  --text: #0e1b2b;
+  --text-muted: #5a6675;
+  --text-subtle: #8a95a3;      /* placeholder, caption */
+  --outline: #dce3ed;          /* border */
+  --primary: #0b5fb5;
+  --primary-action: #0b5fb5;
+  --primary-hover: #0a4f97;
+  --primary-contrast: #ffffff;
+  --primary-soft: #d7e6fb;
+  --secondary: #0f7a86;
+  --secondary-soft: #7de3ec;
+  --accent: #e8722b;
+  --accent-soft: #fce8d8;
+  --success: #1b8a5a;
+  --success-soft: #daf1e6;
+  --warning: #b7791f;
+  --warning-bg: #fbf0d6;
+  --warning-soft: #fbf0d6;
+  --danger: #c0392b;
+  --danger-soft: #fbe3e0;
+  --error: #c0392b;
+  --track: #dbe2ec;            /* nền thanh tiến trình */
+  /* Spacing scale (4px base) */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+  /* Radius */
   --radius: 8px;
+  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-pill: 999px;
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(14, 27, 43, 0.06);
+  --shadow-md: 0 6px 16px rgba(14, 27, 43, 0.08);
+  --shadow-lg: 0 18px 40px rgba(11, 95, 181, 0.12);
+  --shadow: var(--shadow-md);
+  /* Thang độ tin cậy */
+  --confidence-low: var(--danger);
+  --confidence-mid: var(--warning);
+  --confidence-high: var(--success);
+  color-scheme: light;
+}
+
+/* ===== Dark mode — override token, áp dụng toàn cục cho UI hiện có ===== */
+[data-theme="dark"] {
+  --surface: #0c1420;
+  --surface-lowest: #141f2e;
+  --surface-low: #1c2a3c;
+  --surface-container: #1c2a3c;
+  --surface-high: #243349;
+  --surface-highest: #16304d;
+  --text: #e6edf5;
+  --text-muted: #9daaba;
+  --text-subtle: #7d8a9b;
+  --outline: #26354a;
+  --primary: #3d8fe0;
+  --primary-action: #3d8fe0;
+  --primary-hover: #5aa0e8;
+  --primary-contrast: #0c1420;
+  --primary-soft: #16304d;
+  --secondary: #4fd0dd;
+  --secondary-soft: #2b6f78;
+  --accent: #f0894d;
+  --accent-soft: #3a2a1d;
+  --success: #3fae7c;
+  --success-soft: #152a22;
+  --warning: #d4a23f;
+  --warning-bg: #2e2718;
+  --warning-soft: #2e2718;
+  --danger: #e06a5d;
+  --danger-soft: #321f1d;
+  --error: #e06a5d;
+  --track: #26354a;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 18px 40px rgba(0, 0, 0, 0.5);
+  --shadow: var(--shadow-md);
+  color-scheme: dark;
 }
 
 * {
@@ -87,6 +149,7 @@ button {
 }
 
 .auth-screen {
+  position: relative;
   min-height: 100vh;
   display: grid;
   place-items: center;
@@ -164,7 +227,7 @@ button {
   width: 230px;
   padding: 22px 16px;
   background: var(--surface-lowest);
-  border-right: 1px solid #e2e7f2;
+  border-right: 1px solid var(--outline);
   box-shadow: 8px 0 26px rgba(0, 64, 128, 0.04);
 }
 
@@ -179,7 +242,7 @@ button {
   align-items: center;
   gap: 10px;
   margin-bottom: 28px;
-  color: #172033;
+  color: var(--text);
   text-decoration: none;
   font-weight: 800;
   font-size: 14px;
@@ -213,7 +276,7 @@ button {
   align-items: center;
   gap: 10px;
   padding-top: 16px;
-  border-top: 1px solid #e2e7f2;
+  border-top: 1px solid var(--outline);
 }
 
 .sidebar-user strong,
@@ -265,7 +328,7 @@ button {
 
 .nav-link:hover,
 .nav-link.is-active {
-  background: #eaf3ff;
+  background: var(--primary-soft);
   color: var(--primary);
 }
 
@@ -652,7 +715,7 @@ input:focus {
 .case-summary-table th,
 .case-summary-table td {
   padding: 18px 24px;
-  border-bottom: 1px solid #e6e8ef;
+  border-bottom: 1px solid var(--outline);
   text-align: left;
   vertical-align: top;
   line-height: 1.55;
@@ -660,7 +723,7 @@ input:focus {
 }
 
 .case-summary-table th {
-  color: #050f1f;
+  color: var(--text);
   font-size: 15px;
   font-weight: 800;
 }
@@ -755,7 +818,7 @@ input:focus {
   height: 12px;
   border-radius: 999px;
   overflow: hidden;
-  background: #d6dde9;
+  background: var(--track);
 }
 
 .progress-bar span {
@@ -819,84 +882,8 @@ input:focus {
 }
 
 .warning-card {
-  border-color: #f4c15d;
+  border-color: var(--warning);
   background: var(--warning-bg);
-}
-
-.molecule-card {
-  min-height: 260px;
-  position: relative;
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: center;
-  padding: 24px;
-  border-radius: var(--radius);
-  background: #16253a;
-  color: #fff;
-}
-
-.molecule-card .eyebrow,
-.molecule-card p {
-  color: var(--secondary-soft);
-}
-
-.top-predictions {
-  margin: 12px 0 0;
-  padding-left: 18px;
-  line-height: 1.8;
-  color: rgba(255, 255, 255, 0.88);
-}
-
-.molecule-art {
-  position: relative;
-  height: 190px;
-}
-
-.molecule-art::before,
-.molecule-art::after {
-  content: "";
-  position: absolute;
-  inset: 48px 28px;
-  border: 2px solid rgba(122, 241, 252, 0.45);
-  transform: rotate(28deg);
-}
-
-.molecule-art::after {
-  inset: 66px 10px;
-  border-color: rgba(170, 199, 255, 0.45);
-  transform: rotate(-18deg);
-}
-
-.molecule-art span {
-  position: absolute;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--secondary-soft);
-  box-shadow: 0 0 26px rgba(122, 241, 252, 0.55);
-}
-
-.molecule-art span:nth-child(1) {
-  top: 18px;
-  left: 34px;
-}
-
-.molecule-art span:nth-child(2) {
-  top: 80px;
-  right: 28px;
-  background: #aac7ff;
-}
-
-.molecule-art span:nth-child(3) {
-  bottom: 20px;
-  left: 72px;
-  background: #fff;
-}
-
-.molecule-art span:nth-child(4) {
-  bottom: 54px;
-  right: 88px;
 }
 
 .status-pill {
@@ -912,7 +899,7 @@ input:focus {
 
 .status-secure,
 .status-success {
-  background: #dff6ea;
+  background: var(--success-soft);
   color: var(--success);
 }
 
@@ -1041,7 +1028,7 @@ input:focus {
   grid-template-columns: repeat(4, 1fr);
   padding: 8px 12px 10px;
   border-top: 1px solid var(--outline);
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-lowest);
   backdrop-filter: blur(14px);
 }
 
@@ -1156,8 +1143,266 @@ input:focus {
   .secondary-button {
     width: 100%;
   }
+}
 
-  .molecule-card {
-    grid-template-columns: 1fr;
+/* ===== Focus system dùng chung (GĐ0.6) ===== */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ===== Dark mode toggle (GĐ0.7) ===== */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-lowest);
+  color: var(--primary);
+  transition: filter 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+
+.theme-toggle:hover {
+  filter: brightness(0.97);
+  transform: translateY(-1px);
+}
+
+.theme-toggle .material-symbols-outlined {
+  font-size: 20px;
+}
+
+/* Toggle trên sidebar: dạng nav full-width có nhãn */
+.app-sidebar .theme-toggle {
+  width: 100%;
+  min-height: 42px;
+  justify-content: flex-start;
+  padding: 0 12px;
+  margin-top: 10px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.app-sidebar .theme-toggle:hover {
+  background: var(--primary-soft);
+  color: var(--primary);
+  transform: none;
+}
+
+/* Toggle trên màn auth: icon tròn, góc trên phải */
+.auth-theme-toggle {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  justify-content: center;
+  padding: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle,
+  .primary-button,
+  .secondary-button,
+  .white-button,
+  .text-button,
+  .icon-button {
+    transition: none;
   }
+}
+
+/* ============================================================
+   GIAI ĐOẠN 1 — Component refinement
+   ============================================================ */
+
+/* Buttons: hover rõ hơn bằng --primary-hover */
+.primary-button {
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.primary-button:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  filter: none;
+}
+
+.secondary-button:hover,
+.icon-button:hover,
+.theme-toggle:hover {
+  background: var(--primary-soft);
+}
+
+/* Chip: chuyển động nhẹ + target chạm 44px trên mobile */
+.symptom-chip,
+.suggested-symptom-chip {
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.symptom-chip.is-selected::before {
+  content: "check";
+  font-family: "Material Symbols Outlined";
+  font-size: 16px;
+  margin-right: 4px;
+  vertical-align: -3px;
+}
+
+@media (max-width: 560px) {
+  .symptom-chip,
+  .suggested-symptom-chip {
+    min-height: 40px;
+  }
+}
+
+/* Status pill: bổ sung variant warning / danger / neutral */
+.status-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.status-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.status-neutral {
+  background: var(--surface-low);
+  color: var(--text-muted);
+}
+
+/* ============================================================
+   TRANG KẾT QUẢ (2A) — Confidence Gauge + Prediction Bar
+   ============================================================ */
+
+/* Confidence meter đổi màu theo thang độ tin cậy (<50 / 50-74 / >=75) */
+.confidence-box strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.confidence-box[data-level="high"] strong {
+  color: var(--success);
+}
+.confidence-box[data-level="mid"] strong {
+  color: var(--warning);
+}
+.confidence-box[data-level="low"] strong {
+  color: var(--danger);
+}
+.confidence-box[data-level="rule"] strong {
+  color: var(--primary);
+}
+.confidence-box[data-level="none"] strong {
+  color: var(--text-muted);
+}
+
+#confidence-bar {
+  background: var(--primary);
+}
+.confidence-box[data-level="high"] #confidence-bar {
+  background: var(--success);
+}
+.confidence-box[data-level="mid"] #confidence-bar {
+  background: var(--warning);
+}
+.confidence-box[data-level="low"] #confidence-bar {
+  background: var(--danger);
+}
+.confidence-box[data-level="none"] #confidence-bar {
+  background: var(--text-subtle);
+}
+
+/* Nhãn chữ độ tin cậy (a11y: không chỉ dựa vào màu) */
+.confidence-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 12px;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 800;
+  background: var(--surface-lowest);
+  color: var(--text-muted);
+}
+
+.confidence-box[data-level="high"] .confidence-tag {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.confidence-box[data-level="mid"] .confidence-tag {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.confidence-box[data-level="low"] .confidence-tag {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.confidence-box[data-level="rule"] .confidence-tag {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+/* Prediction Bar top-3 thay cho minh họa phân tử trang trí */
+.predictions-card .eyebrow {
+  margin-bottom: 6px;
+}
+
+.top-predictions {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  color: var(--text);
+}
+
+.top-predictions > li {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.prediction-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px;
+  grid-template-areas:
+    "name value"
+    "track track";
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.prediction-name {
+  grid-area: name;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.prediction-value {
+  grid-area: value;
+  text-align: right;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary);
+}
+
+.prediction-track {
+  grid-area: track;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--track);
+  overflow: hidden;
+}
+
+.prediction-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
 }
