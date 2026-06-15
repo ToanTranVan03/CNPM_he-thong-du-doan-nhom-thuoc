@@ -69,7 +69,7 @@ LABEL_TYPE = metadata.get("label_type", "disease")
 MIN_RELIABLE_CONFIDENCE = 0.5
 # Ngưỡng scoped (vòng 3): nhóm thuốc "rủi ro cao" (sai gây hại) cần độ tin cậy cao hơn
 # khi do MODEL đoán (score_type != "rule"). Lớp phòng thủ phụ ngoài các rule đặc hiệu.
-MIN_HIGH_RISK_MODEL_CONFIDENCE = 0.75
+MIN_HIGH_RISK_MODEL_CONFIDENCE = 0.85
 HIGH_RISK_DRUG_GROUPS = {
     "thuốc kháng sinh",
     "thuốc tim mạch/huyết áp",
@@ -90,6 +90,17 @@ def is_high_risk_group(group) -> bool:
         return False
     g = str(group).lower()
     return group in HIGH_RISK_DRUG_GROUPS or any(k in g for k in HIGH_RISK_GROUP_KEYWORDS)
+
+
+# P4: nhóm KHÔNG BAO GIỜ tự gợi ý qua công cụ OTC (điều trị chuyên sâu) -> luôn chuyển khám.
+NEVER_SUGGEST_KEYWORDS = ("ung thư", "ung bướu", "hóa trị", "miễn dịch")
+
+
+def is_never_suggest_group(group) -> bool:
+    if not group:
+        return False
+    g = str(group).lower()
+    return any(k in g for k in NEVER_SUGGEST_KEYWORDS)
 # Ngưỡng top-gap (vòng 6 Phần A): khi top-1 và top-2 của model SÁT nhau -> model phân vân
 # giữa các nhóm chồng lấn. Phán đoán "trọng" hơn: hạ tin cậy/xin thêm thông tin thay vì đoán
 # bừa. Đặt 0 để TẮT. Đọc env để dễ chỉnh/đo.
@@ -3004,6 +3015,22 @@ def predict():
         quality_reasons.append(
             f"Nhóm '{prediction}' là nhóm thuốc cần kê đơn/chỉ định của bác sĩ; không tự dùng theo "
             "gợi ý. Hãy đi khám để được đánh giá và chỉ định đúng."
+        )
+    # P4: nhóm KHÔNG BAO GIỜ tự gợi ý (ung thư/điều trị chuyên sâu) -> luôn chuyển khám.
+    if is_never_suggest_group(prediction):
+        quality_reasons.append(
+            "Nhóm này thuộc điều trị chuyên sâu (vd ung thư/miễn dịch), không thể tự gợi ý qua công cụ "
+            "tham khảo; cần bác sĩ chuyên khoa đánh giá trực tiếp."
+        )
+    # P4: triệu chứng tai -> khám tai mũi họng, chưa tự dùng thuốc.
+    if LABEL_TYPE == "drug_group" and has_any_symptom(active_symptoms, ["ear pain", "fluid in ear", "diminished hearing"]):
+        quality_reasons.append(
+            "Triệu chứng tai (đau tai/chảy dịch/nghe kém) nên được bác sĩ tai mũi họng đánh giá; chưa nên tự dùng thuốc."
+        )
+    # P4: chỉ có triệu chứng KHÔNG ĐẶC HIỆU (mệt mỏi/uể oải) -> cần thêm triệu chứng cụ thể.
+    if score_type != "rule" and active_symptoms and set(active_symptoms).issubset({"fatigue", "malaise", "lethargy"}):
+        quality_reasons.append(
+            "Chỉ ghi nhận triệu chứng không đặc hiệu (mệt mỏi/uể oải); cần thêm triệu chứng cụ thể để định hướng."
         )
     # Top-gap (vòng 6): model phân vân giữa 2 nhóm sát nhau -> phán đoán "trọng" hơn bằng cách
     # xin thêm thông tin thay vì đoán bừa. Chỉ áp cho model path, khi top-1 chưa vượt trội.
