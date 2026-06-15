@@ -1914,6 +1914,42 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
         if has("chay mau", "ra mau", "ra dich nau", "dau bung", "dau quan", "dau lung du doi"):
             return "Có thai kèm chảy máu/đau bụng — nguy cơ cấp cứu sản khoa (sảy thai/thai ngoài tử cung)." + GO
 
+    # ── P0 (2026-06-15): bổ sung cờ đỏ còn lọt, đo bằng scripts/independent_probe.py.
+    # Dùng affirmative_mention (aff) để phủ định "không sụt cân"/"không co giật"/"không tê"
+    # KHÔNG kích hoạt cờ đỏ sai (P0.6 near-miss).
+    SEE = " Hãy đi khám bác sĩ sớm để được đánh giá, KHÔNG tự dùng thuốc theo gợi ý."
+    def aff(*ps): return affirmative_mention(t, ps)
+
+    # 10) Đột quỵ (FAST): méo miệng / yếu-liệt nửa người / nói khó khởi phát đột ngột
+    if aff("meo mieng", "lech mat", "lech mieng", "mieng meo",
+           "yeu nua nguoi", "liet nua nguoi", "te nua nguoi", "yeu mot ben nguoi", "liet mot ben nguoi") \
+       or (aff("noi kho", "noi ngong", "kho noi", "noi dap") and has("dot ngot")):
+        return "Dấu hiệu nghi ĐỘT QUỴ (méo miệng, yếu/liệt nửa người, nói khó)." + GO
+
+    # 11) Chèn ép tủy/đuôi ngựa: yếu liệt 2 chân + bí tiểu / tê vùng yên ngựa
+    saddle = aff("te yen ngua", "te vung yen ngua", "te bo phan sinh duc", "mat cam giac yen ngua", "te hau mon")
+    leg_weak = aff("yeu hai chan", "liet hai chan", "yeu hai chi duoi", "liet hai chi duoi", "yeu chan dot ngot", "liet chan dot ngot")
+    bladder = aff("bi tieu", "tieu khong tu chu", "dai khong tu chu", "mat tu chu tieu", "khong di tieu duoc")
+    if saddle or (leg_weak and bladder):
+        return "Yếu/liệt hai chân kèm bí tiểu hoặc tê vùng yên ngựa — nghi chèn ép tủy/đuôi ngựa." + GO
+
+    # 12) Đau đầu sét đánh: khởi phát đột ngột + dữ dội (nghi xuất huyết dưới nhện)
+    if aff("dau dau", "nhuc dau", "dau nua dau") and aff("dot ngot", "bat ngo", "set danh", "ngay lap tuc") \
+       and aff("du doi", "du doi nhat", "nhat tu truoc toi nay", "te nhat", "khung khiep", "nang chua tung"):
+        return "Đau đầu dữ dội khởi phát đột ngột (đau đầu sét đánh) — nghi xuất huyết não/dưới nhện." + GO
+
+    # 13) Đau hố chậu phải khu trú — nghi viêm ruột thừa
+    if aff("ho chau phai", "hcp", "bung duoi ben phai", "bung duoi phai", "1/4 duoi phai", "vung chau phai") \
+       and aff("dau"):
+        return "Đau khu trú hố chậu phải — nghi viêm ruột thừa, cần khám ngoại khoa ngay." + GO
+
+    # 14) Ho kéo dài + sụt cân / mồ hôi đêm / ho ra máu — tầm soát lao/bệnh phổi/ung thư
+    chronic_cough = aff("ho keo dai", "ho dai dang", "ho man", "ho lau ngay", "ho nhieu tuan", "ho may tuan",
+                        "ho 2 tuan", "ho 3 tuan", "ho ba tuan", "ho hai tuan", "ho khan keo dai", "ho may thang")
+    systemic = aff("sut can", "giam can", "gay sut", "mo hoi dem", "do mo hoi dem", "ra mo hoi dem", "ho ra mau", "khac ra mau")
+    if chronic_cough and systemic:
+        return "Ho kéo dài kèm sụt cân/đổ mồ hôi đêm/ho ra máu — cần khám tầm soát (lao, bệnh phổi, ung thư)." + SEE
+
     return None
 
 

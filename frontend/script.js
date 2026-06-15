@@ -435,7 +435,7 @@ function setConfidenceLevel(level) {
       high: "Tin cậy cao",
       mid: "Tin cậy trung bình",
       low: "Tin cậy thấp",
-      rule: "Theo rule an toàn",
+      rule: "Sàng lọc theo quy tắc (không phải xác suất)",
       none: "Chưa đủ dữ liệu",
     };
     tag.textContent = labels[level] || "";
@@ -454,10 +454,11 @@ function renderPrediction(result) {
   renderCaseSummary(result);
   renderSuggestedSymptoms(result);
   if (scoreLabel) {
-    scoreLabel.textContent = scoreText;
+    scoreLabel.textContent = isRuleBased ? "Cơ chế gợi ý" : scoreText;
   }
-  confidenceValue.textContent = isRuleBased ? "Theo rule" : `${confidence}%`;
-  confidenceBar.style.width = isRuleBased ? "100%" : `${confidence}%`;
+  // P1: rule là heuristic, KHÔNG phải xác suất -> không hiển thị 100%, không thanh phần trăm.
+  confidenceValue.textContent = isRuleBased ? "Quy tắc" : `${confidence}%`;
+  confidenceBar.style.width = isRuleBased ? "0%" : `${confidence}%`;
   const confidencePct = parseFloat(confidence);
   let confidenceLevel;
   if (isRuleBased) {
