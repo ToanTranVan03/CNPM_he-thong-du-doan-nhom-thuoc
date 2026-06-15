@@ -203,6 +203,14 @@ function setMessage(message, isError = false) {
   formMessage.classList.toggle("is-error", isError);
 }
 
+function formatError(error) {
+  const message = error && error.message ? error.message : "Đã có lỗi xảy ra.";
+  if (message === "Failed to fetch" || (error && error.name === "TypeError")) {
+    return "Mất kết nối tới máy chủ. Kiểm tra mạng hoặc khởi động backend (python backend/app.py) rồi thử lại.";
+  }
+  return message;
+}
+
 function updateSelectedCount() {
   selectedCount.textContent = `${selectedSymptoms.size} đã chọn`;
 }
@@ -290,7 +298,7 @@ function renderSuggestedSymptoms(result) {
       try {
         await predict();
       } catch (error) {
-        setMessage(error.message, true);
+        setMessage(formatError(error), true);
       }
     });
     suggestedSymptomsList.appendChild(button);
@@ -624,7 +632,7 @@ loginForm.addEventListener("submit", async (event) => {
     setAuthMessage(loginMessage, "");
     handleAuthSuccess(data);
   } catch (error) {
-    setAuthMessage(loginMessage, error.message, true);
+    setAuthMessage(loginMessage, formatError(error), true);
   }
 });
 
@@ -640,7 +648,7 @@ registerForm.addEventListener("submit", async (event) => {
     setAuthMessage(registerMessage, "");
     handleAuthSuccess(data);
   } catch (error) {
-    setAuthMessage(registerMessage, error.message, true);
+    setAuthMessage(registerMessage, formatError(error), true);
   }
 });
 
@@ -661,7 +669,7 @@ forgotForm.addEventListener("submit", async (event) => {
     }
     showAuthView("reset");
   } catch (error) {
-    setAuthMessage(forgotMessage, error.message, true);
+    setAuthMessage(forgotMessage, formatError(error), true);
   }
 });
 
@@ -677,7 +685,7 @@ resetForm.addEventListener("submit", async (event) => {
     setAuthMessage(resetMessage, "");
     handleAuthSuccess(data);
   } catch (error) {
-    setAuthMessage(resetMessage, error.message, true);
+    setAuthMessage(resetMessage, formatError(error), true);
   }
 });
 
@@ -736,7 +744,7 @@ form.addEventListener("submit", async (event) => {
   try {
     await predict();
   } catch (error) {
-    setMessage(error.message, true);
+    setMessage(formatError(error), true);
   } finally {
     setFormLoading(submitButton, false);
   }
