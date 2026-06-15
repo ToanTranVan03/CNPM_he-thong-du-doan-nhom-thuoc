@@ -1046,21 +1046,14 @@ input:focus {
   background: var(--surface-highest);
 }
 
-@media (max-width: 920px) {
+/* Tablet & mobile: stack nội dung */
+@media (max-width: 1024px) {
   .auth-panel {
     grid-template-columns: 1fr;
   }
 
   .auth-copy {
     max-width: 680px;
-  }
-
-  .app-sidebar {
-    display: none;
-  }
-
-  .app-main {
-    margin-left: 0;
   }
 
   .hero-grid,
@@ -1084,6 +1077,53 @@ input:focus {
   .history-head {
     align-items: start;
     flex-direction: column;
+  }
+}
+
+/* Tablet (641-1024): sidebar thu gọn thành icon-rail 72px */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .app-sidebar {
+    width: 72px;
+    padding: 18px 10px;
+  }
+
+  .app-main {
+    margin-left: 72px;
+  }
+
+  .sidebar-brand {
+    justify-content: center;
+    gap: 0;
+  }
+
+  .sidebar-brand span:last-child,
+  .nav-link span:not(.material-symbols-outlined),
+  .theme-toggle-label,
+  .sidebar-user > div:not(.avatar) {
+    display: none;
+  }
+
+  .nav-link,
+  .app-sidebar .theme-toggle {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .sidebar-user {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 8px;
+  }
+}
+
+/* Mobile (<=640): ẩn sidebar, dùng bottom-nav */
+@media (max-width: 640px) {
+  .app-sidebar {
+    display: none;
+  }
+
+  .app-main {
+    margin-left: 0;
   }
 
   .bottom-nav {
