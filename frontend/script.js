@@ -133,6 +133,7 @@ function showAuthenticatedApp() {
   updateUserUi();
   loadSavedHistory();
   renderSavedHistory();
+  renderRecentActivity();
   if (!symptomsLoaded) {
     loadSymptoms();
   }
@@ -345,6 +346,73 @@ function renderSavedHistory() {
     .forEach((entry) => {
       historyList.prepend(createHistoryCard(entry));
     });
+  updateHistoryEmptyState();
+}
+
+function updateHistoryEmptyState() {
+  const empty = document.getElementById("history-empty");
+  if (!empty) {
+    return;
+  }
+  const cards = historyList.querySelectorAll(".history-card");
+  const anyVisible = Array.from(cards).some((card) => !card.classList.contains("is-hidden"));
+  empty.classList.toggle("is-hidden", anyVisible);
+  const title = empty.querySelector("h2");
+  const desc = empty.querySelector("p");
+  if (title && desc) {
+    if (cards.length === 0) {
+      title.textContent = "Chưa có lịch sử dự đoán";
+      desc.textContent = "Các kết quả bạn lưu sẽ xuất hiện ở đây. Hãy thử tạo một dự đoán mới.";
+    } else {
+      title.textContent = "Không tìm thấy kết quả";
+      desc.textContent = "Không có mục nào khớp với từ khóa tìm kiếm.";
+    }
+  }
+}
+
+function renderRecentActivity() {
+  const container = document.getElementById("home-activity");
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  const recent = savedResults.slice(-3).reverse();
+  if (recent.length === 0) {
+    const placeholder = document.createElement("p");
+    placeholder.className = "muted-text";
+    placeholder.textContent = "Chưa có hoạt động. Kết quả bạn lưu sẽ hiển thị ở đây.";
+    container.appendChild(placeholder);
+    return;
+  }
+  recent.forEach((entry) => {
+    const card = document.createElement("article");
+    card.className = "activity-card";
+
+    const icon = document.createElement("span");
+    icon.className = "activity-icon material-symbols-outlined";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "medication";
+
+    const title = document.createElement("h3");
+    title.textContent = entry.disease;
+
+    const desc = document.createElement("p");
+    desc.textContent = entry.symptoms.join(", ") || entry.notes || "Không có mô tả.";
+
+    const time = document.createElement("span");
+    time.textContent = entry.savedAt;
+
+    card.append(icon, title, desc, time);
+    container.appendChild(card);
+  });
+}
+
+function setFormLoading(button, loading) {
+  if (!button) {
+    return;
+  }
+  button.disabled = loading;
+  button.setAttribute("aria-busy", String(loading));
 }
 
 function setConfidenceLevel(level) {
@@ -663,10 +731,14 @@ exampleButton.addEventListener("click", () => {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = form.querySelector('button[type="submit"]');
+  setFormLoading(submitButton, true);
   try {
     await predict();
   } catch (error) {
     setMessage(error.message, true);
+  } finally {
+    setFormLoading(submitButton, false);
   }
 });
 
@@ -681,6 +753,7 @@ historySearch.addEventListener("input", (event) => {
     const haystack = card.dataset.search.toLowerCase();
     card.classList.toggle("is-hidden", query !== "" && !haystack.includes(query));
   });
+  updateHistoryEmptyState();
 });
 
 saveResultButton.addEventListener("click", () => {
@@ -693,6 +766,8 @@ saveResultButton.addEventListener("click", () => {
     });
     saveHistory();
     historyList.prepend(createHistoryCard(savedResults[savedResults.length - 1]));
+    updateHistoryEmptyState();
+    renderRecentActivity();
   }
   showPage("history");
 });

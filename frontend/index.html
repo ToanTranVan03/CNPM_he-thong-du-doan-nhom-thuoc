@@ -261,26 +261,7 @@
             <h2>Hoạt động gần đây</h2>
             <button class="text-button" type="button" data-page="history">Xem tất cả</button>
           </div>
-          <div class="activity-grid">
-            <article class="activity-card">
-              <span class="activity-icon material-symbols-outlined" aria-hidden="true">medication</span>
-              <h3>Kháng sinh</h3>
-              <p>Viêm phổi cộng đồng, sốt cao, bạch cầu tăng.</p>
-              <span>Hôm nay, 09:20</span>
-            </article>
-            <article class="activity-card">
-              <span class="activity-icon material-symbols-outlined" aria-hidden="true">monitor_heart</span>
-              <h3>ACE Inhibitors</h3>
-              <p>Tăng huyết áp kèm microalbumin niệu.</p>
-              <span>Hôm qua, 16:45</span>
-            </article>
-            <article class="activity-card">
-              <span class="activity-icon material-symbols-outlined" aria-hidden="true">science</span>
-              <h3>NSAIDs</h3>
-              <p>Đau viêm khớp gối sau chấn thương nhẹ.</p>
-              <span>28/05/2026</span>
-            </article>
-          </div>
+          <div class="activity-grid" id="home-activity" aria-live="polite"></div>
         </div>
       </section>
 
@@ -399,49 +380,15 @@
             <input id="history-search" type="search" placeholder="Tìm theo nhóm thuốc, mô tả hoặc ngày..." />
           </label>
 
-          <div class="history-grid" id="history-list">
-            <article class="history-card" data-search="nsaids analgesics đau viêm khớp 28/05/2026">
-              <div class="card-topline">
-                <span class="status-pill status-success">Đã lưu</span>
-                <time>28/05/2026</time>
-              </div>
-              <h2>NSAIDs / Analgesics</h2>
-              <p>Đau viêm khớp gối sau chấn thương, không ghi nhận loét dạ dày tiến triển.</p>
-              <button class="icon-button" type="button" aria-label="Xem chi tiet">
-                <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
-              </button>
-            </article>
-            <article class="history-card" data-search="ace inhibitors tăng huyết áp 29/05/2026">
-              <div class="card-topline">
-                <span class="status-pill status-success">Đã lưu</span>
-                <time>29/05/2026</time>
-              </div>
-              <h2>Antihypertensives (ACE Inhibitors)</h2>
-              <p>Tăng huyết áp dai dẳng, nguy cơ thận do đái tháo đường type 2.</p>
-              <button class="icon-button" type="button" aria-label="Xem chi tiet">
-                <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
-              </button>
-            </article>
-            <article class="history-card featured" data-search="molecular profile sulfonamide 30/05/2026">
-              <div class="card-topline">
-                <span class="status-pill status-review">Cần xem lại</span>
-                <time>30/05/2026</time>
-              </div>
-              <h2>Molecular Profile Scan #884</h2>
-              <p>Phân tích dẫn xuất sulfonamide, cần kiểm tra thêm chống chỉ định và tương tác thuốc.</p>
-              <button class="white-button" type="button">Xem hồ sơ</button>
-            </article>
-            <article class="history-card" data-search="antipsychotics neuroleptics thần kinh 31/05/2026">
-              <div class="card-topline">
-                <span class="status-pill status-success">Đã lưu</span>
-                <time>31/05/2026</time>
-              </div>
-              <h2>Antipsychotics / Neuroleptics</h2>
-              <p>Cấu trúc dị vòng phức tạp, hồ sơ gắn kết D2 và 5-HT2A chưa rõ ràng.</p>
-              <button class="icon-button" type="button" aria-label="Xem chi tiet">
-                <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
-              </button>
-            </article>
+          <div class="history-grid" id="history-list" aria-live="polite"></div>
+          <div class="empty-state is-hidden" id="history-empty">
+            <span class="empty-icon material-symbols-outlined" aria-hidden="true">inbox</span>
+            <h2>Chưa có lịch sử dự đoán</h2>
+            <p>Các kết quả bạn lưu sẽ xuất hiện ở đây. Hãy thử tạo một dự đoán mới.</p>
+            <button class="primary-button" type="button" data-page="home">
+              <span class="material-symbols-outlined" aria-hidden="true">add</span>
+              Tạo dự đoán
+            </button>
           </div>
         </div>
       </section>
