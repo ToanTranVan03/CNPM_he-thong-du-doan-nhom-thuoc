@@ -1334,7 +1334,13 @@ input:focus {
   color: var(--danger);
 }
 .confidence-box[data-level="rule"] strong {
-  color: var(--primary);
+  color: var(--text-muted);
+}
+
+/* P1: rule/chưa-đủ không có xác suất -> ẩn thanh phần trăm gây hiểu nhầm */
+.confidence-box[data-level="rule"] .progress-bar,
+.confidence-box[data-level="none"] .progress-bar {
+  display: none;
 }
 .confidence-box[data-level="none"] strong {
   color: var(--text-muted);
@@ -1383,8 +1389,8 @@ input:focus {
   color: var(--danger);
 }
 .confidence-box[data-level="rule"] .confidence-tag {
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: var(--surface-low);
+  color: var(--text-muted);
 }
 
 /* Prediction Bar top-3 thay cho minh họa phân tử trang trí */
