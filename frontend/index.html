@@ -8,9 +8,24 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      // Khởi tạo theme sớm để tránh nháy sai màu (no-flash)
+      (function () {
+        try {
+          var t = localStorage.getItem("pharmaPredictTheme");
+          if (!t) {
+            t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          }
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <section class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
+      <button class="theme-toggle auth-theme-toggle" id="theme-toggle-auth" type="button" aria-pressed="false" aria-label="Chuyển sang giao diện tối" title="Chuyển sang giao diện tối">
+        <span class="material-symbols-outlined" aria-hidden="true">dark_mode</span>
+      </button>
       <div class="auth-panel">
         <div class="auth-copy">
           <span class="sidebar-logo">AI</span>
@@ -145,6 +160,10 @@
             <span>Hồ Sơ Của Tôi</span>
           </button>
         </nav>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false" aria-label="Chuyển sang giao diện tối" title="Chuyển sang giao diện tối">
+          <span class="material-symbols-outlined" aria-hidden="true">dark_mode</span>
+          <span class="theme-toggle-label">Giao diện tối</span>
+        </button>
         <div class="sidebar-user">
           <div class="avatar" id="user-avatar">ND</div>
           <div>
@@ -242,26 +261,7 @@
             <h2>Hoạt động gần đây</h2>
             <button class="text-button" type="button" data-page="history">Xem tất cả</button>
           </div>
-          <div class="activity-grid">
-            <article class="activity-card">
-              <span class="activity-icon material-symbols-outlined" aria-hidden="true">medication</span>
-              <h3>Kháng sinh</h3>
-              <p>Viêm phổi cộng đồng, sốt cao, bạch cầu tăng.</p>
-              <span>Hôm nay, 09:20</span>
-            </article>
-            <article class="activity-card">
-              <span class="activity-icon material-symbols-outlined" aria-hidden="true">monitor_heart</span>
-              <h3>ACE Inhibitors</h3>
-              <p>Tăng huyết áp kèm microalbumin niệu.</p>
-              <span>Hôm qua, 16:45</span>
-            </article>
-            <article class="activity-card">
-              <span class="activity-icon material-symbols-outlined" aria-hidden="true">science</span>
-              <h3>NSAIDs</h3>
-              <p>Đau viêm khớp gối sau chấn thương nhẹ.</p>
-              <span>28/05/2026</span>
-            </article>
-          </div>
+          <div class="activity-grid" id="home-activity" aria-live="polite"></div>
         </div>
       </section>
 
@@ -277,11 +277,12 @@
               </div>
             </div>
             <div class="confidence-box" aria-label="Do tin cay">
-              <div>
+              <div class="confidence-head">
                 <span id="score-label">Độ tương đồng</span>
                 <strong id="confidence-value">0%</strong>
               </div>
               <div class="progress-bar"><span id="confidence-bar"></span></div>
+              <span class="confidence-tag">Chưa có</span>
             </div>
             <p class="result-note" id="result-note">Kết quả chỉ hiển thị khi hệ thống có đủ triệu chứng và độ tin cậy để gợi ý nhóm thuốc tham khảo.</p>
             <div class="suggested-symptoms-card is-hidden" id="suggested-symptoms-card">
@@ -345,15 +346,10 @@
                 <li>Chưa có dữ liệu dự đoán.</li>
               </ul>
             </article>
-            <article class="molecule-card">
-              <div>
-                <p class="eyebrow">Các khả năng cao nhất</p>
-                <h2 id="top-predictions-title">Xác suất từ mô hình</h2>
-                <ul class="top-predictions" id="top-predictions"></ul>
-              </div>
-              <div class="molecule-art" aria-hidden="true">
-                <span></span><span></span><span></span><span></span>
-              </div>
+            <article class="detail-card predictions-card">
+              <p class="eyebrow">Các khả năng cao nhất</p>
+              <h2 id="top-predictions-title">Xác suất từ mô hình</h2>
+              <ul class="top-predictions" id="top-predictions"></ul>
             </article>
           </div>
         </div>
@@ -384,49 +380,15 @@
             <input id="history-search" type="search" placeholder="Tìm theo nhóm thuốc, mô tả hoặc ngày..." />
           </label>
 
-          <div class="history-grid" id="history-list">
-            <article class="history-card" data-search="nsaids analgesics đau viêm khớp 28/05/2026">
-              <div class="card-topline">
-                <span class="status-pill status-success">Đã lưu</span>
-                <time>28/05/2026</time>
-              </div>
-              <h2>NSAIDs / Analgesics</h2>
-              <p>Đau viêm khớp gối sau chấn thương, không ghi nhận loét dạ dày tiến triển.</p>
-              <button class="icon-button" type="button" aria-label="Xem chi tiet">
-                <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
-              </button>
-            </article>
-            <article class="history-card" data-search="ace inhibitors tăng huyết áp 29/05/2026">
-              <div class="card-topline">
-                <span class="status-pill status-success">Đã lưu</span>
-                <time>29/05/2026</time>
-              </div>
-              <h2>Antihypertensives (ACE Inhibitors)</h2>
-              <p>Tăng huyết áp dai dẳng, nguy cơ thận do đái tháo đường type 2.</p>
-              <button class="icon-button" type="button" aria-label="Xem chi tiet">
-                <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
-              </button>
-            </article>
-            <article class="history-card featured" data-search="molecular profile sulfonamide 30/05/2026">
-              <div class="card-topline">
-                <span class="status-pill status-review">Cần xem lại</span>
-                <time>30/05/2026</time>
-              </div>
-              <h2>Molecular Profile Scan #884</h2>
-              <p>Phân tích dẫn xuất sulfonamide, cần kiểm tra thêm chống chỉ định và tương tác thuốc.</p>
-              <button class="white-button" type="button">Xem hồ sơ</button>
-            </article>
-            <article class="history-card" data-search="antipsychotics neuroleptics thần kinh 31/05/2026">
-              <div class="card-topline">
-                <span class="status-pill status-success">Đã lưu</span>
-                <time>31/05/2026</time>
-              </div>
-              <h2>Antipsychotics / Neuroleptics</h2>
-              <p>Cấu trúc dị vòng phức tạp, hồ sơ gắn kết D2 và 5-HT2A chưa rõ ràng.</p>
-              <button class="icon-button" type="button" aria-label="Xem chi tiet">
-                <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
-              </button>
-            </article>
+          <div class="history-grid" id="history-list" aria-live="polite"></div>
+          <div class="empty-state is-hidden" id="history-empty">
+            <span class="empty-icon material-symbols-outlined" aria-hidden="true">inbox</span>
+            <h2>Chưa có lịch sử dự đoán</h2>
+            <p>Các kết quả bạn lưu sẽ xuất hiện ở đây. Hãy thử tạo một dự đoán mới.</p>
+            <button class="primary-button" type="button" data-page="home">
+              <span class="material-symbols-outlined" aria-hidden="true">add</span>
+              Tạo dự đoán
+            </button>
           </div>
         </div>
       </section>
@@ -475,9 +437,10 @@
           </article>
           <article class="faq-item contact-card">
             <h2>Hỗ trợ</h2>
-            <input type="text" placeholder="Chủ đề cần hỗ trợ" />
-            <textarea rows="3" placeholder="Nội dung trao đổi..."></textarea>
-            <button class="primary-button" type="button">Gửi yêu cầu</button>
+            <input type="text" placeholder="Chủ đề cần hỗ trợ" disabled />
+            <textarea rows="3" placeholder="Nội dung trao đổi..." disabled></textarea>
+            <button class="primary-button" type="button" disabled>Sắp ra mắt</button>
+            <p class="muted-text">Kênh hỗ trợ trong ứng dụng đang được phát triển.</p>
           </article>
         </div>
       </section>

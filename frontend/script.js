@@ -133,6 +133,7 @@ function showAuthenticatedApp() {
   updateUserUi();
   loadSavedHistory();
   renderSavedHistory();
+  renderRecentActivity();
   if (!symptomsLoaded) {
     loadSymptoms();
   }
@@ -200,6 +201,14 @@ function updateCharCount() {
 function setMessage(message, isError = false) {
   formMessage.textContent = message;
   formMessage.classList.toggle("is-error", isError);
+}
+
+function formatError(error) {
+  const message = error && error.message ? error.message : "Đã có lỗi xảy ra.";
+  if (message === "Failed to fetch" || (error && error.name === "TypeError")) {
+    return "Mất kết nối tới máy chủ. Kiểm tra mạng hoặc khởi động backend (python backend/app.py) rồi thử lại.";
+  }
+  return message;
 }
 
 function updateSelectedCount() {
@@ -289,7 +298,7 @@ function renderSuggestedSymptoms(result) {
       try {
         await predict();
       } catch (error) {
-        setMessage(error.message, true);
+        setMessage(formatError(error), true);
       }
     });
     suggestedSymptomsList.appendChild(button);
@@ -345,6 +354,92 @@ function renderSavedHistory() {
     .forEach((entry) => {
       historyList.prepend(createHistoryCard(entry));
     });
+  updateHistoryEmptyState();
+}
+
+function updateHistoryEmptyState() {
+  const empty = document.getElementById("history-empty");
+  if (!empty) {
+    return;
+  }
+  const cards = historyList.querySelectorAll(".history-card");
+  const anyVisible = Array.from(cards).some((card) => !card.classList.contains("is-hidden"));
+  empty.classList.toggle("is-hidden", anyVisible);
+  const title = empty.querySelector("h2");
+  const desc = empty.querySelector("p");
+  if (title && desc) {
+    if (cards.length === 0) {
+      title.textContent = "Chưa có lịch sử dự đoán";
+      desc.textContent = "Các kết quả bạn lưu sẽ xuất hiện ở đây. Hãy thử tạo một dự đoán mới.";
+    } else {
+      title.textContent = "Không tìm thấy kết quả";
+      desc.textContent = "Không có mục nào khớp với từ khóa tìm kiếm.";
+    }
+  }
+}
+
+function renderRecentActivity() {
+  const container = document.getElementById("home-activity");
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  const recent = savedResults.slice(-3).reverse();
+  if (recent.length === 0) {
+    const placeholder = document.createElement("p");
+    placeholder.className = "muted-text";
+    placeholder.textContent = "Chưa có hoạt động. Kết quả bạn lưu sẽ hiển thị ở đây.";
+    container.appendChild(placeholder);
+    return;
+  }
+  recent.forEach((entry) => {
+    const card = document.createElement("article");
+    card.className = "activity-card";
+
+    const icon = document.createElement("span");
+    icon.className = "activity-icon material-symbols-outlined";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "medication";
+
+    const title = document.createElement("h3");
+    title.textContent = entry.disease;
+
+    const desc = document.createElement("p");
+    desc.textContent = entry.symptoms.join(", ") || entry.notes || "Không có mô tả.";
+
+    const time = document.createElement("span");
+    time.textContent = entry.savedAt;
+
+    card.append(icon, title, desc, time);
+    container.appendChild(card);
+  });
+}
+
+function setFormLoading(button, loading) {
+  if (!button) {
+    return;
+  }
+  button.disabled = loading;
+  button.setAttribute("aria-busy", String(loading));
+}
+
+function setConfidenceLevel(level) {
+  const box = confidenceBar.closest(".confidence-box");
+  if (!box) {
+    return;
+  }
+  box.dataset.level = level;
+  const tag = box.querySelector(".confidence-tag");
+  if (tag) {
+    const labels = {
+      high: "Tin cậy cao",
+      mid: "Tin cậy trung bình",
+      low: "Tin cậy thấp",
+      rule: "Theo rule an toàn",
+      none: "Chưa đủ dữ liệu",
+    };
+    tag.textContent = labels[level] || "";
+  }
 }
 
 function renderPrediction(result) {
@@ -363,6 +458,18 @@ function renderPrediction(result) {
   }
   confidenceValue.textContent = isRuleBased ? "Theo rule" : `${confidence}%`;
   confidenceBar.style.width = isRuleBased ? "100%" : `${confidence}%`;
+  const confidencePct = parseFloat(confidence);
+  let confidenceLevel;
+  if (isRuleBased) {
+    confidenceLevel = "rule";
+  } else if (isUncertain || confidencePct < 50) {
+    confidenceLevel = "low";
+  } else if (confidencePct < 75) {
+    confidenceLevel = "mid";
+  } else {
+    confidenceLevel = "high";
+  }
+  setConfidenceLevel(confidenceLevel);
   resultTitle.textContent = result.display_title || result.disease_vi || result.disease;
   resultSubtitle.textContent = `${matchedCount} triệu chứng đã map sang đặc trưng tiếng Anh`;
   if (unsupportedLabels.length > 0) {
@@ -409,9 +516,28 @@ function renderPrediction(result) {
     topPredictions.appendChild(li);
   }
   (result.top_predictions || []).forEach((prediction) => {
-    const li = document.createElement("li");
     const score = prediction.similarity_score ?? prediction.probability;
-    li.textContent = `${prediction.disease_vi || prediction.disease}: ${Math.round(score * 100)}%`;
+    const pct = Math.max(0, Math.min(100, Math.round((score || 0) * 100)));
+
+    const li = document.createElement("li");
+    li.className = "prediction-row";
+
+    const name = document.createElement("span");
+    name.className = "prediction-name";
+    name.textContent = prediction.disease_vi || prediction.disease;
+
+    const value = document.createElement("span");
+    value.className = "prediction-value";
+    value.textContent = `${pct}%`;
+
+    const track = document.createElement("span");
+    track.className = "prediction-track";
+    const fill = document.createElement("span");
+    fill.className = "prediction-fill";
+    fill.style.width = `${pct}%`;
+    track.appendChild(fill);
+
+    li.append(name, value, track);
     topPredictions.appendChild(li);
   });
 
@@ -429,6 +555,7 @@ function renderInsufficientInput(result) {
   }
   confidenceValue.textContent = "Chưa đủ";
   confidenceBar.style.width = "0%";
+  setConfidenceLevel("none");
   resultTitle.textContent = "Chưa đủ dữ liệu để gợi ý nhóm thuốc";
   resultSubtitle.textContent = matchedLabels.length
     ? `${matchedLabels.length} triệu chứng đã map: ${matchedLabels.join(", ")}`
@@ -505,7 +632,7 @@ loginForm.addEventListener("submit", async (event) => {
     setAuthMessage(loginMessage, "");
     handleAuthSuccess(data);
   } catch (error) {
-    setAuthMessage(loginMessage, error.message, true);
+    setAuthMessage(loginMessage, formatError(error), true);
   }
 });
 
@@ -521,7 +648,7 @@ registerForm.addEventListener("submit", async (event) => {
     setAuthMessage(registerMessage, "");
     handleAuthSuccess(data);
   } catch (error) {
-    setAuthMessage(registerMessage, error.message, true);
+    setAuthMessage(registerMessage, formatError(error), true);
   }
 });
 
@@ -542,7 +669,7 @@ forgotForm.addEventListener("submit", async (event) => {
     }
     showAuthView("reset");
   } catch (error) {
-    setAuthMessage(forgotMessage, error.message, true);
+    setAuthMessage(forgotMessage, formatError(error), true);
   }
 });
 
@@ -558,7 +685,7 @@ resetForm.addEventListener("submit", async (event) => {
     setAuthMessage(resetMessage, "");
     handleAuthSuccess(data);
   } catch (error) {
-    setAuthMessage(resetMessage, error.message, true);
+    setAuthMessage(resetMessage, formatError(error), true);
   }
 });
 
@@ -612,10 +739,14 @@ exampleButton.addEventListener("click", () => {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = form.querySelector('button[type="submit"]');
+  setFormLoading(submitButton, true);
   try {
     await predict();
   } catch (error) {
-    setMessage(error.message, true);
+    setMessage(formatError(error), true);
+  } finally {
+    setFormLoading(submitButton, false);
   }
 });
 
@@ -630,6 +761,7 @@ historySearch.addEventListener("input", (event) => {
     const haystack = card.dataset.search.toLowerCase();
     card.classList.toggle("is-hidden", query !== "" && !haystack.includes(query));
   });
+  updateHistoryEmptyState();
 });
 
 saveResultButton.addEventListener("click", () => {
@@ -642,10 +774,58 @@ saveResultButton.addEventListener("click", () => {
     });
     saveHistory();
     historyList.prepend(createHistoryCard(savedResults[savedResults.length - 1]));
+    updateHistoryEmptyState();
+    renderRecentActivity();
   }
   showPage("history");
 });
 
+const THEME_KEY = "pharmaPredictTheme";
+const themeToggles = document.querySelectorAll(".theme-toggle");
+
+function applyTheme(theme) {
+  const isDark = theme === "dark";
+  document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+  const actionLabel = isDark ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối";
+  themeToggles.forEach((button) => {
+    button.setAttribute("aria-pressed", String(isDark));
+    button.setAttribute("aria-label", actionLabel);
+    button.setAttribute("title", actionLabel);
+    const icon = button.querySelector(".material-symbols-outlined");
+    if (icon) {
+      icon.textContent = isDark ? "light_mode" : "dark_mode";
+    }
+    const label = button.querySelector(".theme-toggle-label");
+    if (label) {
+      label.textContent = isDark ? "Giao diện sáng" : "Giao diện tối";
+    }
+  });
+}
+
+function initTheme() {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(THEME_KEY);
+  } catch {
+    stored = null;
+  }
+  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(stored || (prefersDark ? "dark" : "light"));
+}
+
+themeToggles.forEach((button) => {
+  button.addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch {
+      // Bỏ qua nếu localStorage không khả dụng; vẫn đổi theme trong phiên.
+    }
+    applyTheme(next);
+  });
+});
+
+initTheme();
 updateCharCount();
 updateSelectedCount();
 initializeAuth();
