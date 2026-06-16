@@ -24,15 +24,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--clean", default=str(ROOT / "data" / "train_clean.csv"))
     ap.add_argument("--natural", default=str(ROOT / "data" / "natural_train.csv"))
+    ap.add_argument("--natural-vi", default=None,
+                    help="Data mô tả tự nhiên TIẾNG VIỆT (natural_vi_train.csv). Bỏ trống = không dùng.")
     ap.add_argument("--out", default=str(ROOT / "data" / "train_combined.csv"))
     ap.add_argument("--cap", type=int, default=3000, help="Số dòng tối đa mỗi nhóm thuốc (data templated)")
-    ap.add_argument("--natural-repeat", type=int, default=3, help="Số lần nhân bản data tự nhiên")
+    ap.add_argument("--natural-repeat", type=int, default=3, help="Số lần nhân bản data tự nhiên EN")
+    ap.add_argument("--natural-vi-repeat", type=int, default=3, help="Số lần nhân bản data tự nhiên VI")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
     random.seed(args.seed)
 
     clean = read_csv(args.clean)
     natural = read_csv(args.natural)
+    natural_vi = read_csv(args.natural_vi) if args.natural_vi else []
 
     # 1. khử trùng templated theo (trieu_chung, nhom_thuoc)
     seen = set()
@@ -54,10 +58,11 @@ def main():
             rows = random.sample(rows, args.cap)
         capped.extend(rows)
 
-    # 3. nhân bản natural
+    # 3. nhân bản natural (EN + VI)
     natural_x = natural * args.natural_repeat
+    natural_vi_x = natural_vi * args.natural_vi_repeat
 
-    combined = capped + natural_x
+    combined = capped + natural_x + natural_vi_x
     random.shuffle(combined)
 
     # chuẩn hoá cột (một số dòng templated có thể thiếu cột mới)
@@ -68,7 +73,8 @@ def main():
             w.writerow({k: r.get(k, "") for k in FIELDS})
 
     print(f"Templated: {len(clean)} -> khử trùng {len(dedup)} -> cap/{args.cap} còn {len(capped)}")
-    print(f"Natural: {len(natural)} x{args.natural_repeat} = {len(natural_x)}")
+    print(f"Natural EN: {len(natural)} x{args.natural_repeat} = {len(natural_x)}")
+    print(f"Natural VI: {len(natural_vi)} x{args.natural_vi_repeat} = {len(natural_vi_x)}")
     print(f"TỔNG train_combined: {len(combined)} -> {args.out}\n")
     print("Phân bố nhóm thuốc cuối:")
     for g, n in collections.Counter(r["nhom_thuoc"] for r in combined).most_common():

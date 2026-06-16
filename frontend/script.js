@@ -557,7 +557,7 @@ function renderInsufficientInput(result) {
   confidenceValue.textContent = "Chưa đủ";
   confidenceBar.style.width = "0%";
   setConfidenceLevel("none");
-  resultTitle.textContent = "Chưa đủ dữ liệu để gợi ý nhóm thuốc";
+  resultTitle.textContent = result.display_title || "Chưa đủ dữ liệu để gợi ý nhóm thuốc";
   resultSubtitle.textContent = matchedLabels.length
     ? `${matchedLabels.length} triệu chứng đã map: ${matchedLabels.join(", ")}`
     : "Chưa nhận diện đủ triệu chứng trong tập train";

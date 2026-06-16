@@ -226,6 +226,7 @@ def train_text_rows(
     target_column: str,
     source: Path,
     features_data: Path | None = None,
+    raw_text_capable: bool = False,
 ) -> None:
     if text_column not in rows[0]:
         raise ValueError(f"CSV does not contain text column '{text_column}'.")
@@ -285,7 +286,8 @@ def train_text_rows(
     metadata = {
         "model_type": "tfidf_linear_svm",
         "label_type": label_type_for_target(target_column),
-        "input_type": "symptom_text",
+        "input_type": "symptom_text+raw_vi" if raw_text_capable else "symptom_text",
+        "trained_on_raw_text": bool(raw_text_capable),
         "score_type": "probability" if hasattr(model, "predict_proba") else "decision",
         "accuracy": accuracy,
         "features": features,
@@ -402,6 +404,7 @@ def train(
     text_column: str | None,
     target_column: str | None,
     features_data: Path | None = None,
+    raw_text_capable: bool = False,
 ) -> None:
     kind = data_kind(data_path)
     if kind == "disease_json":
@@ -426,6 +429,7 @@ def train(
         target_column=resolved_target_column,
         source=data_path,
         features_data=features_data,
+        raw_text_capable=raw_text_capable,
     )
     if {"nhom_thuoc", "chan_doan_du_kien", "ten_thuoc", "trieu_chung"}.issubset(rows[0].keys()):
         write_reference_summary(rows, output_dir, data_path)
@@ -457,6 +461,12 @@ def parse_args() -> argparse.Namespace:
         help="File data đầy đủ để build danh sách features (từ vựng triệu chứng). "
         "Nếu train trên tập đã khử trùng/cap, truyền data gốc vào đây để giữ đủ từ vựng.",
     )
+    parser.add_argument(
+        "--raw-text-capable",
+        action="store_true",
+        help="Đánh dấu model đã train trên câu mô tả thô (vd tiếng Việt tự nhiên) -> backend "
+        "được phép feed raw notes vào model. Đặt cờ này khi data train có natural_vi.",
+    )
     return parser.parse_args()
 
 
@@ -470,4 +480,5 @@ if __name__ == "__main__":
         args.text_column,
         args.target_column,
         args.features_data,
+        args.raw_text_capable,
     )
