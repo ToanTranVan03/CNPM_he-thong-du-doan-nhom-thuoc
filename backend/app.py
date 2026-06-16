@@ -554,7 +554,7 @@ _VI_SYMPTOM_KEYWORDS_EXTRA = {
                                    "tay chân một bên yếu", "liệt một bên", "yếu hẳn một bên người", "tê yếu một bên"],
     "slurred_speech": ["nói ngọng", "nói khó", "líu lưỡi"],
     "paresthesia": ["tê bì", "châm chích", "tê rần"],
-    "muscle_pain": ["đau mỏi toàn thân", "đau nhức toàn thân", "đau người"],
+    "muscle_pain": ["đau mỏi toàn thân", "đau nhức toàn thân", "đau người", "đau mỏi người"],
     "Redness, swelling, discharge from the wound": ["chảy mủ", "vết thương chảy mủ", "vết thương sưng đỏ", "mưng mủ", "có mủ"],
     "Shooting or burning pain, tingling or numbness": ["đau rát bỏng lan dọc dây thần kinh", "đau lan dọc dây thần kinh", "đau rát bỏng lan"],
     # Batch 3: cơ-xương-khớp / lo âu / tim mạch
@@ -1656,6 +1656,26 @@ def build_model_input(active_symptoms: set[str]):
     raise ValueError("Unsupported model type. Retrain with TF-IDF + Linear SVM.")
 
 
+def model_accepts_raw_text() -> bool:
+    """True nếu model đã train trên câu mô tả THÔ (vd tiếng Việt tự nhiên).
+
+    Khi True, backend được phép feed raw notes thẳng vào model (luồng hybrid),
+    tận dụng năng lực hiểu câu VN của model thay vì chỉ cụm triệu chứng đã trích.
+    """
+    return bool(metadata.get("trained_on_raw_text"))
+
+
+def ranked_proba(inputs: list[str]):
+    """predict_proba trung bình trên các ứng viên input -> list (label, prob) giảm dần."""
+    proba_rows = model.predict_proba(inputs)
+    class_names = model.classes_
+    proba = [
+        sum(float(row[index]) for row in proba_rows) / len(proba_rows)
+        for index in range(len(class_names))
+    ]
+    return sorted(zip(class_names, proba), key=lambda item: item[1], reverse=True)
+
+
 def predicted_label_vi(value: str) -> str:
     if LABEL_TYPE == "drug_group":
         return value
@@ -1757,6 +1777,15 @@ def respiratory_rule_drug_group(active_symptoms: set[str]) -> str | None:
     if has_rhinitis_pattern and not has_fever:
         return "thuốc kháng histamin"
     if has_fever:
+        return "thuốc giảm đau hạ sốt"
+    return None
+
+
+def general_fever_pain_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    # Sốt kèm đau mỏi người, đau đầu hoặc đau khớp nhưng không có yếu tố dịch tễ vùng sốt rét
+    has_fever = has_any_symptom(active_symptoms, ["fever", "mild fever", "high fever"])
+    has_pain = has_any_symptom(active_symptoms, ["muscle_pain", "headache", "joint_pain", "back_pain"])
+    if has_fever and has_pain:
         return "thuốc giảm đau hạ sốt"
     return None
 
@@ -2923,14 +2952,16 @@ def predict():
     confidence = None
     prediction = None
     top_gap = None  # khoảng cách xác suất top-1 vs top-2 (đo độ "dứt khoát" của model)
+    input_used = "symptoms"  # luồng dùng để dự đoán: cụm triệu chứng đã trích hay raw notes
     if hasattr(model, "predict_proba"):
-        proba_rows = model.predict_proba(model_inputs)
-        class_names = model.classes_
-        proba = [
-            sum(float(row[index]) for row in proba_rows) / len(proba_rows)
-            for index in range(len(class_names))
-        ]
-        ranked = sorted(zip(class_names, proba), key=lambda item: item[1], reverse=True)
+        ranked = ranked_proba(model_inputs)
+        # Hybrid (raw-VI): nếu model hiểu câu thô và có mô tả VN, thử dự đoán THẲNG trên raw
+        # notes; lấy ứng viên tự tin hơn. Tầng trích triệu chứng vẫn nuôi mọi cổng an toàn.
+        if model_accepts_raw_text() and notes.strip():
+            ranked_raw = ranked_proba([notes.strip()])
+            if ranked_raw[0][1] > ranked[0][1]:
+                ranked = ranked_raw
+                input_used = "raw_notes"
         prediction = ranked[0][0]
         probabilities = [
             {
@@ -2941,7 +2972,7 @@ def predict():
             }
             for disease, probability in ranked[:5]
         ]
-        confidence = round(float(max(proba)), 4)
+        confidence = round(float(ranked[0][1]), 4)
         if len(ranked) >= 2:
             top_gap = round(float(ranked[0][1] - ranked[1][1]), 4)
     else:
@@ -2968,6 +2999,7 @@ def predict():
         or gastrointestinal_rule_drug_group(active_symptoms)
         or dermatology_rule_drug_group(active_symptoms)
         or respiratory_rule_drug_group(active_symptoms)
+        or general_fever_pain_rule_drug_group(active_symptoms)
     )
     score_type = metadata.get("score_type", "probability")
     if rule_group:
@@ -2990,7 +3022,16 @@ def predict():
     # Khi một rule lâm sàng mạnh đã kích hoạt (score_type=="rule"), không ép "cần thêm
     # thông tin" chỉ vì ít hơn 2 triệu chứng — nhiều ca rõ ràng chỉ có 1 triệu chứng đặc
     # hiệu (táo bón, mụn nước thành chùm, mề đay...). Vẫn giữ ràng buộc cho dự đoán bằng model.
-    if score_type != "rule" and len(matched_symptom_labels) < MIN_RELIABLE_SYMPTOMS:
+    # Hybrid raw-VI: khi dự đoán đến THẲNG từ raw notes với độ tin cậy cao và model dứt khoát
+    # (top-gap đủ rộng), KHÔNG ép "cần thêm thông tin" chỉ vì trích được ít cụm triệu chứng EN
+    # (mô tả VN tự nhiên thường ít khớp). Cổng cấp cứu/high-risk/never-suggest vẫn áp dụng độc lập.
+    raw_confident = (
+        input_used == "raw_notes"
+        and confidence is not None
+        and confidence >= MIN_RELIABLE_CONFIDENCE
+        and (top_gap is None or top_gap >= MIN_TOPGAP)
+    )
+    if score_type != "rule" and not raw_confident and len(matched_symptom_labels) < MIN_RELIABLE_SYMPTOMS:
         quality_reasons.append(
             f"Chỉ nhận diện được {len(matched_symptom_labels)} triệu chứng chính trong tập train; cần thêm triệu chứng để phân biệt {label_kind_vi}."
         )
@@ -3092,13 +3133,29 @@ def predict():
     if LABEL_TYPE == "drug_group" and needs_more_input:
         triage = symptom_triage_guidance(active_symptoms)
         summary = case_summary(notes, active_symptoms, matched_symptom_labels, prediction, False)
+        # Khi hệ NHẬN ĐÚNG một nhóm KÊ ĐƠN (rủi ro cao, không phải nhóm "không bao giờ gợi ý"
+        # như ung thư) rồi chủ động chuyển khám: NÊU TÊN nhóm + cảnh báo kê đơn, thay vì câu
+        # chung chung. Vẫn 422/needs_more, vẫn KHÔNG kê thuốc thật — chỉ minh bạch hơn về hướng.
+        rx_group = (
+            prediction
+            if prediction and is_high_risk_group(prediction) and not is_never_suggest_group(prediction)
+            else None
+        )
+        if rx_group:
+            display_title = f"Cần đi khám bác sĩ — có thể liên quan nhóm {rx_group}"
+            error_message = (
+                f"Triệu chứng của bạn CÓ THỂ liên quan đến nhóm '{rx_group}', nhưng đây là thuốc "
+                f"KÊ ĐƠN: cần bác sĩ khám và chỉ định, KHÔNG tự mua dùng. {quality_message}"
+            )
+        else:
+            display_title = "Chưa đủ dữ liệu để gợi ý thuốc"
+            error_message = f"{quality_message} {more_info_prompt(active_symptoms)}"
         return jsonify(
             {
-                "error": (
-                    f"{quality_message} {more_info_prompt(active_symptoms)}"
-                ),
+                "error": error_message,
                 "case_summary": summary,
-                "display_title": "Chưa đủ dữ liệu để gợi ý thuốc",
+                "display_title": display_title,
+                "suggested_group": rx_group,
                 "needs_more_input": True,
                 "matched_symptoms": matched_symptoms,
                 "matched_symptoms_vi": matched_symptom_labels,
@@ -3176,6 +3233,7 @@ def predict():
             "reason": reason_text,
             "confidence": confidence,
             "top_gap": top_gap,
+            "input_used": input_used,
             "score_label": SCORE_LABEL,
             "score_type": score_type,
             "label_type": LABEL_TYPE,
