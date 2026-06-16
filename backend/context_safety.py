@@ -31,8 +31,10 @@ def low(value: str) -> str:
     return re.sub(r"\s+", " ", (value or "").replace("_", " ").lower()).strip()
 
 
-# Bệnh GAN dò bằng text GIỮ DẤU vì 'gân' (gân cơ) bỏ dấu trùng 'gan' (lá gan) -> dương tính giả.
+# Bệnh GAN/THẬN dò bằng text GIỮ DẤU (tránh va chạm dấu: 'gân'≠'gan', 'thân/than'≠'thận').
 HEPATIC_DIA = ("suy gan", "xơ gan", "viêm gan", "bệnh gan", "men gan cao", "gan nhiễm mỡ", "gan nhiem mo")
+RENAL_DIA = ("suy thận", "bệnh thận", "thận yếu", "suy giảm chức năng thận", "chạy thận",
+             "lọc máu", "yếu thận", "hư thận")
 
 
 def _has_any(t: str, keys) -> bool:
@@ -56,10 +58,12 @@ COMORBIDITY_VI = {
 
 ANTICOAGULANT = ("warfarin", "sintrom", "acenocoumarol", "thuoc chong dong", "khang dong",
                  "khang tieu cau", "clopidogrel", "plavix", "rivaroxaban", "dabigatran",
-                 "apixaban", "xarelto", "dang dung aspirin", "aspirin lieu thap")
+                 "apixaban", "xarelto", "dang dung aspirin", "aspirin lieu thap",
+                 "loang mau", "lam loang mau", "thuoc loang mau", "chong dong mau", "lam long mau")
 
-PREGNANCY = ("mang thai", "co thai", "co bau", "ba bau", "thai ky", "dang bau",
-             "cho con bu", "dang cho con bu", "san phu", "thai nhi")
+PREGNANCY = ("mang thai", "co thai", "co bau", "ba bau", "thai ky", "dang bau", "mang bau", "bau bi",
+             "cho con bu", "dang cho con bu", "san phu", "thai nhi", "co em be", "co be trong bung",
+             "be trong bung", "em be trong bung", "co bau bi")
 
 ALLERGY_SIGN = ("me day", "man do", "man ngua", "phat ban", "ngua khap", "noi man", "di ung", "noi ban")
 ALLERGY_CAUSE = ("sau khi uong", "sau khi dung", "sau uong", "sau dung", "uong thuoc xong",
@@ -72,9 +76,13 @@ ANAPHYLAXIS_DIRECT = ("phan ve", "soc phan ve")
 
 def detect_comorbidities(notes_raw: str) -> set[str]:
     t = norm(notes_raw)
-    flags = {flag for flag, keys in COMORBIDITY.items() if flag != "hepatic" and _has_any(t, keys)}
-    if _has_any(low(notes_raw), HEPATIC_DIA):  # bệnh gan dò giữ dấu để tránh 'gân'->'gan'
+    flags = {flag for flag, keys in COMORBIDITY.items()
+             if flag not in ("hepatic", "renal") and _has_any(t, keys)}
+    low_t = low(notes_raw)  # gan/thận dò GIỮ DẤU để tránh va chạm dấu
+    if _has_any(low_t, HEPATIC_DIA):
         flags.add("hepatic")
+    if _has_any(low_t, RENAL_DIA):
+        flags.add("renal")
     return flags
 
 
@@ -97,10 +105,15 @@ def age_flag(t: str) -> str | None:
     # "X thang tuoi"/"be X thang" -> nhũ nhi (<1 tuổi)
     if re.search(r"\d+\s*thang(\s*tuoi)?", t) and _has_any(t, ("be", "tre", "con", "chau", "em be", "thang tuoi")):
         return "infant"
-    if _has_any(t, ("nguoi gia", "cao tuoi", "lon tuoi", "cu ong", "cu ba", "ong cu", "ba cu")):
+    if _has_any(t, ("nguoi gia", "cao tuoi", "lon tuoi", "cu ong", "cu ba", "ong cu", "ba cu",
+                    "cu nha", "cu ba", "cu gia", "tuoi gia", "lao nien")):
+        return "elderly"
+    # "ngoài/trên/hơn N (tuổi)" -> người lớn tuổi (vd "mẹ tôi ngoài 70 rồi")
+    m_old = re.search(r"(?:ngoai|tren|hon)\s*(\d{2})", t)
+    if m_old and int(m_old.group(1)) >= 60:
         return "elderly"
     # "X tuoi" -> phân theo số + ngữ cảnh
-    child_ctx = _has_any(t, ("be ", "tre ", "chau ", "con toi", "con em", "em be", "tre em", "tre nho"))
+    child_ctx = _has_any(t, ("be ", "tre ", "chau ", "con toi", "con em", "em be", "tre em", "tre nho", "thang cu", "thang be"))
     for m in re.finditer(r"(\d{1,3})\s*tuoi", t):
         age = int(m.group(1))
         if age >= 65:
