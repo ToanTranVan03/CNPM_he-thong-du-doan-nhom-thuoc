@@ -396,7 +396,8 @@ VI_SYMPTOM_KEYWORDS = {
     "loss_of_appetite": ["chán ăn", "ăn kém"],
     "pain_behind_the_eyes": ["đau sau mắt", "đau hốc mắt"],
     "back_pain": ["đau lưng"],
-    "constipation": ["táo bón"],
+    "constipation": ["táo bón", "không đi cầu được", "không đi đại tiện được", "khó đi đại tiện",
+                     "phân khô cứng", "phân cứng", "rặn khó", "nhiều ngày không đi ngoài", "mấy ngày không đi cầu"],
     "abdominal_pain": ["đau bụng", "bụng đau", "đau vùng bụng", "đau quặn bụng", "bụng đau quặn"],
     "diarrhoea": ["tiêu chảy", "đi ngoài phân lỏng", "đi ngoài lỏng", "đi phân lỏng"],
     "yellow_urine": ["nước tiểu vàng", "tiểu vàng"],
@@ -522,12 +523,14 @@ VI_SYMPTOM_KEYWORDS = {
 # Bổ sung 2026-06-09 (robust hoá tiếng Việt): các cụm tiếng Việt phổ biến còn thiếu,
 # map sang feature CÓ THẬT trong model. Merge để không trùng/đè key cũ.
 _VI_SYMPTOM_KEYWORDS_EXTRA = {
-    "headache": ["đau nửa đầu", "đau nửa đầu từng cơn"],
+    "headache": ["đau nửa đầu", "đau nửa đầu từng cơn", "nhức nửa đầu", "nhức một bên đầu",
+                 "đau nhức nửa đầu", "nhức đầu theo nhịp mạch", "đau đầu theo nhịp mạch"],
     "stomach_pain": ["đau thượng vị lúc đói", "đau vùng thượng vị"],
     "heartburn": ["nóng rát thượng vị", "nóng rát vùng thượng vị", "ợ nóng"],
     "acidity": ["hay ợ chua", "ợ hơi"],
     "vomiting": ["nôn nhiều", "nôn nhiều lần", "nôn liên tục"],
-    "diarrhoea": ["đi ngoài liên tục", "đi ngoài cả ngày", "đi ngoài nhiều lần", "đi ngoài phân lỏng nước"],
+    "diarrhoea": ["đi ngoài liên tục", "đi ngoài cả ngày", "đi ngoài nhiều lần", "đi ngoài phân lỏng nước",
+                  "đi ngoài tóe nước", "tiêu chảy tóe nước", "đi ngoài nhiều nước", "đi ngoài như nước", "tiêu chảy nhiều lần"],
     "dehydration": ["khát nước nhiều", "khát nhiều"],
     "neck_pain": ["đau vai gáy", "đau cổ gáy", "nhức vai gáy"],
     "back_pain": ["đau lưng dưới", "đau thắt lưng"],
@@ -621,7 +624,7 @@ AUTO_EXACT_SYMPTOM_KEYWORDS = {
     "excessive thirst": ["khát nhiều"],
     "frequent urination": ["tiểu nhiều", "đi tiểu thường xuyên"],
     "blood in urine": ["tiểu ra máu", "nước tiểu có máu"],
-    "blood in stool": ["đi ngoài ra máu", "phân có máu"],
+    "blood in stool": ["đi ngoài ra máu", "phân có máu", "phân nhầy máu", "phân có nhầy máu", "đi ngoài phân nhầy máu"],
     "changes in stool appearance": ["thay đổi tính chất phân", "phân bất thường"],
     "diminished hearing": ["giảm thính lực", "nghe kém"],
     "diminished vision": ["giảm thị lực", "nhìn kém"],
@@ -2203,6 +2206,19 @@ def dermatology_rule_drug_group(active_symptoms: set[str]) -> str | None:
     return None
 
 
+def fungal_notes_rule_drug_group(notes: str) -> str | None:
+    # Nhiễm nấm da/móng/kẽ chân hoặc nấm sinh dục (khí hư bã đậu) -> kháng nấm.
+    # Dùng token ĐẶC HIỆU đa ký tự, tránh "nấm"->"nam" trùng "nằm/năm/nam giới".
+    t = normalize(notes or "")
+    if any(k in t for k in (
+        "nam ke chan", "nam da", "nam mong", "nam ban chan", "nam chan", "hac lao",
+        "lang ben", "nhiem nam", "viem nam", "nam mieng", "nam am dao", "nam vung kin",
+        "ba dau", "khi hu trang duc nhu ba dau",
+    )):
+        return "thuốc kháng nấm/ký sinh trùng ngoài da"
+    return None
+
+
 # ── Rule cluster theo logic y khoa chuẩn (2026-06-09, robust hoá) ─────────────
 # Mỗi rule yêu cầu tổ hợp triệu chứng đặc hiệu để hạn chế dương tính giả.
 
@@ -2214,17 +2230,20 @@ def diabetes_rule_drug_group(active_symptoms: set[str]) -> str | None:
     return None
 
 
-def thyroid_rule_drug_group(active_symptoms: set[str]) -> str | None:
-    # Bướu cổ là dấu hiệu rất đặc hiệu cho bệnh tuyến giáp (suy giáp/bướu).
+def thyroid_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
+    # Bướu cổ là dấu hiệu rất đặc hiệu cho bệnh tuyến giáp.
     if has_any_symptom(active_symptoms, ["enlarged thyroid"]):
         return "thuốc nội tiết tuyến giáp"
-    # Cường giáp KHÔNG kèm bướu cổ: tổ hợp hồi hộp + sụt cân + vã mồ hôi rất gợi ý.
-    # Yêu cầu đủ cả 3 để hạn chế dương tính giả; nhóm này là rủi ro cao -> vẫn chuyển khám.
+    # Cường giáp KHÔNG kèm bướu cổ: hồi hộp + sụt cân + vã mồ hôi.
     if (
         has_any_symptom(active_symptoms, ["palpitations"])
         and has_any_symptom(active_symptoms, ["weight loss"])
         and has_any_symptom(active_symptoms, ["sweating", "excessive sweating"])
     ):
+        return "thuốc nội tiết tuyến giáp"
+    # Suy giáp KHÔNG kèm bướu cổ: tăng cân + sợ lạnh + (da khô / rụng tóc). 3 điều kiện -> đặc hiệu.
+    t = normalize(notes or "")
+    if has_any_symptom(active_symptoms, ["weight gain"]) and "so lanh" in t and any(k in t for k in ("da kho", "rung toc")):
         return "thuốc nội tiết tuyến giáp"
     return None
 
@@ -2255,12 +2274,14 @@ def infectious_bloody_diarrhea_rule_drug_group(active_symptoms: set[str]) -> str
     return None
 
 
-def neuropathic_pain_rule_drug_group(active_symptoms: set[str]) -> str | None:
+def neuropathic_pain_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
     nerve_pain = has_any_symptom(active_symptoms, ["Shooting or burning pain, tingling or numbness"])
     paresthesia = has_any_symptom(active_symptoms, ["paresthesia", "loss of sensation"])
-    if nerve_pain or (paresthesia and has_any_symptom(active_symptoms, ["Shooting or burning pain, tingling or numbness"])):
+    if nerve_pain:
         return "thuốc chống co giật/đau thần kinh"
-    if nerve_pain and paresthesia:
+    # Tê bì/dị cảm ở người ĐÁI THÁO ĐƯỜNG = bệnh thần kinh đái tháo đường.
+    t = normalize(notes or "")
+    if paresthesia and any(k in t for k in ("tieu duong", "dai thao duong")):
         return "thuốc chống co giật/đau thần kinh"
     return None
 
@@ -2996,19 +3017,20 @@ def predict():
         malaria_rule_drug_group(notes, active_symptoms)
         or anemia_rule_drug_group(notes, active_symptoms)
         or diabetes_rule_drug_group(active_symptoms)
-        or thyroid_rule_drug_group(active_symptoms)
+        or thyroid_rule_drug_group(notes, active_symptoms)
         or psych_rule_drug_group(active_symptoms)
         or cardiac_rule_drug_group(active_symptoms)
         or bronchodilator_rule_drug_group(active_symptoms)
         or wound_infection_rule_drug_group(active_symptoms)
         or infectious_bloody_diarrhea_rule_drug_group(active_symptoms)
         or urinary_rule_drug_group(active_symptoms)
-        or neuropathic_pain_rule_drug_group(active_symptoms)
+        or neuropathic_pain_rule_drug_group(notes, active_symptoms)
         or migraine_rule_drug_group(active_symptoms)
         or antiviral_skin_rule_drug_group(notes, active_symptoms)
         or musculoskeletal_nsaid_rule_drug_group(active_symptoms)
         or constipation_rule_drug_group(active_symptoms)
         or dental_rule_drug_group(active_symptoms)
+        or fungal_notes_rule_drug_group(notes)
         or gastrointestinal_rule_drug_group(active_symptoms)
         or dermatology_rule_drug_group(active_symptoms)
         or respiratory_rule_drug_group(active_symptoms)
@@ -3099,7 +3121,7 @@ def predict():
             "Triệu chứng tai (đau tai/chảy dịch/nghe kém) nên được bác sĩ tai mũi họng đánh giá; chưa nên tự dùng thuốc."
         )
     # P4: chỉ có triệu chứng KHÔNG ĐẶC HIỆU (mệt mỏi/uể oải) -> cần thêm triệu chứng cụ thể.
-    if score_type != "rule" and active_symptoms and set(active_symptoms).issubset({"fatigue", "malaise", "lethargy"}):
+    if score_type != "rule" and active_symptoms and set(active_symptoms).issubset({"fatigue", "malaise", "lethargy", "feeling ill", "feeling unwell"}):
         quality_reasons.append(
             "Chỉ ghi nhận triệu chứng không đặc hiệu (mệt mỏi/uể oải); cần thêm triệu chứng cụ thể để định hướng."
         )
