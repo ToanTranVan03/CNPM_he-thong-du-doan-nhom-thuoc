@@ -58,6 +58,11 @@ def main():
         # Thai kỳ / tuổi -> cảnh báo (422)
         check("Thai kỳ", "Tôi đang mang thai 8 tuần, sốt cao, đau nhức người", expect_keyword="mang thai"),
         check("Trẻ sơ sinh", "Con tôi 5 tháng tuổi, sốt 38.5 độ, bỏ bú", expect_keyword="nhi"),
+        # Khẩu ngữ / cách nói mới (đã mở rộng lexicon) — khóa lại
+        check("NSAID × bệnh thận (khẩu ngữ)", "Tôi bị bệnh thận, đau lưng nhức mỏi khớp", must_block=True),
+        check("NSAID × thuốc loãng máu", "Tôi hay uống thuốc làm loãng máu, đau khớp sưng", must_block=True),
+        check("Người già 'ngoài 70'", "Mẹ tôi ngoài 70 rồi, đau khớp gối", expect_keyword="cao tuổi"),
+        check("Thai kỳ 'có bé trong bụng'", "Em đang có bé trong bụng, đau đầu sốt nhẹ", expect_keyword="mang thai"),
         # KHÔNG false-positive: viêm gân (gân ≠ gan)
         check("Viêm gân (không chặn)", "Viêm gân cổ tay, đau khi cử động, sưng nhẹ", must_suggest=True),
         # Ca thường không ngữ cảnh -> vẫn gợi ý bình thường
