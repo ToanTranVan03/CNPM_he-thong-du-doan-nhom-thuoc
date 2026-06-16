@@ -24,22 +24,20 @@ CASES = Path(_ap.parse_args().cases)
 
 
 def predict(client, text):
+    """Trả (pred, suggested_group). suggested_group = nhóm hệ nhận diện khi NÉ thuốc kê đơn
+    (đã gồm rule + tầng #1), None nếu không có."""
     r = client.post("/api/predict", json={"notes": text, "symptoms": []})
+    j = r.get_json() or {}
     if r.status_code == 422:
-        return "NEEDS_MORE_INFO"
+        return "NEEDS_MORE_INFO", j.get("suggested_group")
     if r.status_code != 200:
-        d = r.get_json() or {}
-        # 400 = không nhận diện được triệu chứng -> coi như cần thêm thông tin
-        return "NEEDS_MORE_INFO" if "không nhận diện" in (d.get("error", "")) else f"ERR_{r.status_code}"
-    return (r.get_json() or {}).get("disease_vi") or "NONE"
+        pred = "NEEDS_MORE_INFO" if "không nhận diện" in (j.get("error", "")) else f"ERR_{r.status_code}"
+        return pred, None
+    return (j.get("disease_vi") or "NONE"), None
 
 
 def model_top1_group(text: str) -> str | None:
-    """Nhóm top-1 model nghĩ tới TRƯỚC khi cổng an toàn can thiệp (để đo 'nhận diện').
-
-    Dùng đúng đường serving của model hiện tại (cụm triệu chứng trích được). Nếu hệ NÉ một
-    nhóm kê đơn vì an toàn, ta vẫn biết model có nhận đúng nhóm hay không.
-    """
+    """Fallback: nhóm top-1 model thô (chỉ dùng khi hệ KHÔNG nêu suggested_group)."""
     order = A.ordered_symptoms_from_text(text)
     if not order:
         return None
@@ -64,7 +62,7 @@ def main():
         loai = row.get("loai", "normal").strip()
         accept = {expected, *also_ok}
 
-        pred = predict(client, text)
+        pred, suggested = predict(client, text)
         rec_ok = pred in accept
         total += 1
         by_loai[loai][1] += 1
@@ -74,24 +72,25 @@ def main():
             by_loai[loai][0] += 1
             continue
 
-        # Né (NEEDS_MORE): model có nhận ĐÚNG nhóm không? Nếu đúng + nhóm rủi ro cao -> né an toàn ĐÚNG.
-        top1 = model_top1_group(text) if pred == "NEEDS_MORE_INFO" else None
-        identified = top1 in accept
+        # Né (NEEDS_MORE): hệ có nhận ĐÚNG nhóm không? Ưu tiên suggested_group (gồm rule + #1),
+        # fallback model thô khi hệ không nêu nhóm (vd nhóm "không bao giờ gợi ý").
+        sys_id = suggested if suggested else (model_top1_group(text) if pred == "NEEDS_MORE_INFO" else None)
+        identified = sys_id in accept
         if identified:
             identify_ok += 1
             if A.is_high_risk_group(expected):
-                safe_defers.append((row["id"], loai, text, expected, top1))
+                safe_defers.append((row["id"], loai, text, expected, sys_id))
             else:
-                genuine_miss.append((row["id"], loai, text, expected, f"NÉ (model nghĩ {top1}, lẽ ra gợi ý)"))
+                genuine_miss.append((row["id"], loai, text, expected, f"NÉ (hệ nghĩ {sys_id}, lẽ ra gợi ý)"))
         else:
-            genuine_miss.append((row["id"], loai, text, expected, pred if pred != "NEEDS_MORE_INFO" else f"NÉ (model nghĩ {top1})"))
+            genuine_miss.append((row["id"], loai, text, expected, pred if pred != "NEEDS_MORE_INFO" else f"NÉ (hệ nghĩ {sys_id})"))
 
     print("=" * 74)
     print(f"BỘ TEST TIẾNG VIỆT: {total} ca")
     print(f">>> ĐỘ CHÍNH XÁC GỢI Ý (recommend): {recommend_ok/total:.1%}  ({recommend_ok}/{total})")
     print(f"    (= hệ trực tiếp gợi ý đúng nhóm; NÉ nhóm kê đơn bị tính là chưa gợi ý)")
     print(f">>> ĐỘ CHÍNH XÁC NHẬN DIỆN (identification): {identify_ok/total:.1%}  ({identify_ok}/{total})")
-    print(f"    (= recommend đúng + né-an-toàn-ĐÚNG-nhóm; phản ánh năng lực model thật)")
+    print(f"    (= recommend đúng + né-an-toàn-ĐÚNG-nhóm; gồm rule + tầng #1, phản ánh năng lực hệ thật)")
     print(f">>> NÉ AN TOÀN đúng nhóm (thuốc kê đơn): {len(safe_defers)} ca — hành vi ĐÚNG, không phải lỗi")
     print("=" * 74)
     print("\nTheo loại ca (recommend):")
