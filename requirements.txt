@@ -18,3 +18,7 @@ requests
 beautifulsoup4
 lxml
 browser-use           # LLM điều khiển trình duyệt (cần Chrome + API key khi chạy)
+
+# Lớp DỰ PHÒNG LLM (TÙY CHỌN, mặc định TẮT — xem docs/LLM_FALLBACK.md).
+# Thiếu gói này app vẫn chạy bình thường (fallback tự tắt êm).
+openai                 # client OpenAI-compatible cho LLM_FALLBACK_ENABLED (Groq/Gemini/...)

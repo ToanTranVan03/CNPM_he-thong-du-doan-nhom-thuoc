@@ -396,7 +396,8 @@ VI_SYMPTOM_KEYWORDS = {
     "loss_of_appetite": ["chán ăn", "ăn kém"],
     "pain_behind_the_eyes": ["đau sau mắt", "đau hốc mắt"],
     "back_pain": ["đau lưng"],
-    "constipation": ["táo bón"],
+    "constipation": ["táo bón", "không đi cầu được", "không đi đại tiện được", "khó đi đại tiện",
+                     "phân khô cứng", "phân cứng", "rặn khó", "nhiều ngày không đi ngoài", "mấy ngày không đi cầu"],
     "abdominal_pain": ["đau bụng", "bụng đau", "đau vùng bụng", "đau quặn bụng", "bụng đau quặn"],
     "diarrhoea": ["tiêu chảy", "đi ngoài phân lỏng", "đi ngoài lỏng", "đi phân lỏng"],
     "yellow_urine": ["nước tiểu vàng", "tiểu vàng"],
@@ -522,12 +523,14 @@ VI_SYMPTOM_KEYWORDS = {
 # Bổ sung 2026-06-09 (robust hoá tiếng Việt): các cụm tiếng Việt phổ biến còn thiếu,
 # map sang feature CÓ THẬT trong model. Merge để không trùng/đè key cũ.
 _VI_SYMPTOM_KEYWORDS_EXTRA = {
-    "headache": ["đau nửa đầu", "đau nửa đầu từng cơn"],
+    "headache": ["đau nửa đầu", "đau nửa đầu từng cơn", "nhức nửa đầu", "nhức một bên đầu",
+                 "đau nhức nửa đầu", "nhức đầu theo nhịp mạch", "đau đầu theo nhịp mạch"],
     "stomach_pain": ["đau thượng vị lúc đói", "đau vùng thượng vị"],
     "heartburn": ["nóng rát thượng vị", "nóng rát vùng thượng vị", "ợ nóng"],
     "acidity": ["hay ợ chua", "ợ hơi"],
     "vomiting": ["nôn nhiều", "nôn nhiều lần", "nôn liên tục"],
-    "diarrhoea": ["đi ngoài liên tục", "đi ngoài cả ngày", "đi ngoài nhiều lần", "đi ngoài phân lỏng nước"],
+    "diarrhoea": ["đi ngoài liên tục", "đi ngoài cả ngày", "đi ngoài nhiều lần", "đi ngoài phân lỏng nước",
+                  "đi ngoài tóe nước", "tiêu chảy tóe nước", "đi ngoài nhiều nước", "đi ngoài như nước", "tiêu chảy nhiều lần"],
     "dehydration": ["khát nước nhiều", "khát nhiều"],
     "neck_pain": ["đau vai gáy", "đau cổ gáy", "nhức vai gáy"],
     "back_pain": ["đau lưng dưới", "đau thắt lưng"],
@@ -554,7 +557,7 @@ _VI_SYMPTOM_KEYWORDS_EXTRA = {
                                    "tay chân một bên yếu", "liệt một bên", "yếu hẳn một bên người", "tê yếu một bên"],
     "slurred_speech": ["nói ngọng", "nói khó", "líu lưỡi"],
     "paresthesia": ["tê bì", "châm chích", "tê rần"],
-    "muscle_pain": ["đau mỏi toàn thân", "đau nhức toàn thân", "đau người"],
+    "muscle_pain": ["đau mỏi toàn thân", "đau nhức toàn thân", "đau người", "đau mỏi người"],
     "Redness, swelling, discharge from the wound": ["chảy mủ", "vết thương chảy mủ", "vết thương sưng đỏ", "mưng mủ", "có mủ"],
     "Shooting or burning pain, tingling or numbness": ["đau rát bỏng lan dọc dây thần kinh", "đau lan dọc dây thần kinh", "đau rát bỏng lan"],
     # Batch 3: cơ-xương-khớp / lo âu / tim mạch
@@ -621,7 +624,7 @@ AUTO_EXACT_SYMPTOM_KEYWORDS = {
     "excessive thirst": ["khát nhiều"],
     "frequent urination": ["tiểu nhiều", "đi tiểu thường xuyên"],
     "blood in urine": ["tiểu ra máu", "nước tiểu có máu"],
-    "blood in stool": ["đi ngoài ra máu", "phân có máu"],
+    "blood in stool": ["đi ngoài ra máu", "phân có máu", "phân nhầy máu", "phân có nhầy máu", "đi ngoài phân nhầy máu"],
     "changes in stool appearance": ["thay đổi tính chất phân", "phân bất thường"],
     "diminished hearing": ["giảm thính lực", "nghe kém"],
     "diminished vision": ["giảm thị lực", "nhìn kém"],
@@ -640,7 +643,7 @@ AUTO_EXACT_SYMPTOM_KEYWORDS = {
     "abnormal appearing skin": ["da bất thường", "bất thường trên da"],
     "abnormal involuntary movements": ["cử động không tự chủ", "vận động bất thường"],
     "abnormal movement of eyelid": ["mí mắt co giật", "cử động mí mắt bất thường"],
-    "acne or pimples": ["mụn trứng cá", "mụn"],
+    "acne or pimples": ["mụn trứng cá", "mụn bọc", "mụn mủ"],
     "back cramps or spasms": ["co thắt lưng", "chuột rút lưng"],
     "blood clots during menstrual periods": ["máu cục khi hành kinh", "kinh nguyệt có máu cục"],
     "diaper rash": ["hăm tã"],
@@ -894,6 +897,24 @@ try:
     import llm_context
 except Exception:
     llm_context = None
+
+# Lớp DỰ PHÒNG LLM (phân loại nhóm khi pipeline không trích được triệu chứng). Mặc định TẮT.
+try:
+    import llm_classify
+except Exception:
+    llm_classify = None
+
+# Tầng NGỮ CẢNH - AN TOÀN (bệnh nền/tuổi/thai kỳ/tương tác/dị ứng/phản vệ). LUÔN bật.
+try:
+    import context_safety
+except Exception:
+    context_safety = None
+
+# Trích ngữ cảnh bằng LLM (semantic, bắt cách nói mới) + vòng học. Mặc định TẮT (LLM_CONTEXT_ENABLED).
+try:
+    import llm_context_extract
+except Exception:
+    llm_context_extract = None
 
 
 def llm_context_enabled() -> bool:
@@ -1656,6 +1677,26 @@ def build_model_input(active_symptoms: set[str]):
     raise ValueError("Unsupported model type. Retrain with TF-IDF + Linear SVM.")
 
 
+def model_accepts_raw_text() -> bool:
+    """True nếu model đã train trên câu mô tả THÔ (vd tiếng Việt tự nhiên).
+
+    Khi True, backend được phép feed raw notes thẳng vào model (luồng hybrid),
+    tận dụng năng lực hiểu câu VN của model thay vì chỉ cụm triệu chứng đã trích.
+    """
+    return bool(metadata.get("trained_on_raw_text"))
+
+
+def ranked_proba(inputs: list[str]):
+    """predict_proba trung bình trên các ứng viên input -> list (label, prob) giảm dần."""
+    proba_rows = model.predict_proba(inputs)
+    class_names = model.classes_
+    proba = [
+        sum(float(row[index]) for row in proba_rows) / len(proba_rows)
+        for index in range(len(class_names))
+    ]
+    return sorted(zip(class_names, proba), key=lambda item: item[1], reverse=True)
+
+
 def predicted_label_vi(value: str) -> str:
     if LABEL_TYPE == "drug_group":
         return value
@@ -1757,6 +1798,15 @@ def respiratory_rule_drug_group(active_symptoms: set[str]) -> str | None:
     if has_rhinitis_pattern and not has_fever:
         return "thuốc kháng histamin"
     if has_fever:
+        return "thuốc giảm đau hạ sốt"
+    return None
+
+
+def general_fever_pain_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    # Sốt kèm đau mỏi người, đau đầu hoặc đau khớp nhưng không có yếu tố dịch tễ vùng sốt rét
+    has_fever = has_any_symptom(active_symptoms, ["fever", "mild fever", "high fever"])
+    has_pain = has_any_symptom(active_symptoms, ["muscle_pain", "headache", "joint_pain", "back_pain"])
+    if has_fever and has_pain:
         return "thuốc giảm đau hạ sốt"
     return None
 
@@ -2174,6 +2224,19 @@ def dermatology_rule_drug_group(active_symptoms: set[str]) -> str | None:
     return None
 
 
+def fungal_notes_rule_drug_group(notes: str) -> str | None:
+    # Nhiễm nấm da/móng/kẽ chân hoặc nấm sinh dục (khí hư bã đậu) -> kháng nấm.
+    # Dùng token ĐẶC HIỆU đa ký tự, tránh "nấm"->"nam" trùng "nằm/năm/nam giới".
+    t = normalize(notes or "")
+    if any(k in t for k in (
+        "nam ke chan", "nam da", "nam mong", "nam ban chan", "nam chan", "hac lao",
+        "lang ben", "nhiem nam", "viem nam", "nam mieng", "nam am dao", "nam vung kin",
+        "ba dau", "khi hu trang duc nhu ba dau",
+    )):
+        return "thuốc kháng nấm/ký sinh trùng ngoài da"
+    return None
+
+
 # ── Rule cluster theo logic y khoa chuẩn (2026-06-09, robust hoá) ─────────────
 # Mỗi rule yêu cầu tổ hợp triệu chứng đặc hiệu để hạn chế dương tính giả.
 
@@ -2185,9 +2248,20 @@ def diabetes_rule_drug_group(active_symptoms: set[str]) -> str | None:
     return None
 
 
-def thyroid_rule_drug_group(active_symptoms: set[str]) -> str | None:
+def thyroid_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
     # Bướu cổ là dấu hiệu rất đặc hiệu cho bệnh tuyến giáp.
     if has_any_symptom(active_symptoms, ["enlarged thyroid"]):
+        return "thuốc nội tiết tuyến giáp"
+    # Cường giáp KHÔNG kèm bướu cổ: hồi hộp + sụt cân + vã mồ hôi.
+    if (
+        has_any_symptom(active_symptoms, ["palpitations"])
+        and has_any_symptom(active_symptoms, ["weight loss"])
+        and has_any_symptom(active_symptoms, ["sweating", "excessive sweating"])
+    ):
+        return "thuốc nội tiết tuyến giáp"
+    # Suy giáp KHÔNG kèm bướu cổ: tăng cân + sợ lạnh + (da khô / rụng tóc). 3 điều kiện -> đặc hiệu.
+    t = normalize(notes or "")
+    if has_any_symptom(active_symptoms, ["weight gain"]) and "so lanh" in t and any(k in t for k in ("da kho", "rung toc")):
         return "thuốc nội tiết tuyến giáp"
     return None
 
@@ -2218,12 +2292,14 @@ def infectious_bloody_diarrhea_rule_drug_group(active_symptoms: set[str]) -> str
     return None
 
 
-def neuropathic_pain_rule_drug_group(active_symptoms: set[str]) -> str | None:
+def neuropathic_pain_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
     nerve_pain = has_any_symptom(active_symptoms, ["Shooting or burning pain, tingling or numbness"])
     paresthesia = has_any_symptom(active_symptoms, ["paresthesia", "loss of sensation"])
-    if nerve_pain or (paresthesia and has_any_symptom(active_symptoms, ["Shooting or burning pain, tingling or numbness"])):
+    if nerve_pain:
         return "thuốc chống co giật/đau thần kinh"
-    if nerve_pain and paresthesia:
+    # Tê bì/dị cảm ở người ĐÁI THÁO ĐƯỜNG = bệnh thần kinh đái tháo đường.
+    t = normalize(notes or "")
+    if paresthesia and any(k in t for k in ("tieu duong", "dai thao duong")):
         return "thuốc chống co giật/đau thần kinh"
     return None
 
@@ -2247,10 +2323,15 @@ def constipation_rule_drug_group(active_symptoms: set[str]) -> str | None:
     return None
 
 
-def antiviral_skin_rule_drug_group(active_symptoms: set[str]) -> str | None:
-    # Mụn nước/bóng nước kèm sốt hoặc phát ban (thuỷ đậu/zona/herpes) -> kháng virus.
+def antiviral_skin_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
+    # Mụn nước/bóng nước kèm sốt hoặc phát ban (thuỷ đậu/zona) -> kháng virus.
     has_vesicle = has_any_symptom(active_symptoms, ["blister"])
     if has_vesicle and has_any_symptom(active_symptoms, ["fever", "high fever", "mild fever", "skin rash"]):
+        return "thuốc kháng virus"
+    # Herpes môi/miệng: mụn nước THÀNH CHÙM ở môi/quanh miệng, thường KHÔNG sốt.
+    # Token đặc hiệu (đã bỏ dấu) + đã có bóng nước -> rất khó dương tính giả.
+    t = normalize(notes or "")
+    if has_vesicle and any(k in t for k in ("thanh chum", "quanh mieng", "quanh moi", "tren moi", "o moi", "o mep", "vung mieng")):
         return "thuốc kháng virus"
     return None
 
@@ -2848,6 +2929,8 @@ def predict():
     # ── CỔNG CẤP CỨU (ưu tiên cao nhất): bắt dấu hiệu nguy hiểm/khủng hoảng từ mô tả thô,
     # trước cả bước trích triệu chứng, để KHÔNG bao giờ gợi thuốc cho ca cấp cứu.
     _emergency = emergency_red_flag_from_notes(notes)
+    if not _emergency and context_safety is not None:
+        _emergency = context_safety.emergency_message(notes)  # phản vệ: sưng môi/lưỡi/họng + khó thở
     if _emergency:
         return jsonify({
             "error": _emergency,
@@ -2912,6 +2995,42 @@ def predict():
             }), 422
 
     if not active_symptoms:
+        # ── LỚP DỰ PHÒNG LLM (mặc định TẮT): pipeline không trích được triệu chứng -> nhờ LLM
+        # đọc mô tả thô (vá "diễn đạt lạ"). Cấp cứu ĐÃ chặn ở cổng lexicon phía trên; output LLM
+        # vẫn qua gating an toàn dưới đây và LUÔN là "tham khảo" (không phải gợi ý chắc chắn).
+        if LABEL_TYPE == "drug_group" and llm_classify is not None:
+            llm_group = llm_classify.classify_group(notes, list(model.classes_))
+            if llm_group:
+                if is_never_suggest_group(llm_group):
+                    title = "Cần khám chuyên khoa"
+                    msg = ("Theo mô tả, vấn đề có thể cần điều trị chuyên sâu (vd ung thư/miễn dịch) — "
+                           "cần bác sĩ chuyên khoa đánh giá trực tiếp, công cụ không thể tự gợi ý.")
+                    sg = None
+                elif is_high_risk_group(llm_group):
+                    title = f"Cần đi khám bác sĩ — có thể liên quan nhóm {llm_group}"
+                    msg = (f"Trợ lý AI nhận định triệu chứng CÓ THỂ liên quan nhóm '{llm_group}', nhưng đây là "
+                           "thuốc KÊ ĐƠN: cần bác sĩ khám và chỉ định, KHÔNG tự mua dùng.")
+                    sg = llm_group
+                else:
+                    title = f"Gợi ý tham khảo (trợ lý AI): {llm_group}"
+                    msg = (f"Chưa trích được triệu chứng chuẩn, nhưng trợ lý AI nhận định CÓ THỂ liên quan nhóm "
+                           f"'{llm_group}'. Đây là gợi ý THAM KHẢO (độ tin cậy chưa định lượng) — hãy mô tả rõ "
+                           "hơn triệu chứng hoặc hỏi dược sĩ/bác sĩ trước khi dùng.")
+                    sg = llm_group
+                return jsonify({
+                    "error": msg,
+                    "display_title": title,
+                    "suggested_group": sg,
+                    "needs_more_input": True,
+                    "input_used": "llm_fallback",
+                    "confidence": None,
+                    "score_type": "llm_fallback",
+                    "label_type": LABEL_TYPE,
+                    "matched_symptoms": [],
+                    "matched_symptoms_vi": [],
+                    "top_predictions": [],
+                }), 422
+
         unsupported_labels = [symptom["label_vi"] for symptom in unsupported_symptoms]
         extra = ""
         if unsupported_labels:
@@ -2923,14 +3042,16 @@ def predict():
     confidence = None
     prediction = None
     top_gap = None  # khoảng cách xác suất top-1 vs top-2 (đo độ "dứt khoát" của model)
+    input_used = "symptoms"  # luồng dùng để dự đoán: cụm triệu chứng đã trích hay raw notes
     if hasattr(model, "predict_proba"):
-        proba_rows = model.predict_proba(model_inputs)
-        class_names = model.classes_
-        proba = [
-            sum(float(row[index]) for row in proba_rows) / len(proba_rows)
-            for index in range(len(class_names))
-        ]
-        ranked = sorted(zip(class_names, proba), key=lambda item: item[1], reverse=True)
+        ranked = ranked_proba(model_inputs)
+        # Hybrid (raw-VI): nếu model hiểu câu thô và có mô tả VN, thử dự đoán THẲNG trên raw
+        # notes; lấy ứng viên tự tin hơn. Tầng trích triệu chứng vẫn nuôi mọi cổng an toàn.
+        if model_accepts_raw_text() and notes.strip():
+            ranked_raw = ranked_proba([notes.strip()])
+            if ranked_raw[0][1] > ranked[0][1]:
+                ranked = ranked_raw
+                input_used = "raw_notes"
         prediction = ranked[0][0]
         probabilities = [
             {
@@ -2941,7 +3062,7 @@ def predict():
             }
             for disease, probability in ranked[:5]
         ]
-        confidence = round(float(max(proba)), 4)
+        confidence = round(float(ranked[0][1]), 4)
         if len(ranked) >= 2:
             top_gap = round(float(ranked[0][1] - ranked[1][1]), 4)
     else:
@@ -2952,22 +3073,24 @@ def predict():
         malaria_rule_drug_group(notes, active_symptoms)
         or anemia_rule_drug_group(notes, active_symptoms)
         or diabetes_rule_drug_group(active_symptoms)
-        or thyroid_rule_drug_group(active_symptoms)
+        or thyroid_rule_drug_group(notes, active_symptoms)
         or psych_rule_drug_group(active_symptoms)
         or cardiac_rule_drug_group(active_symptoms)
         or bronchodilator_rule_drug_group(active_symptoms)
         or wound_infection_rule_drug_group(active_symptoms)
         or infectious_bloody_diarrhea_rule_drug_group(active_symptoms)
         or urinary_rule_drug_group(active_symptoms)
-        or neuropathic_pain_rule_drug_group(active_symptoms)
+        or neuropathic_pain_rule_drug_group(notes, active_symptoms)
         or migraine_rule_drug_group(active_symptoms)
-        or antiviral_skin_rule_drug_group(active_symptoms)
+        or antiviral_skin_rule_drug_group(notes, active_symptoms)
         or musculoskeletal_nsaid_rule_drug_group(active_symptoms)
         or constipation_rule_drug_group(active_symptoms)
         or dental_rule_drug_group(active_symptoms)
+        or fungal_notes_rule_drug_group(notes)
         or gastrointestinal_rule_drug_group(active_symptoms)
         or dermatology_rule_drug_group(active_symptoms)
         or respiratory_rule_drug_group(active_symptoms)
+        or general_fever_pain_rule_drug_group(active_symptoms)
     )
     score_type = metadata.get("score_type", "probability")
     if rule_group:
@@ -2990,7 +3113,16 @@ def predict():
     # Khi một rule lâm sàng mạnh đã kích hoạt (score_type=="rule"), không ép "cần thêm
     # thông tin" chỉ vì ít hơn 2 triệu chứng — nhiều ca rõ ràng chỉ có 1 triệu chứng đặc
     # hiệu (táo bón, mụn nước thành chùm, mề đay...). Vẫn giữ ràng buộc cho dự đoán bằng model.
-    if score_type != "rule" and len(matched_symptom_labels) < MIN_RELIABLE_SYMPTOMS:
+    # Hybrid raw-VI: khi dự đoán đến THẲNG từ raw notes với độ tin cậy cao và model dứt khoát
+    # (top-gap đủ rộng), KHÔNG ép "cần thêm thông tin" chỉ vì trích được ít cụm triệu chứng EN
+    # (mô tả VN tự nhiên thường ít khớp). Cổng cấp cứu/high-risk/never-suggest vẫn áp dụng độc lập.
+    raw_confident = (
+        input_used == "raw_notes"
+        and confidence is not None
+        and confidence >= MIN_RELIABLE_CONFIDENCE
+        and (top_gap is None or top_gap >= MIN_TOPGAP)
+    )
+    if score_type != "rule" and not raw_confident and len(matched_symptom_labels) < MIN_RELIABLE_SYMPTOMS:
         quality_reasons.append(
             f"Chỉ nhận diện được {len(matched_symptom_labels)} triệu chứng chính trong tập train; cần thêm triệu chứng để phân biệt {label_kind_vi}."
         )
@@ -3045,7 +3177,7 @@ def predict():
             "Triệu chứng tai (đau tai/chảy dịch/nghe kém) nên được bác sĩ tai mũi họng đánh giá; chưa nên tự dùng thuốc."
         )
     # P4: chỉ có triệu chứng KHÔNG ĐẶC HIỆU (mệt mỏi/uể oải) -> cần thêm triệu chứng cụ thể.
-    if score_type != "rule" and active_symptoms and set(active_symptoms).issubset({"fatigue", "malaise", "lethargy"}):
+    if score_type != "rule" and active_symptoms and set(active_symptoms).issubset({"fatigue", "malaise", "lethargy", "feeling ill", "feeling unwell"}):
         quality_reasons.append(
             "Chỉ ghi nhận triệu chứng không đặc hiệu (mệt mỏi/uể oải); cần thêm triệu chứng cụ thể để định hướng."
         )
@@ -3084,6 +3216,32 @@ def predict():
             f"Có triệu chứng ngoài tập train nên chưa được đưa vào mô hình: {unsupported_labels}."
         )
 
+    # ── TẦNG NGỮ CẢNH - AN TOÀN: đọc cả câu (bệnh nền/tuổi/thai kỳ/tương tác/dị ứng) và CHẶN
+    # gợi ý chống chỉ định, BẤT KỂ nguồn dự đoán (model hay rule). Đây là lớp vá điểm mù ngữ cảnh.
+    _contraindicated = False
+    if LABEL_TYPE == "drug_group" and context_safety is not None:
+        # LLM trích ngữ cảnh (semantic) để bắt cách nói MỚI lexicon sót; đồng thời HỌC lại.
+        _extra = None
+        if llm_context_extract is not None and llm_context_extract.enabled():
+            try:
+                _parsed = llm_context_extract.extract(notes)
+                if _parsed:
+                    context_safety.learn_from_llm(_parsed)  # lưu cụm chữ mới -> rule tự bắt lần sau
+                    _extra = context_safety.flags_from_llm(_parsed)
+            except Exception:
+                _extra = None
+        if context_safety.drug_allergy_cause(context_safety.norm(notes)) or (_extra and _extra.get("allergy")):
+            quality_reasons.insert(0, context_safety.drug_allergy_message())
+            _contraindicated = True
+        _ctx = context_safety.safety_overrides(prediction, notes, extra=_extra)
+        if _ctx["block"]:
+            _contraindicated = True
+            # Cảnh báo chống chỉ định phải đứng ĐẦU thông điệp.
+            for r in reversed(_ctx["reasons"]):
+                quality_reasons.insert(0, r)
+        else:
+            quality_reasons.extend(_ctx["reasons"])
+
     needs_more_input = bool(quality_reasons)
     quality_message = " ".join(quality_reasons)
     if needs_more_input:
@@ -3092,13 +3250,32 @@ def predict():
     if LABEL_TYPE == "drug_group" and needs_more_input:
         triage = symptom_triage_guidance(active_symptoms)
         summary = case_summary(notes, active_symptoms, matched_symptom_labels, prediction, False)
+        # Khi hệ NHẬN ĐÚNG một nhóm KÊ ĐƠN (rủi ro cao, không phải nhóm "không bao giờ gợi ý"
+        # như ung thư) rồi chủ động chuyển khám: NÊU TÊN nhóm + cảnh báo kê đơn, thay vì câu
+        # chung chung. Vẫn 422/needs_more, vẫn KHÔNG kê thuốc thật — chỉ minh bạch hơn về hướng.
+        rx_group = (
+            prediction
+            if prediction and is_high_risk_group(prediction) and not is_never_suggest_group(prediction)
+            else None
+        )
+        if _contraindicated:
+            display_title = "⚠️ Cảnh báo an toàn — KHÔNG tự dùng thuốc, cần bác sĩ"
+            error_message = quality_message
+        elif rx_group:
+            display_title = f"Cần đi khám bác sĩ — có thể liên quan nhóm {rx_group}"
+            error_message = (
+                f"Triệu chứng của bạn CÓ THỂ liên quan đến nhóm '{rx_group}', nhưng đây là thuốc "
+                f"KÊ ĐƠN: cần bác sĩ khám và chỉ định, KHÔNG tự mua dùng. {quality_message}"
+            )
+        else:
+            display_title = "Chưa đủ dữ liệu để gợi ý thuốc"
+            error_message = f"{quality_message} {more_info_prompt(active_symptoms)}"
         return jsonify(
             {
-                "error": (
-                    f"{quality_message} {more_info_prompt(active_symptoms)}"
-                ),
+                "error": error_message,
                 "case_summary": summary,
-                "display_title": "Chưa đủ dữ liệu để gợi ý thuốc",
+                "display_title": display_title,
+                "suggested_group": rx_group,
                 "needs_more_input": True,
                 "matched_symptoms": matched_symptoms,
                 "matched_symptoms_vi": matched_symptom_labels,
@@ -3176,6 +3353,7 @@ def predict():
             "reason": reason_text,
             "confidence": confidence,
             "top_gap": top_gap,
+            "input_used": input_used,
             "score_label": SCORE_LABEL,
             "score_type": score_type,
             "label_type": LABEL_TYPE,
