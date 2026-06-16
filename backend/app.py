@@ -904,6 +904,12 @@ try:
 except Exception:
     llm_classify = None
 
+# Tầng NGỮ CẢNH - AN TOÀN (bệnh nền/tuổi/thai kỳ/tương tác/dị ứng/phản vệ). LUÔN bật.
+try:
+    import context_safety
+except Exception:
+    context_safety = None
+
 
 def llm_context_enabled() -> bool:
     if llm_context is None:
@@ -2917,6 +2923,8 @@ def predict():
     # ── CỔNG CẤP CỨU (ưu tiên cao nhất): bắt dấu hiệu nguy hiểm/khủng hoảng từ mô tả thô,
     # trước cả bước trích triệu chứng, để KHÔNG bao giờ gợi thuốc cho ca cấp cứu.
     _emergency = emergency_red_flag_from_notes(notes)
+    if not _emergency and context_safety is not None:
+        _emergency = context_safety.emergency_message(notes)  # phản vệ: sưng môi/lưỡi/họng + khó thở
     if _emergency:
         return jsonify({
             "error": _emergency,
@@ -3202,6 +3210,22 @@ def predict():
             f"Có triệu chứng ngoài tập train nên chưa được đưa vào mô hình: {unsupported_labels}."
         )
 
+    # ── TẦNG NGỮ CẢNH - AN TOÀN: đọc cả câu (bệnh nền/tuổi/thai kỳ/tương tác/dị ứng) và CHẶN
+    # gợi ý chống chỉ định, BẤT KỂ nguồn dự đoán (model hay rule). Đây là lớp vá điểm mù ngữ cảnh.
+    _contraindicated = False
+    if LABEL_TYPE == "drug_group" and context_safety is not None:
+        if context_safety.drug_allergy_cause(context_safety.norm(notes)):
+            quality_reasons.insert(0, context_safety.drug_allergy_message())
+            _contraindicated = True
+        _ctx = context_safety.safety_overrides(prediction, notes)
+        if _ctx["block"]:
+            _contraindicated = True
+            # Cảnh báo chống chỉ định phải đứng ĐẦU thông điệp.
+            for r in reversed(_ctx["reasons"]):
+                quality_reasons.insert(0, r)
+        else:
+            quality_reasons.extend(_ctx["reasons"])
+
     needs_more_input = bool(quality_reasons)
     quality_message = " ".join(quality_reasons)
     if needs_more_input:
@@ -3218,7 +3242,10 @@ def predict():
             if prediction and is_high_risk_group(prediction) and not is_never_suggest_group(prediction)
             else None
         )
-        if rx_group:
+        if _contraindicated:
+            display_title = "⚠️ Cảnh báo an toàn — KHÔNG tự dùng thuốc, cần bác sĩ"
+            error_message = quality_message
+        elif rx_group:
             display_title = f"Cần đi khám bác sĩ — có thể liên quan nhóm {rx_group}"
             error_message = (
                 f"Triệu chứng của bạn CÓ THỂ liên quan đến nhóm '{rx_group}', nhưng đây là thuốc "
