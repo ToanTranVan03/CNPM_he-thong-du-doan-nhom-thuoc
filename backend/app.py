@@ -910,6 +910,12 @@ try:
 except Exception:
     context_safety = None
 
+# Trích ngữ cảnh bằng LLM (semantic, bắt cách nói mới) + vòng học. Mặc định TẮT (LLM_CONTEXT_ENABLED).
+try:
+    import llm_context_extract
+except Exception:
+    llm_context_extract = None
+
 
 def llm_context_enabled() -> bool:
     if llm_context is None:
@@ -3214,10 +3220,20 @@ def predict():
     # gợi ý chống chỉ định, BẤT KỂ nguồn dự đoán (model hay rule). Đây là lớp vá điểm mù ngữ cảnh.
     _contraindicated = False
     if LABEL_TYPE == "drug_group" and context_safety is not None:
-        if context_safety.drug_allergy_cause(context_safety.norm(notes)):
+        # LLM trích ngữ cảnh (semantic) để bắt cách nói MỚI lexicon sót; đồng thời HỌC lại.
+        _extra = None
+        if llm_context_extract is not None and llm_context_extract.enabled():
+            try:
+                _parsed = llm_context_extract.extract(notes)
+                if _parsed:
+                    context_safety.learn_from_llm(_parsed)  # lưu cụm chữ mới -> rule tự bắt lần sau
+                    _extra = context_safety.flags_from_llm(_parsed)
+            except Exception:
+                _extra = None
+        if context_safety.drug_allergy_cause(context_safety.norm(notes)) or (_extra and _extra.get("allergy")):
             quality_reasons.insert(0, context_safety.drug_allergy_message())
             _contraindicated = True
-        _ctx = context_safety.safety_overrides(prediction, notes)
+        _ctx = context_safety.safety_overrides(prediction, notes, extra=_extra)
         if _ctx["block"]:
             _contraindicated = True
             # Cảnh báo chống chỉ định phải đứng ĐẦU thông điệp.
