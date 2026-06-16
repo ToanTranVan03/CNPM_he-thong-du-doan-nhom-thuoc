@@ -640,7 +640,7 @@ AUTO_EXACT_SYMPTOM_KEYWORDS = {
     "abnormal appearing skin": ["da bất thường", "bất thường trên da"],
     "abnormal involuntary movements": ["cử động không tự chủ", "vận động bất thường"],
     "abnormal movement of eyelid": ["mí mắt co giật", "cử động mí mắt bất thường"],
-    "acne or pimples": ["mụn trứng cá", "mụn"],
+    "acne or pimples": ["mụn trứng cá", "mụn bọc", "mụn mủ"],
     "back cramps or spasms": ["co thắt lưng", "chuột rút lưng"],
     "blood clots during menstrual periods": ["máu cục khi hành kinh", "kinh nguyệt có máu cục"],
     "diaper rash": ["hăm tã"],
@@ -2215,8 +2215,16 @@ def diabetes_rule_drug_group(active_symptoms: set[str]) -> str | None:
 
 
 def thyroid_rule_drug_group(active_symptoms: set[str]) -> str | None:
-    # Bướu cổ là dấu hiệu rất đặc hiệu cho bệnh tuyến giáp.
+    # Bướu cổ là dấu hiệu rất đặc hiệu cho bệnh tuyến giáp (suy giáp/bướu).
     if has_any_symptom(active_symptoms, ["enlarged thyroid"]):
+        return "thuốc nội tiết tuyến giáp"
+    # Cường giáp KHÔNG kèm bướu cổ: tổ hợp hồi hộp + sụt cân + vã mồ hôi rất gợi ý.
+    # Yêu cầu đủ cả 3 để hạn chế dương tính giả; nhóm này là rủi ro cao -> vẫn chuyển khám.
+    if (
+        has_any_symptom(active_symptoms, ["palpitations"])
+        and has_any_symptom(active_symptoms, ["weight loss"])
+        and has_any_symptom(active_symptoms, ["sweating", "excessive sweating"])
+    ):
         return "thuốc nội tiết tuyến giáp"
     return None
 
@@ -2276,10 +2284,15 @@ def constipation_rule_drug_group(active_symptoms: set[str]) -> str | None:
     return None
 
 
-def antiviral_skin_rule_drug_group(active_symptoms: set[str]) -> str | None:
-    # Mụn nước/bóng nước kèm sốt hoặc phát ban (thuỷ đậu/zona/herpes) -> kháng virus.
+def antiviral_skin_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
+    # Mụn nước/bóng nước kèm sốt hoặc phát ban (thuỷ đậu/zona) -> kháng virus.
     has_vesicle = has_any_symptom(active_symptoms, ["blister"])
     if has_vesicle and has_any_symptom(active_symptoms, ["fever", "high fever", "mild fever", "skin rash"]):
+        return "thuốc kháng virus"
+    # Herpes môi/miệng: mụn nước THÀNH CHÙM ở môi/quanh miệng, thường KHÔNG sốt.
+    # Token đặc hiệu (đã bỏ dấu) + đã có bóng nước -> rất khó dương tính giả.
+    t = normalize(notes or "")
+    if has_vesicle and any(k in t for k in ("thanh chum", "quanh mieng", "quanh moi", "tren moi", "o moi", "o mep", "vung mieng")):
         return "thuốc kháng virus"
     return None
 
@@ -2992,7 +3005,7 @@ def predict():
         or urinary_rule_drug_group(active_symptoms)
         or neuropathic_pain_rule_drug_group(active_symptoms)
         or migraine_rule_drug_group(active_symptoms)
-        or antiviral_skin_rule_drug_group(active_symptoms)
+        or antiviral_skin_rule_drug_group(notes, active_symptoms)
         or musculoskeletal_nsaid_rule_drug_group(active_symptoms)
         or constipation_rule_drug_group(active_symptoms)
         or dental_rule_drug_group(active_symptoms)
