@@ -898,6 +898,12 @@ try:
 except Exception:
     llm_context = None
 
+# Lớp DỰ PHÒNG LLM (phân loại nhóm khi pipeline không trích được triệu chứng). Mặc định TẮT.
+try:
+    import llm_classify
+except Exception:
+    llm_classify = None
+
 
 def llm_context_enabled() -> bool:
     if llm_context is None:
@@ -2975,6 +2981,42 @@ def predict():
             }), 422
 
     if not active_symptoms:
+        # ── LỚP DỰ PHÒNG LLM (mặc định TẮT): pipeline không trích được triệu chứng -> nhờ LLM
+        # đọc mô tả thô (vá "diễn đạt lạ"). Cấp cứu ĐÃ chặn ở cổng lexicon phía trên; output LLM
+        # vẫn qua gating an toàn dưới đây và LUÔN là "tham khảo" (không phải gợi ý chắc chắn).
+        if LABEL_TYPE == "drug_group" and llm_classify is not None:
+            llm_group = llm_classify.classify_group(notes, list(model.classes_))
+            if llm_group:
+                if is_never_suggest_group(llm_group):
+                    title = "Cần khám chuyên khoa"
+                    msg = ("Theo mô tả, vấn đề có thể cần điều trị chuyên sâu (vd ung thư/miễn dịch) — "
+                           "cần bác sĩ chuyên khoa đánh giá trực tiếp, công cụ không thể tự gợi ý.")
+                    sg = None
+                elif is_high_risk_group(llm_group):
+                    title = f"Cần đi khám bác sĩ — có thể liên quan nhóm {llm_group}"
+                    msg = (f"Trợ lý AI nhận định triệu chứng CÓ THỂ liên quan nhóm '{llm_group}', nhưng đây là "
+                           "thuốc KÊ ĐƠN: cần bác sĩ khám và chỉ định, KHÔNG tự mua dùng.")
+                    sg = llm_group
+                else:
+                    title = f"Gợi ý tham khảo (trợ lý AI): {llm_group}"
+                    msg = (f"Chưa trích được triệu chứng chuẩn, nhưng trợ lý AI nhận định CÓ THỂ liên quan nhóm "
+                           f"'{llm_group}'. Đây là gợi ý THAM KHẢO (độ tin cậy chưa định lượng) — hãy mô tả rõ "
+                           "hơn triệu chứng hoặc hỏi dược sĩ/bác sĩ trước khi dùng.")
+                    sg = llm_group
+                return jsonify({
+                    "error": msg,
+                    "display_title": title,
+                    "suggested_group": sg,
+                    "needs_more_input": True,
+                    "input_used": "llm_fallback",
+                    "confidence": None,
+                    "score_type": "llm_fallback",
+                    "label_type": LABEL_TYPE,
+                    "matched_symptoms": [],
+                    "matched_symptoms_vi": [],
+                    "top_predictions": [],
+                }), 422
+
         unsupported_labels = [symptom["label_vi"] for symptom in unsupported_symptoms]
         extra = ""
         if unsupported_labels:
