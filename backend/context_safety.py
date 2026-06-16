@@ -13,8 +13,10 @@ Lexicon tiếng Việt đã bỏ dấu (khớp với normalize của app). Mọi
 """
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
+from pathlib import Path
 
 
 def norm(value: str) -> str:
@@ -74,6 +76,61 @@ BREATHING = ("kho tho", "kho nuot", "tho rit", "tuc nguc", "nghet tho", "khan ti
 ANAPHYLAXIS_DIRECT = ("phan ve", "soc phan ve")
 
 
+# ── VÒNG HỌC: lexicon học được từ LLM (data/learned_context.jsonl) ────────────
+_LEARNED_PATH = Path(__file__).resolve().parents[1] / "data" / "learned_context.jsonl"
+LEARNED: dict = {"comorbidity": {}, "anticoagulant": set(), "pregnancy": set(), "age": {}}
+
+
+def _load_learned() -> None:
+    if not _LEARNED_PATH.exists():
+        return
+    for line in _LEARNED_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        kind, phrase, flag = d.get("kind"), norm(d.get("phrase", "")), d.get("flag")
+        if not phrase:
+            continue
+        if kind == "comorbidity":
+            LEARNED["comorbidity"].setdefault(flag, set()).add(phrase)
+        elif kind == "anticoagulant":
+            LEARNED["anticoagulant"].add(phrase)
+        elif kind == "pregnancy":
+            LEARNED["pregnancy"].add(phrase)
+        elif kind == "age":
+            LEARNED["age"].setdefault(flag, set()).add(phrase)
+
+
+def record_learned(kind: str, phrase: str, flag: str | None = None) -> bool:
+    """Lưu cụm chữ MỚI (LLM bắt được mà lexicon sót) để lần sau rule tự bắt. Trả True nếu mới."""
+    p = norm(phrase)
+    if not p or len(p) < 3:
+        return False
+    store = (LEARNED["comorbidity"].get(flag, set()) if kind == "comorbidity"
+             else LEARNED["age"].get(flag, set()) if kind == "age"
+             else LEARNED.get(kind, set()))
+    if p in store:
+        return False
+    _LEARNED_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(_LEARNED_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"kind": kind, "flag": flag, "phrase": phrase.strip(), "norm": p,
+                            "source": "llm"}, ensure_ascii=False) + "\n")
+    if kind == "comorbidity":
+        LEARNED["comorbidity"].setdefault(flag, set()).add(p)
+    elif kind == "age":
+        LEARNED["age"].setdefault(flag, set()).add(p)
+    elif kind in ("anticoagulant", "pregnancy"):
+        LEARNED[kind].add(p)
+    return True
+
+
+_load_learned()
+
+
 def detect_comorbidities(notes_raw: str) -> set[str]:
     t = norm(notes_raw)
     flags = {flag for flag, keys in COMORBIDITY.items()
@@ -83,15 +140,19 @@ def detect_comorbidities(notes_raw: str) -> set[str]:
         flags.add("hepatic")
     if _has_any(low_t, RENAL_DIA):
         flags.add("renal")
+    for flag, phrases in LEARNED["comorbidity"].items():  # cụm học được từ LLM
+        if phrases and _has_any(t, phrases):
+            flags.add(flag)
     return flags
 
 
 def on_anticoagulant(t: str) -> bool:
-    return _has_any(t, ANTICOAGULANT)
+    return _has_any(t, ANTICOAGULANT) or (bool(LEARNED["anticoagulant"]) and _has_any(t, LEARNED["anticoagulant"]))
 
 
 def is_pregnant(t: str) -> bool:
-    return _has_any(t, PREGNANCY) or bool(re.search(r"thai\s*\d+\s*tuan", t))
+    return (_has_any(t, PREGNANCY) or bool(re.search(r"thai\s*\d+\s*tuan", t))
+            or (bool(LEARNED["pregnancy"]) and _has_any(t, LEARNED["pregnancy"])))
 
 
 def drug_allergy_cause(t: str) -> bool:
@@ -100,6 +161,9 @@ def drug_allergy_cause(t: str) -> bool:
 
 def age_flag(t: str) -> str | None:
     """Trả 'infant' | 'child' | 'elderly' | None."""
+    for grp, phrases in LEARNED["age"].items():  # cụm tuổi học được từ LLM
+        if phrases and _has_any(t, phrases):
+            return grp
     if _has_any(t, ("so sinh", "tre so sinh", "nhu nhi", "tre duoi 1 tuoi", "be moi sinh")):
         return "infant"
     # "X thang tuoi"/"be X thang" -> nhũ nhi (<1 tuổi)
@@ -140,9 +204,10 @@ def emergency_message(notes: str) -> str | None:
 
 
 # ── Tổng hợp cảnh báo ngữ cảnh cho 1 nhóm thuốc dự đoán ───────────────────────
-def safety_overrides(prediction: str | None, notes: str) -> dict:
+def safety_overrides(prediction: str | None, notes: str, extra: dict | None = None) -> dict:
     """Trả {'block': bool, 'reasons': [str], 'allergy': bool}.
     block=True -> chống chỉ định cứng, phải chặn gợi ý (đẩy sang cần-bác-sĩ).
+    extra: cờ ngữ cảnh do LLM trích (gộp với lexicon) — {comorbidities,anticoagulant,pregnant,age,allergy}.
     """
     t = norm(notes)
     g = (prediction or "").lower()
@@ -154,6 +219,12 @@ def safety_overrides(prediction: str | None, notes: str) -> dict:
     preg = is_pregnant(t)
     age = age_flag(t)
     allergy = drug_allergy_cause(t)
+    if extra:  # gộp cờ LLM (hiểu cách nói mới)
+        como = como | set(extra.get("comorbidities") or [])
+        anticoag = anticoag or bool(extra.get("anticoagulant"))
+        preg = preg or bool(extra.get("pregnant"))
+        age = age or extra.get("age")
+        allergy = allergy or bool(extra.get("allergy"))
 
     is_nsaid = "khang viem khong steroid" in norm(g) or "nsaid" in norm(g)
     is_analgesic = "giam dau ha sot" in norm(g)
@@ -209,6 +280,50 @@ def safety_overrides(prediction: str | None, notes: str) -> dict:
         reasons.append("Người cao tuổi: tăng nguy cơ tác dụng phụ/tương tác (thận, dạ dày, tim mạch) — thận trọng, nên hỏi bác sĩ trước khi dùng.")
 
     return {"block": block, "reasons": reasons, "allergy": allergy}
+
+
+def flags_from_llm(parsed: dict | None) -> dict:
+    """Chuyển JSON LLM -> cờ ngữ cảnh (để gộp vào safety_overrides)."""
+    out = {"comorbidities": set(), "anticoagulant": False, "pregnant": False, "age": None, "allergy": False}
+    if not isinstance(parsed, dict):
+        return out
+    for c in (parsed.get("comorbidities") or []):
+        if isinstance(c, dict) and c.get("flag") in COMORBIDITY:
+            out["comorbidities"].add(c["flag"])
+    a = parsed.get("on_anticoagulant") or {}
+    out["anticoagulant"] = bool(isinstance(a, dict) and a.get("value"))
+    p = parsed.get("pregnant") or {}
+    out["pregnant"] = bool(isinstance(p, dict) and p.get("value"))
+    ag = parsed.get("age_group") or {}
+    v = ag.get("value") if isinstance(ag, dict) else None
+    out["age"] = v if v in ("infant", "child", "elderly") else None
+    al = parsed.get("drug_allergy") or {}
+    out["allergy"] = bool(isinstance(al, dict) and al.get("value"))
+    return out
+
+
+def learn_from_llm(parsed: dict | None) -> int:
+    """Lưu cụm chữ MỚI mà LLM bắt được nhưng lexicon hiện SÓT -> lần sau rule tự bắt. Trả số cụm học mới."""
+    if not isinstance(parsed, dict):
+        return 0
+    n = 0
+    for c in (parsed.get("comorbidities") or []):
+        if not isinstance(c, dict):
+            continue
+        flag, phrase = c.get("flag"), (c.get("phrase") or "").strip()
+        if flag in COMORBIDITY and phrase and flag not in detect_comorbidities(phrase):
+            n += record_learned("comorbidity", phrase, flag)
+    a = parsed.get("on_anticoagulant") or {}
+    if isinstance(a, dict) and a.get("value") and a.get("phrase") and not on_anticoagulant(norm(a["phrase"])):
+        n += record_learned("anticoagulant", a["phrase"])
+    p = parsed.get("pregnant") or {}
+    if isinstance(p, dict) and p.get("value") and p.get("phrase") and not is_pregnant(norm(p["phrase"])):
+        n += record_learned("pregnancy", p["phrase"])
+    ag = parsed.get("age_group") or {}
+    if isinstance(ag, dict) and ag.get("value") in ("infant", "child", "elderly") and ag.get("phrase"):
+        if age_flag(norm(ag["phrase"])) != ag["value"]:
+            n += record_learned("age", ag["phrase"], ag["value"])
+    return n
 
 
 def drug_allergy_message() -> str:
