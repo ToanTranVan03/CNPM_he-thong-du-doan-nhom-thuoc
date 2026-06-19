@@ -2808,6 +2808,27 @@ def health():
             "guidance_entries": len(guidance_data),
         }
     )
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    data = request.get_json() or {}
+    name = data.get("name", "").strip()
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+
+    if not name or not email or len(password) < 6:
+        return jsonify({"error": "Vui lòng nhập đủ thông tin (Mật khẩu từ 6 ký tự)"}), 400
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "Email này đã được đăng ký."}), 409
+    new_user = User(email=email, full_name=name)
+    new_user.set_password(password)
+    
+    db.session.add(new_user)
+    db.session.commit()
+
+    token = jwt.encode({'user': email, 'role': 'User', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)}, app.config['SECRET_KEY'], algorithm="HS256")
+    
+    return jsonify({'message': 'Đăng ký thành công', 'token': token, 'user': {'name': new_user.full_name, 'email': email}}), 201
+
 # --- BẮT ĐẦU: BỘ API XÁC THỰC, TÀI KHOẢN & HỒ SƠ ---
 @app.route('/api/login', methods=['POST'])
 def login():
