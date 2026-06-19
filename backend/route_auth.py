@@ -24,5 +24,10 @@ def login():
         return jsonify({'message': 'Đăng nhập thành công', 'token': token}), 200
     
     return jsonify({'message': 'Sai email hoặc mật khẩu'}), 401
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    # Đối với JWT, việc vô hiệu hóa thực tế diễn ra ở Frontend (xóa token).
+    # API này dùng để xác nhận phản hồi hoặc mở rộng sau này (vd: thêm token vào Blacklist).
+    return jsonify({'message': 'Đăng xuất thành công, token đã bị vô hiệu hóa ở client'}), 200
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
