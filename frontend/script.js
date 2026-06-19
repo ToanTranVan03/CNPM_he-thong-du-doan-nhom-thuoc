@@ -814,11 +814,15 @@ async function logoutCurrentUser() {
   alert("Bạn đã đăng xuất an toàn khỏi hệ thống!");
 }
 
+
+
+
+
   authToken = "";
   currentUser = null;
   savedResults = [];
   localStorage.removeItem(AUTH_TOKEN_KEY);
-  
+
   localStorage.removeItem(AUTH_USER_KEY);
   document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
   showAuthScreen("login");
