@@ -816,8 +816,6 @@ async function logoutCurrentUser() {
 
 
 
-
-
   authToken = "";
   currentUser = null;
   savedResults = [];
