@@ -1877,3 +1877,58 @@ input:focus {
     font-size: 36px !important;
   }
 }
+.top-drug-item {
+    margin-bottom: 16px;
+    padding: 14px;
+    border: 1px solid rgba(96, 165, 250, 0.25);
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.45);
+}
+
+.top-drug-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+    color: #e5f0ff;
+}
+
+.top-drug-rank {
+    font-size: 13px;
+    font-weight: 700;
+    color: #38bdf8;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.25);
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #22c55e, #3b82f6);
+}
+
+.symptom-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.symptom-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 11px;
+    border-radius: 999px;
+    background: rgba(59, 130, 246, 0.18);
+    color: #dbeafe;
+    border: 1px solid rgba(96, 165, 250, 0.3);
+    font-size: 14px;
+    font-weight: 600;
+}

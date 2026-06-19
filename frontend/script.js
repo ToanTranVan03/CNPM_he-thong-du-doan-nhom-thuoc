@@ -112,6 +112,10 @@ async function authRequest(endpoint, payload) {
     body: JSON.stringify(payload),
   });
   const data = await response.json();
+  renderTop3DrugGroups(
+    data.top3_predictions || data.predictions || data.results || [],
+    data.symptoms_vi || data.matched_symptoms || []
+);
   if (!response.ok) {
     throw new Error(data.message || data.error || "Không xử lý được yêu cầu.");
   }
@@ -2042,4 +2046,63 @@ async function handleFileUpload(file) {
     uploadResult.style.background = "rgba(var(--error-rgb, 220, 38, 38), 0.1)";
     uploadResultText.innerHTML = `<strong>❌ Lỗi:</strong> ${error.message}`;
   }
+}
+function renderTop3DrugGroups(predictions = [], matchedSymptoms = []) {
+    const resultArea = document.getElementById("prediction-result");
+
+    if (!resultArea) {
+        console.warn("Không tìm thấy #prediction-result");
+        return;
+    }
+
+    const top3 = predictions.slice(0, 3);
+
+    const top3Html = top3.map((item, index) => {
+        const groupName =
+            item.group ||
+            item.group_name ||
+            item.ten_nhom ||
+            item.label ||
+            "Nhóm thuốc không xác định";
+
+        const score =
+            item.score ??
+            item.confidence ??
+            item.probability ??
+            0;
+
+        const percent = Number(score).toFixed(1);
+
+        return `
+            <div class="top-drug-item">
+                <div class="top-drug-header">
+                    <span class="top-drug-rank">Top ${index + 1}</span>
+                    <strong>${groupName}</strong>
+                    <span>${percent}%</span>
+                </div>
+
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${percent}%"></div>
+                </div>
+            </div>
+        `;
+    }).join("");
+
+    const symptomsHtml = matchedSymptoms.length > 0
+        ? matchedSymptoms.map(symptom => `<span class="symptom-chip">${symptom}</span>`).join("")
+        : `<span class="text-muted">Chưa có triệu chứng khớp.</span>`;
+
+    resultArea.innerHTML += `
+        <div class="result-card mt-3">
+            <h3>Top 3 nhóm thuốc gợi ý</h3>
+            ${top3Html || "<p>Chưa có kết quả dự đoán.</p>"}
+        </div>
+
+        <div class="result-card mt-3">
+            <h3>Triệu chứng đã khớp</h3>
+            <div class="symptom-chip-list">
+                ${symptomsHtml}
+            </div>
+        </div>
+    `;
 }
