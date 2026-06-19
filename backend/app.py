@@ -2784,16 +2784,176 @@ def prediction_reason(matched_labels: list[str], confidence, score_type: str, gr
     return f"Triệu chứng đã nhận diện ({syms}) phù hợp nhất với nhóm {group}."
 
 
+# Admin-managed extra symptoms (file-backed) and dynamic symptoms endpoint
+ADMIN_SYMPTOMS_PATH = PROJECT_ROOT / "data" / "admin_symptoms.json"
+
+
+def slugify(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"[^a-z0-9_\-]", "", s)
+    return s or secrets.token_urlsafe(6)
+
+
+def load_admin_symptoms() -> list:
+    try:
+        if ADMIN_SYMPTOMS_PATH.exists():
+            return json.loads(ADMIN_SYMPTOMS_PATH.read_text(encoding="utf-8")) or []
+    except Exception:
+        pass
+    return []
+
+
+def save_admin_symptoms(items: list) -> None:
+    ADMIN_SYMPTOMS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ADMIN_SYMPTOMS_PATH.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+@app.route('/api/admin/symptoms', methods=['POST'])
+def admin_add_symptom():
+    data = request.get_json(silent=True) or {}
+    label_vi = (data.get('label_vi') or data.get('label') or '').strip()
+    label_en = (data.get('label_en') or data.get('label_en') or '').strip()
+    note = (data.get('note') or data.get('note') or '').strip()
+    if not label_vi or not label_en:
+        return jsonify({"error": "Vui lòng cung cấp label_vi và label_en."}), 400
+    admin = load_admin_symptoms()
+    candidate_id = data.get('id') or slugify(label_en)
+    # ensure unique id
+    if any(str(a.get('id')) == str(candidate_id) for a in admin):
+        candidate_id = f"{candidate_id}_{secrets.token_hex(3)}"
+    item = {"id": candidate_id, "label_vi": label_vi, "label_en": label_en, "note": note}
+    admin.append(item)
+    save_admin_symptoms(admin)
+    return jsonify(item), 201
+
+
+@app.route('/api/admin/symptoms/<string:item_id>', methods=['PUT'])
+def admin_update_symptom(item_id):
+    data = request.get_json(silent=True) or {}
+    admin = load_admin_symptoms()
+    for i, it in enumerate(admin):
+        if str(it.get('id')) == str(item_id):
+            it['label_vi'] = (data.get('label_vi') or data.get('label') or it.get('label_vi') or '').strip()
+            it['label_en'] = (data.get('label_en') or it.get('label_en') or '').strip() or it.get('label_en')
+            it['note'] = (data.get('note') or it.get('note') or '').strip()
+            admin[i] = it
+            save_admin_symptoms(admin)
+            return jsonify(it), 200
+    return jsonify({"error": "Không tìm thấy mục"}), 404
+
+
+@app.route('/api/admin/symptoms/<string:item_id>', methods=['DELETE'])
+def admin_delete_symptom(item_id):
+    admin = load_admin_symptoms()
+    new = [it for it in admin if str(it.get('id')) != str(item_id)]
+    if len(new) == len(admin):
+        return jsonify({"error": "Không tìm thấy mục"}), 404
+    save_admin_symptoms(new)
+    return jsonify({"message": "Đã xóa"}), 200
+
+
+@app.route('/api/symptoms', methods=['GET','POST'])
+def add_symptom_public():
+    if request.method == 'GET':
+        try:
+            base = build_readable_symptoms() or []
+        except Exception:
+            base = []
+        admin = load_admin_symptoms()
+        existing_ids = {str(s.get('id')) for s in base if isinstance(s, dict) and s.get('id')}
+        for a in admin:
+            if str(a.get('id')) not in existing_ids:
+                base.append({
+                    'id': a.get('id'),
+                    'label': a.get('label_vi') or a.get('label') or a.get('label_en') or '',
+                    'label_vi': a.get('label_vi') or a.get('label') or '',
+                    'label_en': a.get('label_en') or '',
+                    'note': a.get('note') or ''
+                })
+        return jsonify({"symptoms": base})
+
+    data = request.get_json(silent=True) or {}
+    label_vi = (data.get('label_vi') or data.get('label') or '').strip()
+    label_en = (data.get('label_en') or data.get('label_en') or '').strip()
+    note = (data.get('note') or data.get('note') or '').strip()
+    if not label_vi or not label_en:
+        return jsonify({"error": "Vui lòng cung cấp label_vi và label_en."}), 400
+    admin = load_admin_symptoms()
+    candidate_id = data.get('id') or slugify(label_en)
+    if any(str(a.get('id')) == str(candidate_id) for a in admin):
+        candidate_id = f"{candidate_id}_{secrets.token_hex(3)}"
+    item = {"id": candidate_id, "label_vi": label_vi, "label_en": label_en, "note": note}
+    admin.append(item)
+    save_admin_symptoms(admin)
+    return jsonify(item), 201
+
+
+@app.route('/api/symptoms/<string:item_id>', methods=['PUT'])
+def update_symptom_public(item_id):
+    data = request.get_json(silent=True) or {}
+    admin = load_admin_symptoms()
+    for i, it in enumerate(admin):
+        if str(it.get('id')) == str(item_id):
+            it['label_vi'] = (data.get('label_vi') or data.get('label') or it.get('label_vi') or '').strip()
+            it['label_en'] = (data.get('label_en') or it.get('label_en') or '').strip() or it.get('label_en')
+            it['note'] = (data.get('note') or it.get('note') or '').strip()
+            admin[i] = it
+            save_admin_symptoms(admin)
+            return jsonify(it), 200
+    return jsonify({"error": "Không tìm thấy mục"}), 404
+
+
+@app.route('/api/symptoms/<string:item_id>', methods=['DELETE'])
+def delete_symptom_public(item_id):
+    admin = load_admin_symptoms()
+    new = [it for it in admin if str(it.get('id')) != str(item_id)]
+    if len(new) == len(admin):
+        return jsonify({"error": "Không tìm thấy mục"}), 404
+    save_admin_symptoms(new)
+    return jsonify({"message": "Đã xóa"}), 200
+
+
+@app.route('/api/symptoms', methods=['GET'])
+def get_symptoms():
+    # Build base readable symptoms from internal model/features if available
+    try:
+        base = build_readable_symptoms() or []
+    except Exception:
+        base = []
+    # Load admin-provided symptoms and append (avoid id duplicates)
+    admin = load_admin_symptoms()
+    existing_ids = {str(s.get('id')) for s in base if isinstance(s, dict) and s.get('id')}
+    for a in admin:
+        if str(a.get('id')) not in existing_ids:
+            base.append({
+                'id': a.get('id'),
+                'label': a.get('label_vi') or a.get('label') or a.get('label_en') or '',
+                'label_vi': a.get('label_vi') or a.get('label') or '',
+                'label_en': a.get('label_en') or '',
+                'note': a.get('note') or ''
+            })
+    return jsonify({"symptoms": base})
+
+
 @app.get("/")
 def home():
     return send_from_directory(FRONTEND_DIR, "index.html")
 
 
-@app.get("/<path:path>")
-def static_files(path):
-    if path not in ALLOWED_STATIC_FILES:
-        return jsonify({"error": "Not found"}), 404
-    return send_from_directory(FRONTEND_DIR, path)
+@app.get('/index.html')
+def index_html():
+    return send_from_directory(FRONTEND_DIR, 'index.html')
+
+
+@app.get('/styles.css')
+def styles_css():
+    return send_from_directory(FRONTEND_DIR, 'styles.css')
+
+
+@app.get('/script.js')
+def script_js():
+    return send_from_directory(FRONTEND_DIR, 'script.js')
 
 
 @app.get("/api/health")
@@ -2930,9 +3090,6 @@ def profile():
             return jsonify({"message": "Cập nhật hồ sơ thành công!"}), 200
         return jsonify({"error": "Không tìm thấy tài khoản trong DB"}), 404
 # --- KẾT THÚC: BỘ API XÁC THỰC, TÀI KHOẢN & HỒ SƠ ---
-@app.get("/api/symptoms")
-def symptoms():
-    return jsonify({"symptoms": readable_symptoms})
 
 
 @app.post("/api/predict")

@@ -1161,6 +1161,240 @@ loadDrugGroups();
 
 const API = "http://127.0.0.1:5000/api";
 
+
+// ============================================================
+// MODULE: QUẢN LÝ TỪ ĐIỂN TRIỆU CHỨNG (Admin)
+// - CRUD đơn giản, tìm kiếm, import CSV, export CSV
+// - Endpoints dự kiến: GET/POST/PUT/DELETE /api/symptoms
+// ============================================================
+
+(async function () {
+  // State
+  let _dictList = [];
+  let _editDictId = null;
+
+  // DOM refs
+  const dictTbody = document.getElementById("dict-tbody");
+  const dictEmpty = document.getElementById("dict-empty");
+  const dictSearch = document.getElementById("dict-search");
+  const btnAddDict = document.getElementById("btn-add-dict");
+  const btnImportDict = document.getElementById("btn-import-dict");
+  const dictFileInput = document.getElementById("dict-file-input");
+  const btnExportDict = document.getElementById("btn-export-dict");
+
+  // Create modal elements (lightweight, reuse modal style)
+  const modalId = 'modal-dict';
+  if (!document.getElementById(modalId)) {
+    const modalHtml = `
+    <div class="modal-overlay is-hidden" id="${modalId}" role="dialog" aria-modal="true" aria-labelledby="modal-dict-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 id="modal-dict-title">Thêm mục từ điển</h2>
+          <button class="icon-button" type="button" id="modal-dict-close" aria-label="Đóng"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
+        </div>
+        <form id="modal-dict-form" class="modal-body" novalidate>
+          <input type="hidden" id="modal-dict-id" />
+          <div class="form-row">
+            <div class="form-field"><label for="dict-vi">Triệu chứng (Tiếng Việt) *</label><input id="dict-vi" type="text" required placeholder="ví dụ: sốt"/></div>
+            <div class="form-field"><label for="dict-en">Label (Tiếng Anh) *</label><input id="dict-en" type="text" required placeholder="ví dụ: fever"/></div>
+          </div>
+          <div class="form-field"><label for="dict-note">Ghi chú</label><input id="dict-note" type="text" placeholder="Ghi chú/alias"/></div>
+          <p class="form-message" id="modal-dict-msg" role="status"></p>
+          <div class="form-actions">
+            <button class="primary-button" type="submit" id="modal-dict-submit"><span class="material-symbols-outlined">save</span> Lưu</button>
+            <button class="secondary-button" type="button" id="modal-dict-cancel"><span class="material-symbols-outlined">close</span> Hủy</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  }
+
+  const modalOverlay = document.getElementById(modalId);
+  const modalForm = document.getElementById('modal-dict-form');
+  const modalMsg = document.getElementById('modal-dict-msg');
+  const modalSubmit = document.getElementById('modal-dict-submit');
+  const inpId = document.getElementById('modal-dict-id');
+  const inpVi = document.getElementById('dict-vi');
+  const inpEn = document.getElementById('dict-en');
+  const inpNote = document.getElementById('dict-note');
+  const btnClose = document.getElementById('modal-dict-close');
+  const btnCancel = document.getElementById('modal-dict-cancel');
+
+  function setModalDictMsg(m, err = false) { modalMsg.textContent = m; modalMsg.className = 'form-message' + (err ? ' is-error' : ''); }
+
+  // Fetch list
+  async function loadDict() {
+    try {
+      const res = await fetch(`${API}/symptoms`);
+      if (!res.ok) throw new Error('Không tải được từ điển.');
+      const data = await res.json();
+      _dictList = Array.isArray(data) ? data : (data.symptoms || []);
+    } catch (e) {
+      _dictList = [];
+      console.error(e);
+    }
+    renderDictTable(dictSearch?.value || '');
+  }
+
+  function renderDictTable(keyword = '') {
+    const kw = (keyword || '').trim().toLowerCase();
+    dictTbody.innerHTML = '';
+    const filtered = _dictList.filter(item => {
+      if (!kw) return true;
+      return (item.label_vi || '').toLowerCase().includes(kw) || (item.label_en || '').toLowerCase().includes(kw) || (item.note || '').toLowerCase().includes(kw);
+    });
+    if (filtered.length === 0) {
+      dictEmpty.classList.remove('is-hidden');
+      dictTbody.innerHTML = '';
+      return;
+    }
+    dictEmpty.classList.add('is-hidden');
+    filtered.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="padding:10px;">${item.id ?? ''}</td>
+        <td style="padding:10px;">${escapeHtml(item.label_vi || item.label || '')}</td>
+        <td style="padding:10px;">${escapeHtml(item.label_en || '')}</td>
+        <td style="padding:10px;">${escapeHtml(item.note || '')}</td>
+        <td style="text-align:center; padding:10px; white-space:nowrap;">
+          <button class="text-button" data-action="edit" data-id="${item.id}" style="margin-right:8px;"><span class="material-symbols-outlined">edit</span> Sửa</button>
+          <button class="text-button" data-action="delete" data-id="${item.id}"><span class="material-symbols-outlined">delete</span> Xóa</button>
+        </td>`;
+      dictTbody.appendChild(tr);
+    });
+  }
+
+  function openAddDict() {
+    _editDictId = null;
+    inpId.value = '';
+    inpVi.value = '';
+    inpEn.value = '';
+    inpNote.value = '';
+    setModalDictMsg('');
+    document.getElementById('modal-dict-title').textContent = 'Thêm mục từ điển';
+    modalSubmit.innerHTML = '<span class="material-symbols-outlined">add</span> Thêm';
+    modalOverlay.classList.remove('is-hidden');
+    inpVi.focus();
+  }
+
+  function openEditDict(id) {
+    const item = _dictList.find(x => String(x.id) === String(id));
+    if (!item) return alert('Không tìm thấy mục.');
+    _editDictId = item.id;
+    inpId.value = item.id;
+    inpVi.value = item.label_vi || item.label || '';
+    inpEn.value = item.label_en || '';
+    inpNote.value = item.note || '';
+    setModalDictMsg('');
+    document.getElementById('modal-dict-title').textContent = 'Sửa mục từ điển';
+    modalSubmit.innerHTML = '<span class="material-symbols-outlined">save</span> Lưu';
+    modalOverlay.classList.remove('is-hidden');
+    inpVi.focus();
+  }
+
+  function closeModalDict() { modalOverlay.classList.add('is-hidden'); setModalDictMsg(''); _editDictId = null; }
+
+  modalForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setModalDictMsg('');
+    const vi = inpVi.value.trim();
+    const en = inpEn.value.trim();
+    if (!vi || !en) { setModalDictMsg('Vui lòng nhập cả Tiếng Việt và Label Tiếng Anh.', true); return; }
+    const payload = { label_vi: vi, label_en: en, note: inpNote.value.trim() || null };
+    try {
+      const method = _editDictId ? 'PUT' : 'POST';
+      const url = _editDictId ? `${API}/symptoms/${_editDictId}` : `${API}/symptoms`;
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setModalDictMsg(data.error || 'Lỗi lưu mục', true); return; }
+      closeModalDict();
+      await loadDict();
+    } catch (err) {
+      setModalDictMsg('Không kết nối được máy chủ.', true);
+    }
+  });
+
+  btnClose?.addEventListener('click', closeModalDict);
+  btnCancel?.addEventListener('click', closeModalDict);
+  modalOverlay?.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModalDict(); });
+
+  // actions in table
+  dictTbody?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const act = btn.dataset.action;
+    const id = btn.dataset.id;
+    if (act === 'edit') openEditDict(id);
+    if (act === 'delete') confirmDeleteDict(id);
+  });
+
+  async function confirmDeleteDict(id) {
+    if (!confirm('Xóa mục này khỏi từ điển?')) return;
+    try {
+      const res = await fetch(`${API}/symptoms/${id}`, { method: 'DELETE' });
+      if (!res.ok) { const d = await res.json().catch(()=>({})); alert(d.error || 'Xóa thất bại'); return; }
+      await loadDict();
+    } catch (e) { alert('Không kết nối máy chủ.'); }
+  }
+
+  // search
+  dictSearch?.addEventListener('input', (e) => renderDictTable(e.target.value));
+
+  // add
+  btnAddDict?.addEventListener('click', openAddDict);
+
+  // import CSV
+  btnImportDict?.addEventListener('click', () => dictFileInput.click());
+  dictFileInput?.addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try {
+      const text = await f.text();
+      const parsed = parseCSV(text);
+      // expect columns like label_vi,label_en,note
+      const header = parsed.header.map(h => h.toLowerCase());
+      const viIdx = header.findIndex(h => h.includes('vi') || h.includes('label_vi') || h.includes('tieng_viet') || h.includes('vietnam'));
+      const enIdx = header.findIndex(h => h.includes('en') || h.includes('label_en') || h.includes('label') || h.includes('english'));
+      if (viIdx === -1 || enIdx === -1) {
+        alert('CSV phải có cột chứa Tiếng Việt và Label Tiếng Anh (ví dụ header: label_vi,label_en).');
+        return;
+      }
+      let added = 0, failed = 0;
+      for (let i=0;i<parsed.data.length;i++){
+        const row = parsed.data[i];
+        const vi = row[header[viIdx]]?.trim() || '';
+        const en = row[header[enIdx]]?.trim() || '';
+        const note = (header.includes('note') ? (row['note'] || '') : (row[header.find(h=>h.includes('note'))]||''));
+        if (!vi||!en){ failed++; continue; }
+        try {
+          const res = await fetch(`${API}/symptoms`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label_vi:vi, label_en:en, note: note || null }) });
+          if (res.ok) added++; else failed++;
+        } catch { failed++; }
+      }
+      alert(`Nhập xong. Thêm: ${added}, Lỗi: ${failed}`);
+      await loadDict();
+    } catch (err) { alert('Lỗi đọc file CSV'); }
+  });
+
+  // export CSV
+  btnExportDict?.addEventListener('click', () => {
+    const rows = [ ['id','label_vi','label_en','note'] ];
+    _dictList.forEach(r => rows.push([r.id, r.label_vi||r.label||'', r.label_en||'', r.note||'']));
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'dictionary_export.csv'; a.click(); URL.revokeObjectURL(url);
+  });
+
+  // initial load when page is shown
+  const origShow = window.showPage;
+  window.showPage = function(pageName){ origShow(pageName); if (pageName === 'admin-dictionary') loadDict(); };
+
+  // expose for debugging
+  window._dictReload = loadDict;
+})();
+
 // ── State ──────────────────────────────────────────────────
 let _thuocList    = [];   // cache danh sách thuốc
 let _nhomList     = [];   // cache danh sách nhóm thuốc
