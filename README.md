@@ -27,7 +27,7 @@ CNPM/
   requirements.txt
 ```
 
-## Cách chạy
+## Cách chạy tai terminal : pip install -r requirements.txt
 
 ```powershell
 python backend/app.py
