@@ -3411,15 +3411,55 @@ def predict():
 # API QLÝ NHÓM THUỐC (SCRUM-44)
 @app.route('/api/drug-groups', methods=['GET'])
 def get_drug_groups():
-    groups = NhomThuoc.query.all()
-    return jsonify([{"id": g.id, "ten_nhom": g.ten_nhom, "mo_ta": g.mo_ta} for g in groups]), 200
+    groups = NhomThuoc.query.order_by(NhomThuoc.id.desc()).all()
+    return jsonify([g.to_dict() for g in groups]), 200
+
+
 @app.route('/api/drug-groups', methods=['POST'])
 def add_drug_group():
-    data = request.get_json()
-    new_group = NhomThuoc(ten_nhom=data['ten_nhom'], mo_ta=data.get('mo_ta', ''))
+    data = request.get_json(silent=True) or {}
+    ten_nhom = (data.get('ten_nhom') or '').strip()
+    mo_ta = (data.get('mo_ta') or '').strip()
+
+    if not ten_nhom:
+        return jsonify({"error": "Vui lòng nhập tên nhóm thuốc."}), 400
+
+    existed = NhomThuoc.query.filter(db.func.lower(NhomThuoc.ten_nhom) == ten_nhom.lower()).first()
+    if existed:
+        return jsonify({"error": "Tên nhóm thuốc đã tồn tại."}), 409
+
+    new_group = NhomThuoc(ten_nhom=ten_nhom, mo_ta=mo_ta)
     db.session.add(new_group)
     db.session.commit()
-    return jsonify({"message": "Thêm nhóm thuốc thành công!"}), 201
+    return jsonify({"message": "Thêm nhóm thuốc thành công!", "data": new_group.to_dict()}), 201
+
+
+@app.route('/api/drug-groups/<int:id>', methods=['PUT'])
+def update_drug_group(id):
+    group = NhomThuoc.query.get(id)
+    if not group:
+        return jsonify({"error": "Không tìm thấy nhóm thuốc."}), 404
+
+    data = request.get_json(silent=True) or {}
+    ten_nhom = (data.get('ten_nhom') or '').strip()
+    mo_ta = (data.get('mo_ta') or '').strip()
+
+    if not ten_nhom:
+        return jsonify({"error": "Vui lòng nhập tên nhóm thuốc."}), 400
+
+    existed = NhomThuoc.query.filter(
+        db.func.lower(NhomThuoc.ten_nhom) == ten_nhom.lower(),
+        NhomThuoc.id != id
+    ).first()
+    if existed:
+        return jsonify({"error": "Tên nhóm thuốc đã tồn tại."}), 409
+
+    group.ten_nhom = ten_nhom
+    group.mo_ta = mo_ta
+    db.session.commit()
+    return jsonify({"message": "Cập nhật nhóm thuốc thành công!", "data": group.to_dict()}), 200
+
+
 @app.route('/api/drug-groups/<int:id>', methods=['DELETE'])
 def delete_drug_group(id):
     group = NhomThuoc.query.get(id)
