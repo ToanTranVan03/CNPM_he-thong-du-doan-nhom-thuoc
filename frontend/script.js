@@ -797,7 +797,6 @@ resetForm.addEventListener("submit", async (event) => {
 async function logoutCurrentUser() {
   if (authToken) {
     try {
-    
       await authRequest("/api/logout", {});
     } catch (e) {
       console.log("Backend không phản hồi, tiến hành đăng xuất local:", e);
@@ -807,30 +806,24 @@ async function logoutCurrentUser() {
   authToken = "";
   currentUser = null;
   savedResults = [];
-  localStorage.removeItem("pharmaPredictAuthToken"); 
-  localStorage.removeItem("pharmaPredictUser");     
+  localStorage.removeItem(AUTH_TOKEN_KEY); 
+  localStorage.removeItem(AUTH_USER_KEY);     
   document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
   showAuthScreen("login"); 
   alert("Bạn đã đăng xuất an toàn khỏi hệ thống!");
 }
 
-
-
-  authToken = "";
-  currentUser = null;
-  savedResults = [];
-  localStorage.removeItem(AUTH_TOKEN_KEY);
-
-  localStorage.removeItem(AUTH_USER_KEY);
-  document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
-  showAuthScreen("login");
-//////////////////////////////////////////////////////////
-
 logoutButton.addEventListener("click", logoutCurrentUser);
-profileLogoutButton.addEventListener("click", logoutCurrentUser);
+if (profileLogoutButton) profileLogoutButton.addEventListener("click", logoutCurrentUser);
 
 navButtons.forEach((button) => {
-  button.addEventListener("click", () => showPage(button.dataset.page));
+  button.addEventListener("click", () => {
+      showPage(button.dataset.page);
+      // Tự động load dữ liệu hồ sơ khi bấm vào tab "Hồ sơ"
+      if (button.dataset.page === "about") {
+          loadProfileData();
+      }
+  });
 });
 
 textarea.addEventListener("input", updateCharCount);
@@ -896,6 +889,11 @@ saveResultButton.addEventListener("click", () => {
   showPage("history");
 });
 
+// --- GẮN SỰ KIỆN KÍCH HOẠT SCRUM-40 VÀO NÚT LƯU ---
+if (profileForm) {
+    profileForm.addEventListener("submit", saveProfileData);
+}
+
 const THEME_KEY = "pharmaPredictTheme";
 const themeToggles = document.querySelectorAll(".theme-toggle");
 
@@ -935,59 +933,10 @@ themeToggles.forEach((button) => {
     try {
       localStorage.setItem(THEME_KEY, next);
     } catch {
-      // Bỏ qua nếu localStorage không khả dụng; vẫn đổi theme trong phiên.
     }
     applyTheme(next);
   });
 });
-
-
- 
-
-// --- BẮT ĐẦU CODE KẾT NỐI API (SCRUM-39) ---
-
-// 1. Hàm Load hồ sơ (Gọi khi vào trang Hồ sơ)
-async function loadProfile() {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-        const response = await fetch('/api/users/profile', {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.ok) {
-            const data = await response.json();
-            document.getElementById('profile-fullname').value = data.fullName || '';
-            document.getElementById('profile-phone').value = data.phoneNumber || '';
-            document.getElementById('profile-specialty').value = data.specialty || '';
-        }
-    } catch (err) { console.error("Lỗi:", err); }
-}
-
-// 2. Hàm Cập nhật hồ sơ (Gọi khi nhấn Lưu)
-document.getElementById('profile-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const token = localStorage.getItem("token");
-    const payload = {
-        fullName: document.getElementById('profile-fullname').value,
-        phoneNumber: document.getElementById('profile-phone').value,
-        specialty: document.getElementById('profile-specialty').value
-    };
-
-    const res = await fetch('/api/users/profile', {
-        method: 'PUT',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-    });
-
-    if (res.ok) alert("Cập nhật thành công!");
-});
-
-// 3. Kích hoạt load khi trang được hiển thị (dùng MutationObserver hoặc sự kiện click của bạn)
 
 initTheme();
 updateCharCount();
