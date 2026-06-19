@@ -3429,6 +3429,113 @@ def delete_drug_group(id):
         return jsonify({"message": "Đã xóa nhóm thuốc!"}), 200
     return jsonify({"error": "Không tìm thấy nhóm thuốc"}), 404
 
+
+# ===================================================================
+# API CRUD QUẢN LÝ THUỐC (SCRUM-47)
+# ===================================================================
+
+@app.route('/api/thuoc', methods=['GET'])
+def get_all_thuoc():
+    """Lấy danh sách thuốc. Query: ?nhom_thuoc_id=<int> để lọc theo nhóm."""
+    nhom_id = request.args.get('nhom_thuoc_id', type=int)
+    query = Thuoc.query.filter_by(nhom_thuoc_id=nhom_id) if nhom_id else Thuoc.query
+    return jsonify([t.to_dict() for t in query.all()]), 200
+
+
+@app.route('/api/thuoc/<int:id>', methods=['GET'])
+def get_thuoc(id):
+    """Lấy chi tiết một thuốc theo ID."""
+    thuoc = Thuoc.query.get(id)
+    if not thuoc:
+        return jsonify({"error": "Không tìm thấy thuốc"}), 404
+    return jsonify(thuoc.to_dict()), 200
+
+
+@app.route('/api/thuoc', methods=['POST'])
+def add_thuoc():
+    """
+    Thêm thuốc mới.
+    Required: ten_thuoc, nhom_thuoc_id
+    Optional: hoat_chat, ham_luong, dang_bao_che, hang_san_xuat,
+              nuoc_san_xuat, so_dang_ky, gia_tham_khao, don_vi_tinh, mo_ta
+    """
+    data = request.get_json() or {}
+
+    # --- validation ---
+    if not data.get('ten_thuoc', '').strip():
+        return jsonify({"error": "Vui lòng nhập tên thuốc"}), 400
+    if not data.get('nhom_thuoc_id'):
+        return jsonify({"error": "Vui lòng chọn nhóm thuốc"}), 400
+    if not NhomThuoc.query.get(data['nhom_thuoc_id']):
+        return jsonify({"error": "Nhóm thuốc không tồn tại"}), 404
+
+    thuoc = Thuoc(
+        ten_thuoc    = data['ten_thuoc'].strip(),
+        hoat_chat    = data.get('hoat_chat'),
+        ham_luong    = data.get('ham_luong'),
+        dang_bao_che = data.get('dang_bao_che'),
+        hang_san_xuat= data.get('hang_san_xuat'),
+        nuoc_san_xuat= data.get('nuoc_san_xuat'),
+        so_dang_ky   = data.get('so_dang_ky'),
+        gia_tham_khao= data.get('gia_tham_khao'),
+        don_vi_tinh  = data.get('don_vi_tinh'),
+        mo_ta        = data.get('mo_ta'),
+        nhom_thuoc_id= data['nhom_thuoc_id'],
+    )
+    try:
+        db.session.add(thuoc)
+        db.session.commit()
+        return jsonify({"message": "Thêm thuốc thành công!", "thuoc": thuoc.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Lỗi khi thêm thuốc: {str(e)}"}), 500
+
+
+@app.route('/api/thuoc/<int:id>', methods=['PUT'])
+def update_thuoc(id):
+    """Cập nhật thông tin thuốc. Chỉ cần gửi các field muốn thay đổi."""
+    thuoc = Thuoc.query.get(id)
+    if not thuoc:
+        return jsonify({"error": "Không tìm thấy thuốc"}), 404
+
+    data = request.get_json() or {}
+
+    # Nếu đổi nhóm thuốc, kiểm tra nhóm mới tồn tại
+    if 'nhom_thuoc_id' in data:
+        if not NhomThuoc.query.get(data['nhom_thuoc_id']):
+            return jsonify({"error": "Nhóm thuốc không tồn tại"}), 404
+        thuoc.nhom_thuoc_id = data['nhom_thuoc_id']
+
+    updatable = ['ten_thuoc', 'hoat_chat', 'ham_luong', 'dang_bao_che',
+                 'hang_san_xuat', 'nuoc_san_xuat', 'so_dang_ky',
+                 'gia_tham_khao', 'don_vi_tinh', 'mo_ta']
+    for field in updatable:
+        if field in data:
+            setattr(thuoc, field, data[field])
+
+    try:
+        db.session.commit()
+        return jsonify({"message": "Cập nhật thuốc thành công!", "thuoc": thuoc.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Lỗi khi cập nhật thuốc: {str(e)}"}), 500
+
+
+@app.route('/api/thuoc/<int:id>', methods=['DELETE'])
+def delete_thuoc(id):
+    """Xóa một thuốc."""
+    thuoc = Thuoc.query.get(id)
+    if not thuoc:
+        return jsonify({"error": "Không tìm thấy thuốc"}), 404
+    try:
+        db.session.delete(thuoc)
+        db.session.commit()
+        return jsonify({"message": "Xóa thuốc thành công!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Lỗi khi xóa thuốc: {str(e)}"}), 500
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="127.0.0.1", port=port, debug=False)
