@@ -24,6 +24,7 @@ from translations import (
     disease_name_vi,
     translate_items,
 )
+from route_bulk_import import bulk_import_bp
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -66,6 +67,9 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
     print("Database đã sẵn sàng!")
+
+# Đăng ký blueprint cho bulk import
+app.register_blueprint(bulk_import_bp)
 
 @app.after_request
 def add_no_cache_headers(response):

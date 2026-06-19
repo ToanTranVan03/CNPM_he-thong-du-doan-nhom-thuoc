@@ -3,9 +3,11 @@ scikit-learn>=1.9    # model models/ đã retrain trên 1.9.x (2026-06-08)
 joblib
 flask
 flask-cors
+flask-sqlalchemy      # Database ORM cho Flask
 
 # Xử lý dữ liệu
 pandas
+openpyxl                 # đọc file Excel (.xlsx, .xls)
 pyarrow               # đọc file .parquet (dataset HuggingFace)
 
 # Hiểu ngữ nghĩa tiếng Việt (khớp triệu chứng câu lạ cùng nghĩa)
