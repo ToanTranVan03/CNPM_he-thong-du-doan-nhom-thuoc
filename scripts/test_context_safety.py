@@ -22,7 +22,7 @@ def call(notes):
 
 
 def check(name, notes, *, must_block=False, must_emergency=False, must_allergy=False,
-          must_suggest=False, expect_keyword=None):
+          must_suggest=False, must_need_more=False, expect_keyword=None):
     code, j = call(notes)
     title = j.get("display_title") or ""
     err = j.get("error") or ""
@@ -35,6 +35,8 @@ def check(name, notes, *, must_block=False, must_emergency=False, must_allergy=F
         ok = code == 422 and "dị ứng thuốc" in err.lower()
     elif must_suggest:
         ok = code == 200 and "gợi ý" in title.lower()
+    elif must_need_more:
+        ok = code == 422 and bool(j.get("needs_more_input"))
     if expect_keyword and expect_keyword.lower() not in (title + " " + err).lower():
         ok = False
     print(f"  {'✓' if ok else '✗ FAIL'}  [{code}] {name}")
@@ -63,6 +65,7 @@ def main():
         check("NSAID × thuốc loãng máu", "Tôi hay uống thuốc làm loãng máu, đau khớp sưng", must_block=True),
         check("Người già 'ngoài 70'", "Mẹ tôi ngoài 70 rồi, đau khớp gối", expect_keyword="cao tuổi"),
         check("Thai kỳ 'có bé trong bụng'", "Em đang có bé trong bụng, đau đầu sốt nhẹ", expect_keyword="mang thai"),
+        check("Đau mắt + nhìn mờ không gợi thuốc giảm đau", "đau mắt nhìn mờ", must_need_more=True, expect_keyword="mắt"),
         # KHÔNG false-positive: viêm gân (gân ≠ gan)
         check("Viêm gân (không chặn)", "Viêm gân cổ tay, đau khi cử động, sưng nhẹ", must_suggest=True),
         # Ca thường không ngữ cảnh -> vẫn gợi ý bình thường

@@ -3,6 +3,8 @@ scikit-learn>=1.9    # model models/ đã retrain trên 1.9.x (2026-06-08)
 joblib
 flask
 flask-cors
+Flask-SQLAlchemy
+PyJWT
 
 # Xử lý dữ liệu
 pandas

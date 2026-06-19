@@ -729,12 +729,10 @@ loginForm.addEventListener("submit", async (event) => {
     
     setAuthMessage(loginMessage, "");
     
-    const authData = {
-        token: data.token,
-        user: { name: "Bác sĩ", email: inputEmail } 
-    };
-    
-    handleAuthSuccess(authData);
+    handleAuthSuccess({
+      token: data.token,
+      user: data.user || { name: "Bác sĩ", email: inputEmail },
+    });
     
   } catch (error) {
     setAuthMessage(loginMessage, formatError(error), true);

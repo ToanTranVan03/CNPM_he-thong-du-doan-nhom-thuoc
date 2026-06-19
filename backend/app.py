@@ -16,6 +16,7 @@ import joblib
 from models import db, User, NhomThuoc
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from text_preprocessing import remove_vietnamese_stop_words
 from werkzeug.security import check_password_hash, generate_password_hash
 from translations import (
     disease_description_vi,
@@ -34,6 +35,8 @@ DATA_SOURCE = Path(os.environ.get("DATA_SOURCE", PROJECT_ROOT / "data" / "train_
 DATA_ARCHIVE = Path(os.environ.get("DATA_ARCHIVE", DATA_SOURCE))
 GUIDANCE_PATH = Path(os.environ.get("GUIDANCE_PATH", PROJECT_ROOT / "data" / "disease_guidance.json"))
 USERS_PATH = Path(os.environ.get("USERS_PATH", PROJECT_ROOT / "data" / "users.json"))
+ADMIN_EMAIL = "admin@gmail.com"
+ADMIN_PASSWORD = "123456"
 # Vòng 6: mapping nhóm -> 2-3 hoạt chất tiêu biểu (đã curate, làm sạch) cho output trọng tâm.
 DRUG_REPRESENTATIVES_PATH = Path(
     os.environ.get("DRUG_REPRESENTATIVES_PATH", PROJECT_ROOT / "data" / "drug_group_representatives.json")
@@ -170,12 +173,29 @@ def find_user_by_email(store: dict, email: str) -> dict | None:
     return None
 
 
+def ensure_admin_user(store: dict) -> dict:
+    user = find_user_by_email(store, ADMIN_EMAIL)
+    if user:
+        return user
+    user = {
+        "id": "admin",
+        "name": "Admin",
+        "email": ADMIN_EMAIL,
+        "password_hash": generate_password_hash(ADMIN_PASSWORD),
+        "created_at": iso_utc(now_utc()),
+        "role": "Admin",
+    }
+    store["users"].append(user)
+    return user
+
+
 def user_public_view(user: dict) -> dict:
     return {
         "id": user.get("id"),
         "name": user.get("name", ""),
         "email": user.get("email", ""),
         "created_at": user.get("created_at"),
+        "role": user.get("role", "User"),
     }
 
 
@@ -431,7 +451,7 @@ VI_SYMPTOM_KEYWORDS = {
     "irritation in the throat": ["rát họng", "ngứa họng"],
     "itching in the throat": ["ngứa họng"],
     "itchy throat": ["ngứa họng"],
-    "redness_of_eyes": ["đỏ mắt", "mắt đỏ"],
+    "redness_of_eyes": ["đỏ mắt", "mắt đỏ", "mắt có dấu hiệu đỏ", "mắt bị đỏ"],
     "sinus_pressure": ["đau xoang", "tức xoang"],
     "runny_nose": ["sổ mũi", "chảy nước mũi"],
     "congestion": ["nghẹt mũi", "tắc mũi"],
@@ -640,7 +660,7 @@ AUTO_EXACT_SYMPTOM_KEYWORDS = {
     "diminished vision": ["giảm thị lực", "nhìn kém"],
     "double vision": ["nhìn đôi"],
     "blindness": ["mù", "mất thị lực"],
-    "eye redness": ["đỏ mắt", "mắt đỏ"],
+    "eye redness": ["đỏ mắt", "mắt đỏ", "mắt có dấu hiệu đỏ", "mắt bị đỏ"],
     "foreign body sensation in eye": ["cộm mắt", "cảm giác dị vật trong mắt"],
     "fluid in ear": ["dịch trong tai", "chảy dịch tai"],
     "fainting": ["ngất", "xỉu"],
@@ -871,6 +891,9 @@ AMBIGUOUS_NORMALIZED_KEYWORDS = {
     for normalized, variants in KEYWORD_VARIANTS_BY_NORMAL.items()
     if len(variants) > 1
 }
+# Accent-insensitive collisions that are unsafe in Vietnamese clinical text.
+# "mất cơ" -> "mat co" collides with the common phrase "mắt có".
+EXACT_ONLY_NORMALIZED_KEYWORDS = {"mat co"}
 
 # ── Lớp khớp NGỮ NGHĨA tiếng Việt (SBERT) — bổ sung cho khớp từ khóa cứng ──────
 # Bật/tắt qua env. Graceful: thiếu thư viện/model -> tự dùng exact-match như cũ.
@@ -878,6 +901,9 @@ SEMANTIC_ENABLED = os.environ.get("SEMANTIC_MATCH", "1") != "0"
 SEMANTIC_THRESHOLD = float(os.environ.get("SEMANTIC_THRESHOLD", "0.62"))
 # Lớp ngữ nghĩa chỉ chạy khi exact-match thu được < ngưỡng này (fallback).
 SEMANTIC_FALLBACK_MAX = int(os.environ.get("SEMANTIC_FALLBACK_MAX", "2"))
+# Stop-word fallback cũng chỉ chạy khi keyword match còn thưa, nhưng tách ngưỡng riêng
+# để không phụ thuộc cấu hình semantic.
+STOPWORD_FALLBACK_MAX = int(os.environ.get("STOPWORD_FALLBACK_MAX", "2"))
 # P4.4: feature thần kinh "nguy hiểm" KHÔNG được nhận từ semantic match mờ (dễ false-positive,
 # vd "bê vật nặng" -> "weakness of one body side"). Chỉ nhận qua khớp từ khóa chính xác; ca thật
 # vẫn được cổng cờ đỏ raw-text (đột quỵ/co giật...) bắt độc lập với feature extraction.
@@ -1193,6 +1219,24 @@ def symptom_triage_guidance(active_symptoms: set[str]) -> dict[str, list[str] | 
     care = []
     warnings = []
 
+    if has_eye_referral_symptom(active_symptoms):
+        extend_unique(
+            treatment,
+            [
+                "Triệu chứng mắt như đau mắt, nhìn mờ/giảm thị lực hoặc cảm giác dị vật cần được bác sĩ mắt đánh giá; chưa nên tự dùng thuốc giảm đau hoặc thuốc nhỏ mắt không rõ chỉ định.",
+                "Nếu có kính áp tròng, chấn thương mắt, hóa chất bắn vào mắt hoặc đau tăng nhanh, cần đi khám/cấp cứu mắt sớm.",
+            ],
+        )
+        extend_unique(
+            care,
+            [
+                "Tránh dụi mắt, tạm ngưng kính áp tròng nếu đang dùng và ghi lại thời điểm xuất hiện nhìn mờ, mức độ đau, đỏ mắt, chảy dịch hoặc sợ ánh sáng.",
+            ],
+        )
+        warnings.append(
+            "Đi khám/cấp cứu ngay nếu nhìn mờ đột ngột, đau mắt dữ dội, mất thị lực, nhìn đôi, chấn thương mắt, đỏ mắt nhiều, sợ ánh sáng hoặc đau kèm buồn nôn/nôn."
+        )
+
     if has_any_symptom(active_symptoms, ["headache", "dizziness", "insomnia"]):
         extend_unique(
             treatment,
@@ -1430,7 +1474,7 @@ def representative_note_for_group(group: str | None) -> str:
     return entry["note"] if entry else ""
 
 
-def symptoms_from_text(text: str) -> set[str]:
+def keyword_symptoms_from_text(text: str) -> set[str]:
     normalized_text = normalize(text)
     exact_text = normalize_exact(text)
     matches = set()
@@ -1449,7 +1493,7 @@ def symptoms_from_text(text: str) -> set[str]:
                 matches.add(feature_lookup[throat_symptom])
 
     for symptom, normalized_keyword in NORMALIZED_KEYWORDS:
-        if normalized_keyword in AMBIGUOUS_NORMALIZED_KEYWORDS:
+        if normalized_keyword in AMBIGUOUS_NORMALIZED_KEYWORDS or normalized_keyword in EXACT_ONLY_NORMALIZED_KEYWORDS:
             continue
         if normalized_keyword in normalized_text and has_phrase(normalized_text, normalized_keyword):
             matches.add(symptom)
@@ -1472,6 +1516,20 @@ def symptoms_from_text(text: str) -> set[str]:
     if any(has_phrase(normalized_text, phrase) for phrase in ["vai gay", "moi vai", "dau vai gay", "moi vai gay", "dau vai"]):
         if "neck pain" in feature_lookup:
             matches.add(feature_lookup["neck pain"])
+
+    return matches
+
+
+def symptoms_from_text(text: str) -> set[str]:
+    matches = keyword_symptoms_from_text(text)
+
+    # Stop-word removal is an additive fallback only. Keep the original text as
+    # the primary source, then try the cleaned version when keyword matching is
+    # still sparse. Negation filtering remains downstream in refine_symptom_order.
+    if len(matches) < STOPWORD_FALLBACK_MAX:
+        cleaned_text = remove_vietnamese_stop_words(text)
+        if cleaned_text and normalize(cleaned_text) != normalize(text):
+            matches.update(keyword_symptoms_from_text(cleaned_text))
 
     # Lớp ngữ nghĩa (fallback): chỉ kích hoạt khi khớp từ khóa thu được ÍT triệu chứng,
     # để giữ độ chính xác cho ca rõ ràng (exact đủ) và cứu ca lạ (exact bỏ sót).
@@ -1726,6 +1784,26 @@ def has_eye_allergy_symptom(active_symptoms: set[str] | None) -> bool:
         and has_any_symptom(
             active_symptoms,
             ["watering from eyes", "lacrimation", "itchiness of eye", "redness of eyes", "eye redness"],
+        )
+    )
+
+
+def has_eye_referral_symptom(active_symptoms: set[str] | None) -> bool:
+    return bool(
+        active_symptoms
+        and has_any_symptom(
+            active_symptoms,
+            [
+                "eye pain",
+                "pain behind the eyes",
+                "blurred and distorted vision",
+                "visual disturbances",
+                "diminished vision",
+                "double vision",
+                "blindness",
+                "elevated intraocular pressure",
+                "foreign body sensation in eye",
+            ],
         )
     )
 
@@ -2851,6 +2929,26 @@ def login():
     return jsonify({"user": user_public_view(user), "token": token})
 
 
+@app.post("/api/login")
+def legacy_login():
+    payload = request.get_json(silent=True) or {}
+    email = normalize_email(str(payload.get("email") or ""))
+    password = str(payload.get("password") or "")
+
+    store = load_user_store()
+    user = None
+    if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
+        user = ensure_admin_user(store)
+    else:
+        user = find_user_by_email(store, email)
+        if not user or not check_password_hash(user.get("password_hash", ""), password):
+            return jsonify({"error": "Email hoặc mật khẩu không đúng."}), 401
+
+    token = issue_session(user)
+    save_user_store(store)
+    return jsonify({"message": "Đăng nhập thành công", "user": user_public_view(user), "token": token})
+
+
 @app.get("/api/auth/me")
 def auth_me():
     store = load_user_store()
@@ -2860,6 +2958,7 @@ def auth_me():
     return jsonify({"user": user_public_view(user)})
 
 
+@app.post("/api/logout")
 @app.post("/api/auth/logout")
 def logout():
     store = load_user_store()
@@ -3185,6 +3284,11 @@ def predict():
     if LABEL_TYPE == "drug_group" and has_any_symptom(active_symptoms, ["ear pain", "fluid in ear", "diminished hearing"]):
         quality_reasons.append(
             "Triệu chứng tai (đau tai/chảy dịch/nghe kém) nên được bác sĩ tai mũi họng đánh giá; chưa nên tự dùng thuốc."
+        )
+    # P4: triệu chứng mắt/giảm thị lực -> cần khám mắt, không gợi thuốc giảm đau toàn thân.
+    if LABEL_TYPE == "drug_group" and has_eye_referral_symptom(active_symptoms):
+        quality_reasons.append(
+            "Triệu chứng mắt (đau mắt/nhìn mờ/giảm thị lực/cảm giác dị vật) cần được bác sĩ mắt đánh giá; chưa nên tự dùng thuốc giảm đau hoặc thuốc nhỏ mắt không rõ chỉ định."
         )
     # P4: chỉ có triệu chứng KHÔNG ĐẶC HIỆU (mệt mỏi/uể oải) -> cần thêm triệu chứng cụ thể.
     if score_type != "rule" and active_symptoms and set(active_symptoms).issubset({"fatigue", "malaise", "lethargy", "feeling ill", "feeling unwell"}):
