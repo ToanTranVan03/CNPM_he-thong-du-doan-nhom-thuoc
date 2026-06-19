@@ -937,7 +937,60 @@ themeToggles.forEach((button) => {
     applyTheme(next);
   });
 });
+// --- XỬ LÝ ĐỔI MẬT KHẨU ---
+const passwordForm = document.getElementById("password-form");
+if (passwordForm) {
+    passwordForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const oldPassword = document.getElementById("old-password").value;
+        const newPassword = document.getElementById("new-password").value;
+        const confirmPassword = document.getElementById("confirm-password").value;
+        const msgEl = document.getElementById("password-message");
+        if (newPassword !== confirmPassword) {
+            msgEl.textContent = "❌ Mật khẩu mới không khớp nhau!";
+            msgEl.style.color = "red";
+            return;
+        }
+        if (oldPassword === newPassword) {
+            msgEl.textContent = "❌ Mật khẩu mới phải khác mật khẩu cũ!";
+            msgEl.style.color = "red";
+            return;
+        }
 
+        msgEl.textContent = "⏳ Đang xử lý...";
+        msgEl.style.color = "blue";
+
+        try {
+            const token = localStorage.getItem("token") || localStorage.getItem("pharmaPredictAuthToken");
+            
+            const response = await fetch("http://127.0.0.1:5000/api/users/change-password", {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    old_password: oldPassword,
+                    new_password: newPassword
+                })
+            });
+
+            const data = await response.json();
+            
+            if (response.ok) {
+                msgEl.textContent = "✅ Đổi mật khẩu thành công!";
+                msgEl.style.color = "green";
+                passwordForm.reset(); 
+            } else {
+                msgEl.textContent = "❌ " + (data.error || "Lỗi khi đổi mật khẩu.");
+                msgEl.style.color = "red";
+            }
+        } catch (err) {
+            msgEl.textContent = "❌ Không thể kết nối tới máy chủ.";
+            msgEl.style.color = "red";
+        }
+    });
+}
 initTheme();
 updateCharCount();
 updateSelectedCount();
