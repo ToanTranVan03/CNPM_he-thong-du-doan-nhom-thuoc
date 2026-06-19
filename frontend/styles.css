@@ -1575,3 +1575,217 @@ input:focus {
 .secondary-button:disabled:hover {
   background: var(--surface-lowest);
 }
+
+
+/* ============================================================
+   ADMIN THUOC — UI Quản lý danh mục thuốc
+   ============================================================ */
+
+/* ── Toolbar tìm kiếm + lọc ─────────────────────────────── */
+.admin-thuoc-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.admin-thuoc-toolbar .search-box {
+  flex: 1;
+  min-width: 220px;
+}
+
+/* ── Select có style giống input ────────────────────────── */
+.admin-select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--text);
+  font-size: .9375rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.admin-select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* ── Bảng danh sách thuốc ───────────────────────────────── */
+.admin-table-wrap {
+  border-radius: var(--radius);
+  border: 1px solid var(--outline);
+  overflow: hidden;
+}
+.admin-thuoc-table {
+  width: 100%;
+  min-width: 760px;
+}
+.admin-thuoc-table th {
+  background: var(--surface);
+  font-size: .8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-muted);
+  padding: 12px 16px;
+  white-space: nowrap;
+}
+.admin-thuoc-table td {
+  padding: 12px 16px;
+  vertical-align: middle;
+  border-top: 1px solid var(--outline);
+  font-size: .9375rem;
+}
+.admin-thuoc-table tr:hover td {
+  background: var(--surface);
+}
+.admin-table-empty {
+  text-align: center;
+  padding: 48px 24px !important;
+  color: var(--text-muted);
+}
+.admin-table-empty .material-symbols-outlined {
+  display: block;
+  font-size: 2.5rem;
+  margin-bottom: 8px;
+  opacity: .5;
+}
+
+/* Tên thuốc nổi bật */
+.thuoc-name {
+  font-weight: 600;
+  color: var(--text);
+}
+.thuoc-sub {
+  font-size: .8125rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Badge nhóm thuốc */
+.nhom-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+/* Ô giá */
+.gia-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Ô thao tác */
+.action-cell {
+  text-align: center;
+  white-space: nowrap;
+}
+.action-cell .icon-button {
+  width: 34px;
+  height: 34px;
+}
+.action-cell .icon-button .material-symbols-outlined {
+  font-size: 18px;
+}
+.btn-delete-thuoc {
+  color: #ef4444;
+}
+.btn-delete-thuoc:hover {
+  background: rgba(239,68,68,.1);
+}
+
+/* ── Modal overlay ──────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn .15s ease;
+}
+.modal-overlay.is-hidden {
+  display: none;
+}
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+.modal-card {
+  background: var(--background);
+  border: 1px solid var(--outline);
+  border-radius: calc(var(--radius) * 1.5);
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,.25);
+  animation: slideUp .18s ease;
+}
+@keyframes slideUp {
+  from { transform: translateY(24px); opacity: 0 }
+  to   { transform: translateY(0);    opacity: 1 }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--outline);
+  position: sticky;
+  top: 0;
+  background: var(--background);
+  z-index: 1;
+}
+.modal-header h2 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.modal-body {
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.modal-body .form-row {
+  gap: 14px;
+}
+.modal-body textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 10px 14px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--text);
+  font-family: inherit;
+  font-size: .9375rem;
+  resize: vertical;
+}
+.modal-body textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* Dấu * required */
+.required-star { color: #ef4444; margin-left: 2px; }
+
+/* Responsive modal */
+@media (max-width: 600px) {
+  .modal-body .form-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1070,3 +1070,336 @@ updateCharCount();
 updateSelectedCount();
 initializeAuth();
 loadDrugGroups(); 
+
+
+// ============================================================
+// MODULE: QUẢN LÝ THUỐC (Admin)  — SCRUM-48
+// ============================================================
+
+const API = "http://127.0.0.1:5000/api";
+
+// ── State ──────────────────────────────────────────────────
+let _thuocList    = [];   // cache danh sách thuốc
+let _nhomList     = [];   // cache danh sách nhóm thuốc
+let _thuocEditId  = null; // null = đang thêm mới
+
+// ── DOM refs ───────────────────────────────────────────────
+const pageThuoc      = document.getElementById("page-admin-thuoc");
+const thuocTbody     = document.getElementById("admin-thuoc-tbody");
+const thuocEmpty     = document.getElementById("admin-thuoc-empty");
+const searchInput    = document.getElementById("thuoc-search-input");
+const filterNhomSel  = document.getElementById("thuoc-filter-nhom");
+
+const modalThuoc     = document.getElementById("modal-thuoc");
+const modalTitle     = document.getElementById("modal-thuoc-title");
+const modalForm      = document.getElementById("modal-thuoc-form");
+const modalMsg       = document.getElementById("modal-thuoc-msg");
+const modalSubmitBtn = document.getElementById("modal-thuoc-submit");
+
+// form fields
+const mtId       = document.getElementById("modal-thuoc-id");
+const mtTen      = document.getElementById("mt-ten");
+const mtNhom     = document.getElementById("mt-nhom");
+const mtHoatChat = document.getElementById("mt-hoat-chat");
+const mtHamLuong = document.getElementById("mt-ham-luong");
+const mtDangBC   = document.getElementById("mt-dang-bao-che");
+const mtDonVi    = document.getElementById("mt-don-vi");
+const mtHangSX   = document.getElementById("mt-hang-sx");
+const mtNuocSX   = document.getElementById("mt-nuoc-sx");
+const mtSoDK     = document.getElementById("mt-so-dk");
+const mtGia      = document.getElementById("mt-gia");
+const mtMoTa     = document.getElementById("mt-mo-ta");
+
+// ── Helpers ────────────────────────────────────────────────
+function formatGia(val) {
+  if (val == null || val === "") return "—";
+  return new Intl.NumberFormat("vi-VN").format(val) + " ₫";
+}
+function esc(s) {
+  if (!s) return "";
+  return String(s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function setModalMsg(msg, isErr = false) {
+  modalMsg.textContent = msg;
+  modalMsg.className   = "form-message" + (isErr ? " is-error" : "");
+}
+
+// ── Nhóm thuốc: load cho dropdown ─────────────────────────
+async function loadNhomThuocOptions() {
+  try {
+    const res = await fetch(`${API}/drug-groups`);
+    _nhomList = await res.json();
+  } catch (_) {
+    _nhomList = [];
+  }
+
+  // Đổ vào select lọc (trang chính)
+  if (filterNhomSel) {
+    filterNhomSel.innerHTML = '<option value="">Tất cả nhóm thuốc</option>';
+    _nhomList.forEach(n => {
+      const o = document.createElement("option");
+      o.value = n.id; o.textContent = n.ten_nhom;
+      filterNhomSel.appendChild(o);
+    });
+  }
+
+  // Đổ vào select trong modal
+  if (mtNhom) {
+    mtNhom.innerHTML = '<option value="">— Chọn nhóm thuốc —</option>';
+    _nhomList.forEach(n => {
+      const o = document.createElement("option");
+      o.value = n.id; o.textContent = n.ten_nhom;
+      mtNhom.appendChild(o);
+    });
+  }
+}
+
+// ── Thuốc: fetch từ API ────────────────────────────────────
+async function fetchThuocList(nhomId = "") {
+  const url = nhomId
+    ? `${API}/thuoc?nhom_thuoc_id=${nhomId}`
+    : `${API}/thuoc`;
+  const res  = await fetch(url);
+  _thuocList = await res.json();
+}
+
+// ── Thuốc: render bảng ────────────────────────────────────
+function renderThuocTable(keyword = "") {
+  const kw = keyword.trim().toLowerCase();
+  const filtered = _thuocList.filter(t =>
+    !kw ||
+    t.ten_thuoc.toLowerCase().includes(kw) ||
+    (t.hoat_chat || "").toLowerCase().includes(kw)
+  );
+
+  thuocTbody.innerHTML = "";
+
+  if (filtered.length === 0) {
+    thuocTbody.innerHTML = `
+      <tr><td colspan="8" class="admin-table-empty">
+        <span class="material-symbols-outlined">search_off</span>
+        ${kw ? "Không tìm thấy thuốc phù hợp." : "Chưa có thuốc nào trong nhóm này."}
+      </td></tr>`;
+    thuocEmpty.classList.toggle("is-hidden", kw !== "");
+    return;
+  }
+
+  thuocEmpty.classList.add("is-hidden");
+
+  filtered.forEach(t => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="color:var(--text-muted);font-size:.85rem">${t.id}</td>
+      <td>
+        <div class="thuoc-name">${esc(t.ten_thuoc)}</div>
+        ${t.so_dang_ky ? `<div class="thuoc-sub">SĐK: ${esc(t.so_dang_ky)}</div>` : ""}
+      </td>
+      <td>${esc(t.hoat_chat) || "<span style='color:var(--text-muted)'>—</span>"}</td>
+      <td>${esc(t.ham_luong) || "<span style='color:var(--text-muted)'>—</span>"}</td>
+      <td>${esc(t.dang_bao_che) || "<span style='color:var(--text-muted)'>—</span>"}</td>
+      <td>
+        ${t.nhom_thuoc
+          ? `<span class="nhom-badge">${esc(t.nhom_thuoc.ten_nhom)}</span>`
+          : "<span style='color:var(--text-muted)'>—</span>"}
+      </td>
+      <td class="gia-cell">${formatGia(t.gia_tham_khao)}</td>
+      <td class="action-cell">
+        <button class="icon-button" title="Sửa thuốc"
+                onclick="openEditThuoc(${t.id})" aria-label="Sửa ${esc(t.ten_thuoc)}">
+          <span class="material-symbols-outlined">edit</span>
+        </button>
+        <button class="icon-button btn-delete-thuoc" title="Xóa thuốc"
+                onclick="confirmDeleteThuoc(${t.id}, '${esc(t.ten_thuoc)}')"
+                aria-label="Xóa ${esc(t.ten_thuoc)}">
+          <span class="material-symbols-outlined">delete</span>
+        </button>
+      </td>`;
+    thuocTbody.appendChild(tr);
+  });
+}
+
+// ── Load + render tổng hợp ─────────────────────────────────
+async function reloadThuoc() {
+  thuocTbody.innerHTML = `
+    <tr><td colspan="8" class="admin-table-empty">
+      <span class="material-symbols-outlined">hourglass_empty</span>
+      Đang tải...
+    </td></tr>`;
+  thuocEmpty.classList.add("is-hidden");
+
+  const nhomId = filterNhomSel?.value || "";
+  await fetchThuocList(nhomId);
+  renderThuocTable(searchInput?.value || "");
+}
+
+// ── Modal: mở thêm mới ────────────────────────────────────
+function openAddThuoc() {
+  _thuocEditId = null;
+  modalTitle.textContent = "Thêm thuốc mới";
+  modalSubmitBtn.innerHTML = `<span class="material-symbols-outlined">add</span> Thêm thuốc`;
+  modalForm.reset();
+  mtId.value = "";
+  setModalMsg("");
+  modalThuoc.classList.remove("is-hidden");
+  mtTen.focus();
+}
+
+// ── Modal: mở sửa ─────────────────────────────────────────
+async function openEditThuoc(id) {
+  _thuocEditId = id;
+  modalTitle.textContent = "Sửa thông tin thuốc";
+  modalSubmitBtn.innerHTML = `<span class="material-symbols-outlined">save</span> Lưu thay đổi`;
+  setModalMsg("");
+
+  // Lấy dữ liệu hiện tại
+  try {
+    const res = await fetch(`${API}/thuoc/${id}`);
+    if (!res.ok) throw new Error();
+    const t = await res.json();
+
+    mtId.value          = t.id;
+    mtTen.value         = t.ten_thuoc       || "";
+    mtNhom.value        = t.nhom_thuoc_id   || "";
+    mtHoatChat.value    = t.hoat_chat       || "";
+    mtHamLuong.value    = t.ham_luong       || "";
+    mtDangBC.value      = t.dang_bao_che    || "";
+    mtDonVi.value       = t.don_vi_tinh     || "";
+    mtHangSX.value      = t.hang_san_xuat   || "";
+    mtNuocSX.value      = t.nuoc_san_xuat   || "";
+    mtSoDK.value        = t.so_dang_ky      || "";
+    mtGia.value         = t.gia_tham_khao   || "";
+    mtMoTa.value        = t.mo_ta           || "";
+
+    modalThuoc.classList.remove("is-hidden");
+    mtTen.focus();
+  } catch {
+    alert("Không thể tải thông tin thuốc. Vui lòng thử lại.");
+  }
+}
+
+// ── Modal: đóng ───────────────────────────────────────────
+function closeThuocModal() {
+  modalThuoc.classList.add("is-hidden");
+  modalForm.reset();
+  setModalMsg("");
+  _thuocEditId = null;
+}
+
+// ── Modal: submit (thêm hoặc sửa) ─────────────────────────
+modalForm?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  setModalMsg("");
+
+  const ten   = mtTen.value.trim();
+  const nhomId = parseInt(mtNhom.value);
+
+  if (!ten)    { setModalMsg("Vui lòng nhập tên thuốc.", true); mtTen.focus();  return; }
+  if (!nhomId) { setModalMsg("Vui lòng chọn nhóm thuốc.", true); mtNhom.focus(); return; }
+
+  const payload = {
+    ten_thuoc:    ten,
+    nhom_thuoc_id: nhomId,
+    hoat_chat:    mtHoatChat.value.trim() || null,
+    ham_luong:    mtHamLuong.value.trim() || null,
+    dang_bao_che: mtDangBC.value.trim()   || null,
+    don_vi_tinh:  mtDonVi.value.trim()    || null,
+    hang_san_xuat:mtHangSX.value.trim()   || null,
+    nuoc_san_xuat:mtNuocSX.value.trim()   || null,
+    so_dang_ky:   mtSoDK.value.trim()     || null,
+    gia_tham_khao:mtGia.value !== "" ? parseFloat(mtGia.value) : null,
+    mo_ta:        mtMoTa.value.trim()     || null,
+  };
+
+  const isEdit  = Boolean(_thuocEditId);
+  const url     = isEdit ? `${API}/thuoc/${_thuocEditId}` : `${API}/thuoc`;
+  const method  = isEdit ? "PUT" : "POST";
+
+  // Disable button
+  modalSubmitBtn.disabled = true;
+  const origHtml = modalSubmitBtn.innerHTML;
+  modalSubmitBtn.innerHTML = `<span class="material-symbols-outlined">hourglass_empty</span> Đang lưu...`;
+
+  try {
+    const res  = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setModalMsg(data.error || "Có lỗi xảy ra.", true);
+      return;
+    }
+
+    closeThuocModal();
+    await reloadThuoc();
+
+  } catch {
+    setModalMsg("Không kết nối được máy chủ.", true);
+  } finally {
+    modalSubmitBtn.disabled = false;
+    modalSubmitBtn.innerHTML = origHtml;
+  }
+});
+
+// ── Xóa thuốc ─────────────────────────────────────────────
+window.confirmDeleteThuoc = async function (id, ten) {
+  if (!confirm(`Xóa thuốc "${ten}"?\nThao tác này không thể hoàn tác.`)) return;
+  try {
+    const res = await fetch(`${API}/thuoc/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      await reloadThuoc();
+    } else {
+      const d = await res.json();
+      alert(d.error || "Xóa thất bại.");
+    }
+  } catch {
+    alert("Không kết nối được máy chủ.");
+  }
+};
+
+// ── Expose để HTML onclick dùng được ──────────────────────
+window.openEditThuoc = openEditThuoc;
+
+// ── Sự kiện tìm kiếm & lọc ────────────────────────────────
+searchInput?.addEventListener("input", () =>
+  renderThuocTable(searchInput.value));
+
+filterNhomSel?.addEventListener("change", reloadThuoc);
+
+// ── Nút mở modal thêm mới ─────────────────────────────────
+document.getElementById("btn-mo-them-thuoc")
+  ?.addEventListener("click", openAddThuoc);
+document.getElementById("btn-mo-them-thuoc-2")
+  ?.addEventListener("click", openAddThuoc);
+document.getElementById("btn-add-thuoc")
+  ?.addEventListener("click", openAddThuoc);
+
+// ── Đóng modal ────────────────────────────────────────────
+document.getElementById("modal-thuoc-close")
+  ?.addEventListener("click", closeThuocModal);
+document.getElementById("modal-thuoc-cancel")
+  ?.addEventListener("click", closeThuocModal);
+
+// Click ra ngoài modal cũng đóng
+modalThuoc?.addEventListener("click", (e) => {
+  if (e.target === modalThuoc) closeThuocModal();
+});
+
+// ESC đóng modal
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !modalThuoc.classList.contains("is-hidden"))
+    closeThuocModal();
+});
+
+// ── Hook vào showPage để load dữ liệu khi vào trang ───────
+const _origShowPage = showPage;
+window.showPage = function(pageName) {
+  _origShowPage(pageName);
+  if (pageName === "admin-thuoc") {
+    loadNhomThuocOptions().then(reloadThuoc);
+  }
+};
