@@ -707,14 +707,22 @@ resetForm.addEventListener("submit", async (event) => {
 async function logoutCurrentUser() {
   if (authToken) {
     try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-    } catch {
-      // Local logout still clears the browser session if the API is unavailable.
+    
+      await authRequest("/api/logout", {});
+    } catch (e) {
+      console.log("Backend không phản hồi, tiến hành đăng xuất local:", e);
     }
   }
+
+  authToken = "";
+  currentUser = null;
+  savedResults = [];
+  localStorage.removeItem("pharmaPredictAuthToken"); 
+  localStorage.removeItem("pharmaPredictUser");     
+  document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
+  showAuthScreen("login"); 
+  alert("Bạn đã đăng xuất an toàn khỏi hệ thống!");
+}
 
   authToken = "";
   currentUser = null;
