@@ -162,6 +162,7 @@ def save_user_store(store: dict) -> None:
 
 
 def normalize_email(email: str) -> str:
+    """Chuẩn hóa email: xóa mọi khoảng trắng và chuyển về chữ thường."""
     return re.sub(r"\s+", "", email or "").lower()
 
 
@@ -617,6 +618,7 @@ UNSUPPORTED_SYMPTOM_KEYWORDS = {
 
 
 def normalize(value: str) -> str:
+    """Chuẩn hóa để so khớp rộng: chữ thường, bỏ dấu, đổi '_' thành khoảng trắng và gom khoảng trắng."""
     text = value.replace("_", " ").lower()
     text = unicodedata.normalize("NFD", text)
     text = "".join(char for char in text if unicodedata.category(char) != "Mn")
@@ -626,6 +628,7 @@ def normalize(value: str) -> str:
 
 
 def normalize_exact(value: str) -> str:
+    """Chuẩn hóa giữ dấu tiếng Việt để tránh nhầm các từ khác dấu như 'gân/gan', 'mắt/mất'."""
     text = value.replace("_", " ").lower()
     text = re.sub(r"[^\w\s().]", " ", text, flags=re.UNICODE)
     return re.sub(r"\s+", " ", text).strip()

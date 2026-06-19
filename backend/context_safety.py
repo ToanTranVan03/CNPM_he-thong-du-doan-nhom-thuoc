@@ -20,6 +20,7 @@ from pathlib import Path
 
 
 def norm(value: str) -> str:
+    """Chuẩn hóa rộng cho rule an toàn: chữ thường, bỏ dấu, bỏ ký tự lạ và gom khoảng trắng."""
     text = (value or "").replace("_", " ").lower()
     text = unicodedata.normalize("NFD", text)
     text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
