@@ -3091,6 +3091,131 @@ def profile():
         return jsonify({"error": "Không tìm thấy tài khoản trong DB"}), 404
 # --- KẾT THÚC: BỘ API XÁC THỰC, TÀI KHOẢN & HỒ SƠ ---
 
+# =========================
+# USER STORY 11 - TASK 29, 30, 31
+# Trích xuất triệu chứng từ văn bản đã xử lý
+# =========================
+
+SYMPTOM_DICTIONARY_CACHE = None
+
+
+def get_cached_symptom_dictionary():
+    """
+    SCRUM-61 / Task 30:
+    Tối ưu danh sách từ điển triệu chứng bằng cache.
+    Không phải build lại danh sách triệu chứng mỗi lần gọi API.
+    """
+    global SYMPTOM_DICTIONARY_CACHE
+
+    if SYMPTOM_DICTIONARY_CACHE is not None:
+        return SYMPTOM_DICTIONARY_CACHE
+
+    dictionary = []
+
+    try:
+        for symptom in build_readable_symptoms() or []:
+            symptom_id = str(symptom.get("id", "")).strip()
+            label_vi = str(symptom.get("label_vi") or symptom.get("label") or "").strip()
+            label_en = str(symptom.get("label_en") or symptom_id.replace("_", " ")).strip()
+
+            if symptom_id or label_vi or label_en:
+                dictionary.append({
+                    "id": symptom_id or label_en.lower().replace(" ", "_"),
+                    "label_vi": label_vi or label_en,
+                    "label_en": label_en,
+                    "keywords": unique_values([
+                        label_vi,
+                        label_en,
+                        symptom_id.replace("_", " "),
+                    ])
+                })
+    except Exception:
+        dictionary = []
+
+    SYMPTOM_DICTIONARY_CACHE = dictionary
+    return SYMPTOM_DICTIONARY_CACHE
+
+
+def extract_symptoms_from_medical_text(text):
+    """
+    SCRUM-60 / Task 29:
+    So khớp văn bản đầu vào với từ điển triệu chứng.
+    Dùng lại pipeline hiện có của hệ thống:
+    - ordered_symptoms_from_text()
+    - symptom_label_vi()
+    - filter_negated_symptoms()
+    """
+    if not isinstance(text, str):
+        return []
+
+    cleaned_text = text.strip()
+    if not cleaned_text:
+        return []
+
+    matched_symptoms = ordered_symptoms_from_text(cleaned_text)
+    matched_symptoms = filter_negated_symptoms(matched_symptoms, cleaned_text)
+
+    result = []
+    for symptom in matched_symptoms:
+        result.append({
+            "id": symptom,
+            "label_en": symptom.replace("_", " ").replace("  ", " "),
+            "label_vi": symptom_label_vi(symptom)
+        })
+
+    return result
+
+
+@app.post("/api/extract-symptoms")
+def extract_symptoms_api():
+    """
+    SCRUM-62 / Task 31:
+    API trả về danh sách triệu chứng đã nhận diện để Frontend sử dụng.
+    """
+    data = request.get_json(silent=True) or {}
+    text = data.get("text") or data.get("notes") or ""
+
+    if not isinstance(text, str):
+        return jsonify({
+            "success": False,
+            "message": "Văn bản đầu vào không hợp lệ.",
+            "symptoms": []
+        }), 400
+
+    if not text.strip():
+        return jsonify({
+            "success": False,
+            "message": "Vui lòng nhập mô tả bệnh án hoặc triệu chứng.",
+            "symptoms": []
+        }), 400
+
+    dictionary = get_cached_symptom_dictionary()
+    symptoms = extract_symptoms_from_medical_text(text)
+
+    return jsonify({
+        "success": True,
+        "message": "Trích xuất triệu chứng thành công.",
+        "dictionary_size": len(dictionary),
+        "total": len(symptoms),
+        "symptoms": symptoms,
+        "symptoms_vi": [item["label_vi"] for item in symptoms],
+        "symptoms_en": [item["label_en"] for item in symptoms]
+    }), 200
+
+
+@app.post("/api/symptoms/cache/refresh")
+def refresh_symptom_cache():
+    """
+    API phụ để làm mới cache từ điển triệu chứng khi admin cập nhật từ điển.
+    """
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+
+    return jsonify({
+        "success": True,
+        "message": "Đã làm mới cache từ điển triệu chứng.",
+        "dictionary_size": len(get_cached_symptom_dictionary())
+    }), 200
 
 @app.post("/api/predict")
 def predict():
