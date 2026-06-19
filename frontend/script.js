@@ -47,6 +47,13 @@ const summaryMedicationName = document.getElementById("summary-medication-name")
 const summaryDrugGroup = document.getElementById("summary-drug-group");
 const suggestedSymptomsCard = document.getElementById("suggested-symptoms-card");
 const suggestedSymptomsList = document.getElementById("suggested-symptoms-list");
+const profileForm = document.getElementById("profile-form");
+const profileFullname = document.getElementById("profile-fullname");
+const profileEmail = document.getElementById("profile-email");
+const profilePhone = document.getElementById("profile-phone");
+const profileSpecialty = document.getElementById("profile-specialty");
+const profileMessage = document.getElementById("profile-message");
+const profileCancelButton = document.getElementById("profile-cancel");
 
 const AUTH_TOKEN_KEY = "pharmaPredictAuthToken";
 const AUTH_USER_KEY = "pharmaPredictUser";
@@ -154,6 +161,89 @@ function handleAuthSuccess(data) {
   localStorage.setItem(AUTH_USER_KEY, JSON.stringify(currentUser));
   showAuthenticatedApp();
   showPage("home");
+}
+
+function setProfileMessage(message, isError = false) {
+  if (!profileMessage) return;
+  profileMessage.textContent = message;
+  profileMessage.classList.toggle("is-error", isError);
+}
+
+function setFormLoading(button, isLoading) {
+  if (!button) return;
+  button.disabled = isLoading;
+  const icon = button.querySelector(".material-symbols-outlined");
+  if (icon) {
+    icon.style.opacity = isLoading ? "0.5" : "1";
+  }
+}
+
+async function loadProfileData() {
+  try {
+    const response = await fetch("/api/users/profile", {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Không thể tải dữ liệu hồ sơ.");
+    }
+    
+    // Populate form with current data
+    profileFullname.value = data.fullName || "";
+    profileEmail.value = data.email || "";
+    profilePhone.value = data.phoneNumber || "";
+    profileSpecialty.value = data.specialty || "";
+  } catch (error) {
+    setProfileMessage(formatError(error), true);
+  }
+}
+
+async function saveProfileData(event) {
+  event.preventDefault();
+  
+  // Validation
+  if (!profileFullname.value.trim()) {
+    setProfileMessage("Vui lòng nhập họ tên.", true);
+    return;
+  }
+  
+  const submitButton = profileForm.querySelector('button[type="submit"]');
+  setFormLoading(submitButton, true);
+  setProfileMessage("");
+  
+  try {
+    const response = await fetch("/api/users/profile", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        fullName: profileFullname.value.trim(),
+        phoneNumber: profilePhone.value.trim(),
+        specialty: profileSpecialty.value.trim(),
+      }),
+    });
+    
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || data.message || "Không thể cập nhật hồ sơ.");
+    }
+    
+    // Update local user data
+    currentUser = data;
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(currentUser));
+    updateUserUi();
+    
+    setProfileMessage("Cập nhật hồ sơ thành công!", false);
+    setTimeout(() => {
+      setProfileMessage("");
+    }, 3000);
+  } catch (error) {
+    setProfileMessage(formatError(error), true);
+  } finally {
+    setFormLoading(submitButton, false);
+  }
 }
 
 async function initializeAuth() {
@@ -728,10 +818,11 @@ async function logoutCurrentUser() {
   currentUser = null;
   savedResults = [];
   localStorage.removeItem(AUTH_TOKEN_KEY);
+  
   localStorage.removeItem(AUTH_USER_KEY);
   document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
   showAuthScreen("login");
-}
+//////////////////////////////////////////////////////////
 
 logoutButton.addEventListener("click", logoutCurrentUser);
 profileLogoutButton.addEventListener("click", logoutCurrentUser);
@@ -847,6 +938,54 @@ themeToggles.forEach((button) => {
     applyTheme(next);
   });
 });
+
+
+ 
+
+// --- BẮT ĐẦU CODE KẾT NỐI API (SCRUM-39) ---
+
+// 1. Hàm Load hồ sơ (Gọi khi vào trang Hồ sơ)
+async function loadProfile() {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+        const response = await fetch('/api/users/profile', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            document.getElementById('profile-fullname').value = data.fullName || '';
+            document.getElementById('profile-phone').value = data.phoneNumber || '';
+            document.getElementById('profile-specialty').value = data.specialty || '';
+        }
+    } catch (err) { console.error("Lỗi:", err); }
+}
+
+// 2. Hàm Cập nhật hồ sơ (Gọi khi nhấn Lưu)
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem("token");
+    const payload = {
+        fullName: document.getElementById('profile-fullname').value,
+        phoneNumber: document.getElementById('profile-phone').value,
+        specialty: document.getElementById('profile-specialty').value
+    };
+
+    const res = await fetch('/api/users/profile', {
+        method: 'PUT',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (res.ok) alert("Cập nhật thành công!");
+});
+
+// 3. Kích hoạt load khi trang được hiển thị (dùng MutationObserver hoặc sự kiện click của bạn)
 
 initTheme();
 updateCharCount();

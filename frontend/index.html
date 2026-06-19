@@ -394,10 +394,54 @@
       </section>
 
       <section class="page" id="page-about" aria-labelledby="about-title">
+        <div class="container">
+          <div class="profile-form-section">
+            <div class="profile-form-head">
+              <div>
+                <p class="eyebrow">Cập nhật hồ sơ</p>
+                <h2 id="about-title">Thông tin tài khoản của bạn</h2>
+              </div>
+            </div>
+            <form id="profile-form" class="profile-form">
+              <div class="form-row">
+                <div class="form-field">
+                  <label for="profile-fullname">Họ tên</label>
+                  <input id="profile-fullname" type="text" required placeholder="Nhập họ và tên" />
+                </div>
+                <div class="form-field">
+                  <label for="profile-email">Email</label>
+                  <input id="profile-email" type="email" disabled placeholder="Email" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-field">
+                  <label for="profile-phone">Số điện thoại</label>
+                  <input id="profile-phone" type="tel" placeholder="Nhập số điện thoại" />
+                </div>
+                <div class="form-field">
+                  <label for="profile-specialty">Chuyên môn</label>
+                  <input id="profile-specialty" type="text" placeholder="VD: Tim mạch, Hô hấp..." />
+                </div>
+              </div>
+              <p class="form-message" id="profile-message" role="status"></p>
+              <div class="form-actions">
+                <button class="primary-button" type="submit">
+                  <span class="material-symbols-outlined" aria-hidden="true">save</span>
+                  Lưu thay đổi
+                </button>
+                <button class="secondary-button" type="button" id="profile-cancel">
+                  <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                  Hủy
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
         <div class="container about-layout">
           <div class="about-copy">
             <p class="eyebrow">Hồ sơ cá nhân</p>
-            <h1 id="about-title">Thông tin tài khoản</h1>
+            <h1>Thông tin hệ thống</h1>
             <p class="lead" id="profile-summary">Bạn đang đăng nhập vào hệ thống hỗ trợ nhập triệu chứng tiếng Việt và gợi ý nhóm thuốc khi dữ liệu đủ tin cậy.</p>
             <div class="form-actions">
               <button class="primary-button" type="button" id="profile-logout-button">

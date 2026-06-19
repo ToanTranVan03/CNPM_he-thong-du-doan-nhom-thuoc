@@ -1298,6 +1298,79 @@ input:focus {
   }
 }
 
+/* Profile Form Styling */
+.profile-form-section {
+  margin-bottom: 48px;
+  padding: 32px;
+  background: var(--surface-lowest);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--outline);
+  box-shadow: var(--shadow-sm);
+}
+
+.profile-form-head {
+  margin-bottom: 24px;
+}
+
+.profile-form {
+  display: grid;
+  gap: 20px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field label {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.form-field input {
+  padding: 10px 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius);
+  background: var(--surface-low);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.form-field input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--surface-lowest);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.form-field input:disabled {
+  background: var(--surface-container);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.form-field input::placeholder {
+  color: var(--text-subtle);
+}
+
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
 /* Status pill: bổ sung variant warning / danger / neutral */
 .status-warning {
   background: var(--warning-soft);
