@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import jwt
 import datetime
 
 app = Flask(__name__)
+CORS(app)
 app.config['SECRET_KEY'] = 'dev_key_bi_mat' # Key này để mã hóa token
 
 @app.route('/api/login', methods=['POST'])
