@@ -21,6 +21,7 @@ const navButtons = document.querySelectorAll("[data-page]");
 const textarea = document.getElementById("case-description");
 const charCount = document.getElementById("char-count");
 const form = document.getElementById("diagnosis-form");
+const predictSubmitButton = document.getElementById("predict-submit-button");
 const clearButton = document.getElementById("clear-case");
 const newPredictionButton = document.getElementById("new-prediction-button");
 const exampleButton = document.getElementById("example-case");
@@ -77,6 +78,12 @@ try {
 
 function historyStorageKey() {
   return currentUser ? `pharmaPredictHistory:${currentUser.email}` : "pharmaPredictHistory:guest";
+}
+
+function isAdminUser() {
+  const role = (currentUser?.role || "").toLowerCase();
+  const email = (currentUser?.email || "").toLowerCase();
+  return role === "admin" || email === "admin@gmail.com";
 }
 
 function loadSavedHistory() {
@@ -295,6 +302,18 @@ function updateCharCount() {
   charCount.textContent = `${textarea.value.length} / 2000 ký tự`;
 }
 
+function hasCaseDescription() {
+  return textarea.value.trim().length > 0;
+}
+
+function updatePredictButtonState() {
+  if (!predictSubmitButton) {
+    return;
+  }
+  predictSubmitButton.disabled = !hasCaseDescription();
+  predictSubmitButton.title = hasCaseDescription() ? "" : "Nhập mô tả bệnh án để dự đoán";
+}
+
 function setMessage(message, isError = false) {
   formMessage.textContent = message;
   formMessage.classList.toggle("is-error", isError);
@@ -321,6 +340,7 @@ function resetPredictionInput({ focus = true, clearSearch = true } = {}) {
   }
   updateCharCount();
   updateSelectedCount();
+  updatePredictButtonState();
   setMessage("");
   renderSymptoms(symptomSearch?.value || "");
   if (focus) {
@@ -422,7 +442,21 @@ function saveHistory() {
   localStorage.setItem(historyStorageKey(), JSON.stringify(savedResults.slice(0, 20)));
 }
 
-function createHistoryCard(entry) {
+function deleteHistoryEntry(index) {
+  if (!isAdminUser() || !Number.isInteger(index) || index < 0 || index >= savedResults.length) {
+    return;
+  }
+  const confirmed = window.confirm("Xóa lịch sử dự đoán này?");
+  if (!confirmed) {
+    return;
+  }
+  savedResults.splice(index, 1);
+  saveHistory();
+  renderSavedHistory();
+  renderRecentActivity();
+}
+
+function createHistoryCard(entry, index) {
   const card = document.createElement("article");
   card.className = "history-card user-history-card";
   card.dataset.search = `${entry.disease} ${entry.notes} ${entry.symptoms.join(" ")} ${entry.savedAt}`.toLowerCase();
@@ -453,19 +487,42 @@ function createHistoryCard(entry) {
   icon.setAttribute("aria-hidden", "true");
   icon.textContent = "chevron_right";
 
+  const actions = document.createElement("div");
+  actions.className = "history-card-actions";
+
+  if (isAdminUser()) {
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "icon-button history-delete-button";
+    deleteButton.type = "button";
+    deleteButton.setAttribute("aria-label", "Xóa lịch sử dự đoán");
+    deleteButton.setAttribute("title", "Xóa lịch sử");
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteHistoryEntry(index);
+    });
+
+    const deleteIcon = document.createElement("span");
+    deleteIcon.className = "material-symbols-outlined";
+    deleteIcon.setAttribute("aria-hidden", "true");
+    deleteIcon.textContent = "delete";
+    deleteButton.appendChild(deleteIcon);
+    actions.appendChild(deleteButton);
+  }
+
   topLine.append(status, time);
   button.appendChild(icon);
-  card.append(topLine, title, summary, button);
+  actions.appendChild(button);
+  card.append(topLine, title, summary, actions);
   return card;
 }
 
 function renderSavedHistory() {
   document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
   savedResults
-    .slice()
+    .map((entry, index) => ({ entry, index }))
     .reverse()
-    .forEach((entry) => {
-      historyList.prepend(createHistoryCard(entry));
+    .forEach(({ entry, index }) => {
+      historyList.appendChild(createHistoryCard(entry, index));
     });
   updateHistoryEmptyState();
 }
@@ -845,7 +902,10 @@ navButtons.forEach((button) => {
   });
 });
 
-textarea.addEventListener("input", updateCharCount);
+textarea.addEventListener("input", () => {
+  updateCharCount();
+  updatePredictButtonState();
+});
 
 clearButton.addEventListener("click", () => {
   resetPredictionInput();
@@ -863,6 +923,7 @@ exampleButton.addEventListener("click", () => {
   symptomSearch.value = "";
   updateCharCount();
   updateSelectedCount();
+  updatePredictButtonState();
   setMessage("");
   renderSymptoms("");
   textarea.focus();
@@ -870,6 +931,12 @@ exampleButton.addEventListener("click", () => {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!hasCaseDescription()) {
+    setMessage("Vui lòng nhập mô tả bệnh án trước khi gợi ý nhóm thuốc.", true);
+    textarea.focus();
+    updatePredictButtonState();
+    return;
+  }
   const submitButton = form.querySelector('button[type="submit"]');
   setFormLoading(submitButton, true);
   try {
@@ -878,6 +945,7 @@ form.addEventListener("submit", async (event) => {
     setMessage(formatError(error), true);
   } finally {
     setFormLoading(submitButton, false);
+    updatePredictButtonState();
   }
 });
 
@@ -904,8 +972,7 @@ saveResultButton.addEventListener("click", () => {
       savedAt: new Date().toLocaleDateString("vi-VN"),
     });
     saveHistory();
-    historyList.prepend(createHistoryCard(savedResults[savedResults.length - 1]));
-    updateHistoryEmptyState();
+    renderSavedHistory();
     renderRecentActivity();
   }
   showPage("history");
@@ -1173,6 +1240,7 @@ if (drugGroupForm) {
 initTheme();
 updateCharCount();
 updateSelectedCount();
+updatePredictButtonState();
 initializeAuth();
 loadDrugGroups();
 

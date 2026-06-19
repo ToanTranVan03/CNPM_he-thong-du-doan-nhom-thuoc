@@ -2919,12 +2919,12 @@ def login():
     password = data.get('password')
     if email == "admin@gmail.com" and password == "123456":
         token = jwt.encode({'user': email, 'role': 'Admin', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)}, app.config['SECRET_KEY'], algorithm="HS256")
-        return jsonify({'message': 'Đăng nhập thành công', 'token': token, 'user': {'name': 'Bác sĩ Toàn (Admin)', 'email': email}}), 200
+        return jsonify({'message': 'Đăng nhập thành công', 'token': token, 'user': {'name': 'Bác sĩ Toàn (Admin)', 'email': email, 'role': 'Admin'}}), 200
 
     user = User.query.filter_by(email=email).first()
     if user and user.check_password(password):
         token = jwt.encode({'user': email, 'role': 'User', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)}, app.config['SECRET_KEY'], algorithm="HS256")
-        return jsonify({'message': 'Đăng nhập thành công', 'token': token, 'user': {'name': user.full_name, 'email': email}}), 200
+        return jsonify({'message': 'Đăng nhập thành công', 'token': token, 'user': {'name': user.full_name, 'email': email, 'role': 'User'}}), 200
 
     return jsonify({'message': 'Sai email hoặc mật khẩu'}), 401
 
@@ -2942,7 +2942,9 @@ def auth_me():
     token = auth_header.split(" ")[1]
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        return jsonify({"user": {"email": payload['user'], "name": "Người dùng hệ thống"}})
+        role = payload.get('role', 'User')
+        name = "Bác sĩ Toàn (Admin)" if role == "Admin" else "Người dùng hệ thống"
+        return jsonify({"user": {"email": payload['user'], "name": name, "role": role}})
     except Exception:
         return jsonify({"error": "Token hết hạn"}), 401
 
@@ -3052,7 +3054,7 @@ def reset_password():
             app.config['SECRET_KEY'],
             algorithm="HS256",
         )
-        return jsonify({'message': 'Đặt lại mật khẩu admin thành công', 'token': token, 'user': {'name': 'Bác sĩ Toàn (Admin)', 'email': email}}), 200
+        return jsonify({'message': 'Đặt lại mật khẩu admin thành công', 'token': token, 'user': {'name': 'Bác sĩ Toàn (Admin)', 'email': email, 'role': 'Admin'}}), 200
 
     user = User.query.filter_by(email=email).first()
     if not user:
@@ -3066,7 +3068,7 @@ def reset_password():
         app.config['SECRET_KEY'],
         algorithm="HS256",
     )
-    return jsonify({'message': 'Đặt lại mật khẩu thành công', 'token': token, 'user': {'name': user.full_name, 'email': email}}), 200
+    return jsonify({'message': 'Đặt lại mật khẩu thành công', 'token': token, 'user': {'name': user.full_name, 'email': email, 'role': 'User'}}), 200
 # --- KẾT THÚC: BỘ API XÁC THỰC, TÀI KHOẢN & HỒ SƠ ---
 @app.get("/api/symptoms")
 def symptoms():

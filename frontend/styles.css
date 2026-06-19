@@ -958,6 +958,27 @@ input:focus {
   bottom: 18px;
 }
 
+.history-card-actions {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  gap: 10px;
+}
+
+.history-card-actions .icon-button {
+  position: static;
+}
+
+.history-delete-button {
+  color: #dc2626;
+}
+
+.history-delete-button:hover {
+  border-color: rgba(220, 38, 38, 0.32);
+  background: rgba(220, 38, 38, 0.1);
+}
+
 .history-card.featured {
   background: linear-gradient(135deg, #004e9f, #006970);
   color: #fff;
