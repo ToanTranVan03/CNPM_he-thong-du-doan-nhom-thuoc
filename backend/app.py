@@ -13,7 +13,7 @@ from itertools import permutations
 from pathlib import Path
 
 import joblib
-from models import db, User
+from models import db, User, NhomThuoc
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -3433,7 +3433,26 @@ def update_profile():
     save_user_store(store)
     
     return jsonify({"message": "Cập nhật hồ sơ thành công", "user": user_public_view(user)})
-
+# API QUẢN LÝ NHÓM THUỐC (SCRUM-44)
+@app.route('/api/drug-groups', methods=['GET'])
+def get_drug_groups():
+    groups = NhomThuoc.query.all()
+    return jsonify([{"id": g.id, "ten_nhom": g.ten_nhom, "mo_ta": g.mo_ta} for g in groups]), 200
+@app.route('/api/drug-groups', methods=['POST'])
+def add_drug_group():
+    data = request.get_json()
+    new_group = NhomThuoc(ten_nhom=data['ten_nhom'], mo_ta=data.get('mo_ta', ''))
+    db.session.add(new_group)
+    db.session.commit()
+    return jsonify({"message": "Thêm nhóm thuốc thành công!"}), 201
+@app.route('/api/drug-groups/<int:id>', methods=['DELETE'])
+def delete_drug_group(id):
+    group = NhomThuoc.query.get(id)
+    if group:
+        db.session.delete(group)
+        db.session.commit()
+        return jsonify({"message": "Đã xóa nhóm thuốc!"}), 200
+    return jsonify({"error": "Không tìm thấy nhóm thuốc"}), 404
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
