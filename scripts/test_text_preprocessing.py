@@ -1,4 +1,4 @@
-"""Smoke tests for backend/text_preprocessing.py.
+"""Unit/regression tests for backend text preprocessing helpers.
 
 Run: python scripts/test_text_preprocessing.py
 """
@@ -25,6 +25,46 @@ def check(name: str, actual: str, expected: str) -> bool:
 def check_condition(name: str, condition: bool, detail: str) -> bool:
     print(f"{'OK' if condition else 'FAIL'} {name}: {detail}")
     return condition
+
+
+def normalization_checks() -> list[bool]:
+    # Keep app import deterministic and avoid loading semantic models.
+    os.environ.setdefault("SEMANTIC_MATCH", "0")
+    import app as A  # noqa: E402
+    import context_safety  # noqa: E402
+
+    return [
+        check(
+            "normalize removes accents, punctuation and extra spaces",
+            A.normalize("  Đau   MẮT__và, nhìn   mờ!! "),
+            "dau mat va nhin mo",
+        ),
+        check(
+            "normalize_exact keeps Vietnamese accents",
+            A.normalize_exact("  Đau   MẮT__và, nhìn   mờ!! "),
+            "đau mắt và nhìn mờ",
+        ),
+        check(
+            "normalize_email removes all whitespace and lowercases",
+            A.normalize_email("  Admin @GMAIL.COM "),
+            "admin@gmail.com",
+        ),
+        check(
+            "context_safety.norm normalizes broadly",
+            context_safety.norm("  Suy   THẬN_mạn!!! "),
+            "suy than man",
+        ),
+        check(
+            "context_safety.low lowercases but keeps accents",
+            context_safety.low("  Viêm   gân_gối  "),
+            "viêm gân gối",
+        ),
+        check_condition(
+            "accent-preserving normalization keeps gan/gân distinct",
+            context_safety.low("gan gân thận than") == "gan gân thận than",
+            context_safety.low("gan gân thận than"),
+        ),
+    ]
 
 
 def integration_checks() -> list[bool]:
@@ -93,6 +133,7 @@ def main() -> int:
             "ho dau hong",
         ),
     ]
+    results.extend(normalization_checks())
     results.extend(integration_checks())
     return 0 if all(results) else 1
 
