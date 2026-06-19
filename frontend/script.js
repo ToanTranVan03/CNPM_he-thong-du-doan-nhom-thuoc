@@ -96,15 +96,17 @@ function setAuthMessage(element, message, isError = false) {
   element.classList.toggle("is-error", isError);
 }
 
+const API_BASE_URL = "http://127.0.0.1:5000"; 
+
 async function authRequest(endpoint, payload) {
-  const response = await fetch(endpoint, {
+  const response = await fetch(API_BASE_URL + endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.error || "Không xử lý được yêu cầu.");
+    throw new Error(data.message || data.error || "Không xử lý được yêu cầu.");
   }
   return data;
 }
@@ -624,14 +626,26 @@ authSwitchButtons.forEach((button) => {
 
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  setAuthMessage(loginMessage, "Đang đăng nhập...");
+  setAuthMessage(loginMessage, "Đang xác thực với máy chủ...");
+  
+  const inputEmail = document.getElementById("login-email").value;
+  const inputPassword = document.getElementById("login-password").value;
+
   try {
-    const data = await authRequest("/api/auth/login", {
-      email: document.getElementById("login-email").value,
-      password: document.getElementById("login-password").value,
+    const data = await authRequest("/api/login", {
+      email: inputEmail,
+      password: inputPassword,
     });
+    
     setAuthMessage(loginMessage, "");
-    handleAuthSuccess(data);
+    
+    const authData = {
+        token: data.token,
+        user: { name: "Bác sĩ", email: inputEmail } 
+    };
+    
+    handleAuthSuccess(authData);
+    
   } catch (error) {
     setAuthMessage(loginMessage, formatError(error), true);
   }
