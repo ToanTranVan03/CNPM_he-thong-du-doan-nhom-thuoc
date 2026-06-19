@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="vi">
   <head>
     <meta charset="utf-8" />
@@ -151,8 +151,8 @@
             <span class="material-symbols-outlined" aria-hidden="true">history</span>
             <span>Lịch Sử Dự Đoán</span>
           </button>
-          <button class="nav-link" type="button" data-page="result">
-            <span class="material-symbols-outlined" aria-hidden="true">medical_services</span>
+          <button class="nav-link" type="button" data-page="admin-thuoc">
+            <span class="material-symbols-outlined" aria-hidden="true">medication</span>
             <span>Quản Lý Thuốc</span>
           </button>
           <button class="nav-link" type="button" data-page="about">
@@ -295,7 +295,7 @@
                 <span class="material-symbols-outlined" aria-hidden="true">save</span>
                 Lưu kết quả
               </button>
-              <button class="secondary-button" type="button" data-page="home">
+              <button class="secondary-button" type="button" id="new-prediction-button" data-page="home">
                 <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
                 Dự đoán mới
               </button>
@@ -487,17 +487,197 @@
             <p class="muted-text">Kênh hỗ trợ trong ứng dụng đang được phát triển.</p>
           </article>
         </div>
+        <div class="container" style="margin-top: 30px; margin-bottom: 50px;">
+          <div class="profile-form-section" style="padding: 20px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
+            <div class="profile-form-head" style="margin-bottom: 20px;">
+              <div>
+                <p class="eyebrow">⚙️ Quyền cấu hình nâng cao</p>
+                <h2>Quản lý Danh mục Nhóm thuốc (Admin)</h2>
+              </div>
+            </div>
+
+            <form id="drug-group-form" style="display: flex; gap: 15px; margin-bottom: 20px; align-items: flex-end; flex-wrap: wrap;">
+              <div class="form-field" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+                <label for="dg-name">Tên nhóm thuốc</label>
+                <input type="text" id="dg-name" required placeholder="VD: Thuốc kháng sinh" style="width: 100%;" />
+              </div>
+              <div class="form-field" style="flex: 2; min-width: 300px; margin-bottom: 0;">
+                <label for="dg-desc">Mô tả chi tiết</label>
+                <input type="text" id="dg-desc" placeholder="Nhập mô tả ngắn gọn về nhóm thuốc..." style="width: 100%;" />
+              </div>
+              <button class="primary-button" type="submit" style="height: 46px; margin-bottom: 4px;">
+                <span class="material-symbols-outlined">add</span> Thêm nhóm
+              </button>
+            </form>
+
+            <div class="summary-table-wrap" style="margin-top: 20px; overflow-x: auto;">
+              <table class="case-summary-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                  <tr>
+                    <th style="text-align: left; padding: 12px; width: 60px;">ID</th>
+                    <th style="text-align: left; padding: 12px; width: 250px;">Tên nhóm thuốc</th>
+                    <th style="text-align: left; padding: 12px;">Mô tả chi tiết hệ thống</th>
+                    <th style="text-align: center; padding: 12px; width: 100px;">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="drug-group-list">
+                  </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-admin-thuoc" aria-labelledby="admin-thuoc-title">
+        <div class="container" style="margin-top: 30px; margin-bottom: 50px;">
+          <div class="profile-form-section" style="padding: 20px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
+            <div class="profile-form-head" style="margin-bottom: 20px;">
+              <div>
+                <p class="eyebrow">Danh sách thuốc</p>
+                <h2 id="admin-thuoc-title">Danh sách danh mục Thuốc</h2>
+              </div>
+              <p style="color: var(--text-muted); margin: 8px 0 0 0;">Liên kết các thuốc và liên kết với nhóm thuốc tương ứng.</p>
+            </div>
+
+            <div class="admin-thuoc-toolbar" style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+              <input type="text" id="thuoc-search-input" class="search-box" placeholder="Tìm kiếm thuốc, hoạt chất..." style="flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--outline); border-radius: 6px; font-size: 14px;" />
+              <select id="thuoc-filter-nhom" class="admin-select" style="padding: 8px 12px; border: 1px solid var(--outline); border-radius: 6px; font-size: 14px;">
+                <option value="">— Tất cả nhóm thuốc —</option>
+              </select>
+              <button class="primary-button" type="button" id="btn-add-thuoc" style="height: 34px; padding: 0 16px;">
+                <span class="material-symbols-outlined" style="font-size: 18px;">add</span> Thêm thuốc
+              </button>
+            </div>
+
+            <div class="summary-table-wrap" style="margin-top: 20px; overflow-x: auto;">
+              <table class="admin-thuoc-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                  <tr style="background: var(--surface-low); border-bottom: 2px solid var(--outline);">
+                    <th style="text-align: left; padding: 12px; width: 200px;">TÊN THUỐC</th>
+                    <th style="text-align: left; padding: 12px; width: 150px;">HOẠT CHẤT</th>
+                    <th style="text-align: left; padding: 12px; width: 120px;">HÀM LƯỢNG</th>
+                    <th style="text-align: left; padding: 12px; width: 120px;">DẠNG BC</th>
+                    <th style="text-align: left; padding: 12px; width: 150px;">NHÓM THUỐC</th>
+                    <th style="text-align: right; padding: 12px; width: 100px;">GIÁ (VNĐ)</th>
+                    <th style="text-align: center; padding: 12px; width: 80px;">THAO TÁC</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-thuoc-tbody">
+                </tbody>
+              </table>
+              <div id="admin-thuoc-empty" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+                <span class="material-symbols-outlined" style="font-size: 48px; display: block; margin-bottom: 12px; opacity: 0.5;">medication</span>
+                <p style="margin: 0; font-size: 16px;">Chưa có thuốc nào</p>
+                <p style="margin: 4px 0 0 0; font-size: 14px; color: var(--text-subtle);">Nhấn "Thêm thuốc" để bắt đầu</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
       </main>
     </div>
+
+    <!-- =====================================================
+         MODAL: Thêm / Sửa Thuốc (đặt ngoài app-shell để overlay toàn màn hình)
+         ===================================================== -->
+    <div class="modal-overlay is-hidden" id="modal-thuoc" role="dialog" aria-modal="true" aria-labelledby="modal-thuoc-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 id="modal-thuoc-title">Thêm thuốc mới</h2>
+          <button class="icon-button" type="button" id="modal-thuoc-close" aria-label="Đóng">
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </div>
+
+        <form id="modal-thuoc-form" class="modal-body" novalidate>
+          <input type="hidden" id="modal-thuoc-id" />
+
+          <div class="form-row">
+            <div class="form-field">
+              <label for="mt-ten">Tên thuốc <span aria-hidden="true" class="required-star">*</span></label>
+              <input id="mt-ten" type="text" required placeholder="VD: Paracetamol 500mg" autocomplete="off" />
+            </div>
+            <div class="form-field">
+              <label for="mt-nhom">Nhóm thuốc <span aria-hidden="true" class="required-star">*</span></label>
+              <select id="mt-nhom" required class="admin-select">
+                <option value="">— Chọn nhóm thuốc —</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label for="mt-hoat-chat">Hoạt chất</label>
+              <input id="mt-hoat-chat" type="text" placeholder="VD: Paracetamol" autocomplete="off" />
+            </div>
+            <div class="form-field">
+              <label for="mt-ham-luong">Hàm lượng</label>
+              <input id="mt-ham-luong" type="text" placeholder="VD: 500mg" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label for="mt-dang-bao-che">Dạng bào chế</label>
+              <input id="mt-dang-bao-che" type="text" placeholder="VD: Viên nén, Siro..." autocomplete="off" />
+            </div>
+            <div class="form-field">
+              <label for="mt-don-vi">Đơn vị tính</label>
+              <input id="mt-don-vi" type="text" placeholder="VD: Hộp 30 viên" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label for="mt-hang-sx">Hãng sản xuất</label>
+              <input id="mt-hang-sx" type="text" placeholder="VD: Dược Hậu Giang" autocomplete="off" />
+            </div>
+            <div class="form-field">
+              <label for="mt-nuoc-sx">Nước sản xuất</label>
+              <input id="mt-nuoc-sx" type="text" placeholder="VD: Việt Nam" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label for="mt-so-dk">Số đăng ký</label>
+              <input id="mt-so-dk" type="text" placeholder="VD: VD-28865-18" autocomplete="off" />
+            </div>
+            <div class="form-field">
+              <label for="mt-gia">Giá tham khảo (VNĐ)</label>
+              <input id="mt-gia" type="number" min="0" step="1000" placeholder="VD: 15000" />
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="mt-mo-ta">Mô tả / Chỉ định</label>
+            <textarea id="mt-mo-ta" rows="3" placeholder="Mô tả công dụng, chỉ định, lưu ý..."></textarea>
+          </div>
+
+          <p class="form-message" id="modal-thuoc-msg" role="status"></p>
+
+          <div class="form-actions">
+            <button class="primary-button" type="submit" id="modal-thuoc-submit">
+              <span class="material-symbols-outlined" aria-hidden="true">save</span>
+              Lưu thuốc
+            </button>
+            <button class="secondary-button" type="button" id="modal-thuoc-cancel">
+              <span class="material-symbols-outlined" aria-hidden="true">close</span>
+              Hủy
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <!-- END MODAL THUOC -->
 
     <nav class="bottom-nav" aria-label="Dieu huong mobile">
       <button class="bottom-link is-active" type="button" data-page="home">
         <span class="material-symbols-outlined" aria-hidden="true">home</span>
         <span>Trang chủ</span>
       </button>
-      <button class="bottom-link" type="button" data-page="result">
-        <span class="material-symbols-outlined" aria-hidden="true">medical_services</span>
+      <button class="bottom-link" type="button" data-page="admin-thuoc">
+        <span class="material-symbols-outlined" aria-hidden="true">medication</span>
         <span>Thuốc</span>
       </button>
       <button class="bottom-link" type="button" data-page="history">

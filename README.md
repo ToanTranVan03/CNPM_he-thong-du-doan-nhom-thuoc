@@ -27,6 +27,25 @@ CNPM/
   requirements.txt
 ```
 
+
+## UI/UX Figma
+
+Dự án có thiết kế UI/UX trên Figma theo yêu cầu môn học. Tài liệu chi tiết nằm tại:
+
+```text
+docs/UI_UX_FIGMA.md
+```
+
+Các nội dung bắt buộc đã chuẩn bị:
+
+- Wireframe
+- User Flow
+- Prototype
+- Mockup
+- Design System
+
+Frontend hiện tại được cập nhật theo hướng giao diện Figma nhưng vẫn giữ backend Flask/API để bảo toàn tiến độ Sprint và Jira.
+
 ## Cách chạy tai terminal : pip install -r requirements.txt
 
 ```powershell

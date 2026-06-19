@@ -7,13 +7,15 @@ import re
 import secrets
 import unicodedata
 import zipfile
+import jwt
+import datetime
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from itertools import permutations
 from pathlib import Path
 
 import joblib
-from models import db, User, NhomThuoc
+from models import db, User, NhomThuoc, Thuoc
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from text_preprocessing import remove_vietnamese_stop_words
@@ -37,6 +39,7 @@ GUIDANCE_PATH = Path(os.environ.get("GUIDANCE_PATH", PROJECT_ROOT / "data" / "di
 USERS_PATH = Path(os.environ.get("USERS_PATH", PROJECT_ROOT / "data" / "users.json"))
 ADMIN_EMAIL = "admin@gmail.com"
 ADMIN_PASSWORD = "123456"
+PASSWORD_RESET_CODES = {}
 # Vòng 6: mapping nhóm -> 2-3 hoạt chất tiêu biểu (đã curate, làm sạch) cho output trọng tâm.
 DRUG_REPRESENTATIVES_PATH = Path(
     os.environ.get("DRUG_REPRESENTATIVES_PATH", PROJECT_ROOT / "data" / "drug_group_representatives.json")
@@ -57,6 +60,7 @@ CORS(
         }
     },
 )
+app.config['SECRET_KEY'] = 'dev_key_bi_mat'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///pharma_predict.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -2886,140 +2890,184 @@ def health():
             "guidance_entries": len(guidance_data),
         }
     )
-
-
-@app.post("/api/auth/register")
+@app.route('/api/auth/register', methods=['POST'])
 def register():
-    payload = request.get_json(silent=True) or {}
-    name = str(payload.get("name") or "").strip()
-    email = normalize_email(str(payload.get("email") or ""))
-    password = str(payload.get("password") or "")
+    data = request.get_json() or {}
+    name = data.get("name", "").strip()
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
 
-    validation_error = validate_auth_payload(name, email, password)
-    if validation_error:
-        return jsonify({"error": validation_error}), 400
-
-    store = load_user_store()
-    if find_user_by_email(store, email):
+    if not name or not email or len(password) < 6:
+        return jsonify({"error": "Vui lòng nhập đủ thông tin (Mật khẩu từ 6 ký tự)"}), 400
+    if User.query.filter_by(email=email).first():
         return jsonify({"error": "Email này đã được đăng ký."}), 409
+    new_user = User(email=email, full_name=name)
+    new_user.set_password(password)
 
-    user = {
-        "id": secrets.token_hex(8),
-        "name": name,
-        "email": email,
-        "password_hash": generate_password_hash(password),
-        "created_at": iso_utc(now_utc()),
-    }
-    token = issue_session(user)
-    store["users"].append(user)
-    save_user_store(store)
-    return jsonify({"user": user_public_view(user), "token": token}), 201
+    db.session.add(new_user)
+    db.session.commit()
 
+    token = jwt.encode({'user': email, 'role': 'User', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)}, app.config['SECRET_KEY'], algorithm="HS256")
 
-@app.post("/api/auth/login")
+    return jsonify({'message': 'Đăng ký thành công', 'token': token, 'user': {'name': new_user.full_name, 'email': email}}), 201
+
+# --- BẮT ĐẦU: BỘ API XÁC THỰC, TÀI KHOẢN & HỒ SƠ ---
+@app.route('/api/login', methods=['POST'])
 def login():
-    payload = request.get_json(silent=True) or {}
-    email = normalize_email(str(payload.get("email") or ""))
-    password = str(payload.get("password") or "")
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    if email == "admin@gmail.com" and password == "123456":
+        token = jwt.encode({'user': email, 'role': 'Admin', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)}, app.config['SECRET_KEY'], algorithm="HS256")
+        return jsonify({'message': 'Đăng nhập thành công', 'token': token, 'user': {'name': 'Bác sĩ Toàn (Admin)', 'email': email}}), 200
 
-    store = load_user_store()
-    user = find_user_by_email(store, email)
-    if not user or not check_password_hash(user.get("password_hash", ""), password):
-        return jsonify({"error": "Email hoặc mật khẩu không đúng."}), 401
+    user = User.query.filter_by(email=email).first()
+    if user and user.check_password(password):
+        token = jwt.encode({'user': email, 'role': 'User', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)}, app.config['SECRET_KEY'], algorithm="HS256")
+        return jsonify({'message': 'Đăng nhập thành công', 'token': token, 'user': {'name': user.full_name, 'email': email}}), 200
 
-    token = issue_session(user)
-    save_user_store(store)
-    return jsonify({"user": user_public_view(user), "token": token})
+    return jsonify({'message': 'Sai email hoặc mật khẩu'}), 401
 
-
-@app.post("/api/login")
-def legacy_login():
-    payload = request.get_json(silent=True) or {}
-    email = normalize_email(str(payload.get("email") or ""))
-    password = str(payload.get("password") or "")
-
-    store = load_user_store()
-    user = None
-    if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
-        user = ensure_admin_user(store)
-    else:
-        user = find_user_by_email(store, email)
-        if not user or not check_password_hash(user.get("password_hash", ""), password):
-            return jsonify({"error": "Email hoặc mật khẩu không đúng."}), 401
-
-    token = issue_session(user)
-    save_user_store(store)
-    return jsonify({"message": "Đăng nhập thành công", "user": user_public_view(user), "token": token})
-
-
-@app.get("/api/auth/me")
-def auth_me():
-    store = load_user_store()
-    user = current_user_from_request(store)
-    if not user:
-        return jsonify({"error": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."}), 401
-    return jsonify({"user": user_public_view(user)})
-
-
-@app.post("/api/logout")
-@app.post("/api/auth/logout")
+@app.route('/api/logout', methods=['POST'])
 def logout():
-    store = load_user_store()
-    user = current_user_from_request(store)
-    if user:
-        user.pop("session_token", None)
-        user.pop("session_expires_at", None)
-        save_user_store(store)
-    return jsonify({"ok": True})
+    return jsonify({'message': 'Đăng xuất thành công'}), 200
 
 
-@app.post("/api/auth/forgot-password")
+@app.route('/api/auth/me', methods=['GET'])
+def auth_me():
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập"}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        return jsonify({"user": {"email": payload['user'], "name": "Người dùng hệ thống"}})
+    except Exception:
+        return jsonify({"error": "Token hết hạn"}), 401
+
+
+@app.route('/api/users/change-password', methods=['PUT'])
+def change_password():
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập"}), 401
+    token = auth_header.split(" ")[1]
+
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        email = payload['user']
+    except Exception:
+        return jsonify({"error": "Token không hợp lệ"}), 401
+
+    if email == "admin@gmail.com":
+        return jsonify({"message": "Đổi mật khẩu admin thành công (giả lập)!"}), 200
+
+    user = User.query.filter_by(email=email).first()
+    if not user: return jsonify({"error": "Người dùng không tồn tại"}), 404
+
+    data = request.get_json()
+    if not user.check_password(data.get('old_password')):
+        return jsonify({"error": "Mật khẩu cũ không chính xác!"}), 400
+
+    user.set_password(data.get('new_password'))
+    db.session.commit()
+    return jsonify({"message": "Đổi mật khẩu thành công!"}), 200
+
+
+@app.route('/api/users/profile', methods=['GET', 'PUT'])
+def profile():
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "): return jsonify({"error": "Chưa đăng nhập"}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        email = payload['user']
+    except Exception:
+        return jsonify({"error": "Token không hợp lệ"}), 401
+
+    user = User.query.filter_by(email=email).first()
+
+    if request.method == 'GET':
+        if email == "admin@gmail.com":
+            return jsonify({"fullName": "Bác sĩ Trần Văn Toàn", "email": email, "phoneNumber": "0901234567", "specialty": "Quản trị hệ thống"}), 200
+        if user:
+            return jsonify({"fullName": user.full_name, "email": email, "phoneNumber": user.phone_number, "specialty": user.specialty}), 200
+        return jsonify({"fullName": "Người dùng", "email": email}), 200
+
+    if request.method == 'PUT':
+        data = request.get_json()
+        if email == "admin@gmail.com":
+            return jsonify({"message": "Cập nhật hồ sơ Admin thành công!"}), 200
+        if user:
+            user.full_name = data.get("fullName", user.full_name)
+            user.phone_number = data.get("phoneNumber", user.phone_number)
+            user.specialty = data.get("specialty", user.specialty)
+            db.session.commit()
+            return jsonify({"message": "Cập nhật hồ sơ thành công!"}), 200
+        return jsonify({"error": "Không tìm thấy tài khoản trong DB"}), 404
+
+
+@app.route('/api/auth/forgot-password', methods=['POST'])
 def forgot_password():
-    payload = request.get_json(silent=True) or {}
-    email = normalize_email(str(payload.get("email") or ""))
-    store = load_user_store()
-    user = find_user_by_email(store, email)
-    response = {
-        "message": "Nếu email tồn tại, hệ thống đã tạo mã đặt lại mật khẩu.",
-    }
+    data = request.get_json(silent=True) or {}
+    email = normalize_email(str(data.get("email") or ""))
+    user_exists = email == ADMIN_EMAIL or User.query.filter_by(email=email).first() is not None
+    response = {"message": "Nếu email tồn tại, hệ thống đã tạo mã đặt lại mật khẩu."}
 
-    if user:
+    if user_exists:
         reset_code = f"{secrets.randbelow(1000000):06d}"
-        user["reset_code_hash"] = generate_password_hash(reset_code)
-        user["reset_code_expires_at"] = iso_utc(now_utc() + timedelta(minutes=15))
-        save_user_store(store)
+        PASSWORD_RESET_CODES[email] = {
+            "code_hash": generate_password_hash(reset_code),
+            "expires_at": now_utc() + timedelta(minutes=15),
+        }
         response["reset_code"] = reset_code
         response["message"] = "Mã đặt lại mật khẩu có hiệu lực trong 15 phút."
 
-    return jsonify(response)
+    return jsonify(response), 200
 
 
-@app.post("/api/auth/reset-password")
+@app.route('/api/auth/reset-password', methods=['POST'])
 def reset_password():
-    payload = request.get_json(silent=True) or {}
-    email = normalize_email(str(payload.get("email") or ""))
-    reset_code = str(payload.get("reset_code") or "").strip()
-    password = str(payload.get("password") or "")
+    data = request.get_json(silent=True) or {}
+    email = normalize_email(str(data.get("email") or ""))
+    reset_code = str(data.get("reset_code") or "").strip()
+    password = str(data.get("password") or "")
 
-    validation_error = validate_auth_payload(None, email, password)
-    if validation_error:
-        return jsonify({"error": validation_error}), 400
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return jsonify({"error": f"Mật khẩu phải có ít nhất {MIN_PASSWORD_LENGTH} ký tự."}), 400
 
-    store = load_user_store()
-    user = find_user_by_email(store, email)
-    expires_at = parse_iso_datetime(user.get("reset_code_expires_at") if user else None)
-    code_hash = user.get("reset_code_hash", "") if user else ""
-    if not user or not expires_at or expires_at <= now_utc() or not check_password_hash(code_hash, reset_code):
+    reset_state = PASSWORD_RESET_CODES.get(email)
+    if (
+        not reset_state
+        or reset_state["expires_at"] <= now_utc()
+        or not check_password_hash(reset_state["code_hash"], reset_code)
+    ):
         return jsonify({"error": "Mã đặt lại mật khẩu không đúng hoặc đã hết hạn."}), 400
 
-    user["password_hash"] = generate_password_hash(password)
-    user.pop("reset_code_hash", None)
-    user.pop("reset_code_expires_at", None)
-    token = issue_session(user)
-    save_user_store(store)
-    return jsonify({"user": user_public_view(user), "token": token})
+    if email == ADMIN_EMAIL:
+        PASSWORD_RESET_CODES.pop(email, None)
+        token = jwt.encode(
+            {'user': email, 'role': 'Admin', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)},
+            app.config['SECRET_KEY'],
+            algorithm="HS256",
+        )
+        return jsonify({'message': 'Đặt lại mật khẩu admin thành công', 'token': token, 'user': {'name': 'Bác sĩ Toàn (Admin)', 'email': email}}), 200
 
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({"error": "Tài khoản người dùng không tồn tại."}), 404
 
+    user.set_password(password)
+    db.session.commit()
+    PASSWORD_RESET_CODES.pop(email, None)
+    token = jwt.encode(
+        {'user': email, 'role': 'User', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)},
+        app.config['SECRET_KEY'],
+        algorithm="HS256",
+    )
+    return jsonify({'message': 'Đặt lại mật khẩu thành công', 'token': token, 'user': {'name': user.full_name, 'email': email}}), 200
+# --- KẾT THÚC: BỘ API XÁC THỰC, TÀI KHOẢN & HỒ SƠ ---
 @app.get("/api/symptoms")
 def symptoms():
     return jsonify({"symptoms": readable_symptoms})
@@ -3507,51 +3555,58 @@ def predict():
             "top_predictions": probabilities,
         }
     )
-
-
-@app.get("/api/users/profile")
-def get_profile():
-    store = load_user_store()
-    user = current_user_from_request(store)
-    if not user:
-        return jsonify({"error": "Phiên đăng nhập không hợp lệ"}), 401
-    
-    return jsonify({
-        "fullName": user.get("name", ""),
-        "email": user.get("email", ""),
-        "phoneNumber": user.get("phone_number", ""),
-        "specialty": user.get("specialty", "")
-    })
-
-
-@app.put("/api/users/profile")
-def update_profile():
-    store = load_user_store()
-    user = current_user_from_request(store)
-    if not user:
-        return jsonify({"error": "Phiên đăng nhập không hợp lệ"}), 401
-
-    data = request.get_json() or {}
-    
-    user["name"] = data.get("fullName", user.get("name", ""))
-    user["phone_number"] = data.get("phoneNumber", user.get("phone_number", ""))
-    user["specialty"] = data.get("specialty", user.get("specialty", ""))
-    
-    save_user_store(store)
-    
-    return jsonify({"message": "Cập nhật hồ sơ thành công", "user": user_public_view(user)})
 # API QLÝ NHÓM THUỐC (SCRUM-44)
 @app.route('/api/drug-groups', methods=['GET'])
 def get_drug_groups():
-    groups = NhomThuoc.query.all()
-    return jsonify([{"id": g.id, "ten_nhom": g.ten_nhom, "mo_ta": g.mo_ta} for g in groups]), 200
+    groups = NhomThuoc.query.order_by(NhomThuoc.id.desc()).all()
+    return jsonify([g.to_dict() for g in groups]), 200
+
+
 @app.route('/api/drug-groups', methods=['POST'])
 def add_drug_group():
-    data = request.get_json()
-    new_group = NhomThuoc(ten_nhom=data['ten_nhom'], mo_ta=data.get('mo_ta', ''))
+    data = request.get_json(silent=True) or {}
+    ten_nhom = (data.get('ten_nhom') or '').strip()
+    mo_ta = (data.get('mo_ta') or '').strip()
+
+    if not ten_nhom:
+        return jsonify({"error": "Vui lòng nhập tên nhóm thuốc."}), 400
+
+    existed = NhomThuoc.query.filter(db.func.lower(NhomThuoc.ten_nhom) == ten_nhom.lower()).first()
+    if existed:
+        return jsonify({"error": "Tên nhóm thuốc đã tồn tại."}), 409
+
+    new_group = NhomThuoc(ten_nhom=ten_nhom, mo_ta=mo_ta)
     db.session.add(new_group)
     db.session.commit()
-    return jsonify({"message": "Thêm nhóm thuốc thành công!"}), 201
+    return jsonify({"message": "Thêm nhóm thuốc thành công!", "data": new_group.to_dict()}), 201
+
+
+@app.route('/api/drug-groups/<int:id>', methods=['PUT'])
+def update_drug_group(id):
+    group = NhomThuoc.query.get(id)
+    if not group:
+        return jsonify({"error": "Không tìm thấy nhóm thuốc."}), 404
+
+    data = request.get_json(silent=True) or {}
+    ten_nhom = (data.get('ten_nhom') or '').strip()
+    mo_ta = (data.get('mo_ta') or '').strip()
+
+    if not ten_nhom:
+        return jsonify({"error": "Vui lòng nhập tên nhóm thuốc."}), 400
+
+    existed = NhomThuoc.query.filter(
+        db.func.lower(NhomThuoc.ten_nhom) == ten_nhom.lower(),
+        NhomThuoc.id != id
+    ).first()
+    if existed:
+        return jsonify({"error": "Tên nhóm thuốc đã tồn tại."}), 409
+
+    group.ten_nhom = ten_nhom
+    group.mo_ta = mo_ta
+    db.session.commit()
+    return jsonify({"message": "Cập nhật nhóm thuốc thành công!", "data": group.to_dict()}), 200
+
+
 @app.route('/api/drug-groups/<int:id>', methods=['DELETE'])
 def delete_drug_group(id):
     group = NhomThuoc.query.get(id)
@@ -3560,6 +3615,113 @@ def delete_drug_group(id):
         db.session.commit()
         return jsonify({"message": "Đã xóa nhóm thuốc!"}), 200
     return jsonify({"error": "Không tìm thấy nhóm thuốc"}), 404
+
+
+# ===================================================================
+# API CRUD QUẢN LÝ THUỐC (SCRUM-47)
+# ===================================================================
+
+@app.route('/api/thuoc', methods=['GET'])
+def get_all_thuoc():
+    """Lấy danh sách thuốc. Query: ?nhom_thuoc_id=<int> để lọc theo nhóm."""
+    nhom_id = request.args.get('nhom_thuoc_id', type=int)
+    query = Thuoc.query.filter_by(nhom_thuoc_id=nhom_id) if nhom_id else Thuoc.query
+    return jsonify([t.to_dict() for t in query.all()]), 200
+
+
+@app.route('/api/thuoc/<int:id>', methods=['GET'])
+def get_thuoc(id):
+    """Lấy chi tiết một thuốc theo ID."""
+    thuoc = Thuoc.query.get(id)
+    if not thuoc:
+        return jsonify({"error": "Không tìm thấy thuốc"}), 404
+    return jsonify(thuoc.to_dict()), 200
+
+
+@app.route('/api/thuoc', methods=['POST'])
+def add_thuoc():
+    """
+    Thêm thuốc mới.
+    Required: ten_thuoc, nhom_thuoc_id
+    Optional: hoat_chat, ham_luong, dang_bao_che, hang_san_xuat,
+              nuoc_san_xuat, so_dang_ky, gia_tham_khao, don_vi_tinh, mo_ta
+    """
+    data = request.get_json() or {}
+
+    # --- validation ---
+    if not data.get('ten_thuoc', '').strip():
+        return jsonify({"error": "Vui lòng nhập tên thuốc"}), 400
+    if not data.get('nhom_thuoc_id'):
+        return jsonify({"error": "Vui lòng chọn nhóm thuốc"}), 400
+    if not NhomThuoc.query.get(data['nhom_thuoc_id']):
+        return jsonify({"error": "Nhóm thuốc không tồn tại"}), 404
+
+    thuoc = Thuoc(
+        ten_thuoc    = data['ten_thuoc'].strip(),
+        hoat_chat    = data.get('hoat_chat'),
+        ham_luong    = data.get('ham_luong'),
+        dang_bao_che = data.get('dang_bao_che'),
+        hang_san_xuat= data.get('hang_san_xuat'),
+        nuoc_san_xuat= data.get('nuoc_san_xuat'),
+        so_dang_ky   = data.get('so_dang_ky'),
+        gia_tham_khao= data.get('gia_tham_khao'),
+        don_vi_tinh  = data.get('don_vi_tinh'),
+        mo_ta        = data.get('mo_ta'),
+        nhom_thuoc_id= data['nhom_thuoc_id'],
+    )
+    try:
+        db.session.add(thuoc)
+        db.session.commit()
+        return jsonify({"message": "Thêm thuốc thành công!", "thuoc": thuoc.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Lỗi khi thêm thuốc: {str(e)}"}), 500
+
+
+@app.route('/api/thuoc/<int:id>', methods=['PUT'])
+def update_thuoc(id):
+    """Cập nhật thông tin thuốc. Chỉ cần gửi các field muốn thay đổi."""
+    thuoc = Thuoc.query.get(id)
+    if not thuoc:
+        return jsonify({"error": "Không tìm thấy thuốc"}), 404
+
+    data = request.get_json() or {}
+
+    # Nếu đổi nhóm thuốc, kiểm tra nhóm mới tồn tại
+    if 'nhom_thuoc_id' in data:
+        if not NhomThuoc.query.get(data['nhom_thuoc_id']):
+            return jsonify({"error": "Nhóm thuốc không tồn tại"}), 404
+        thuoc.nhom_thuoc_id = data['nhom_thuoc_id']
+
+    updatable = ['ten_thuoc', 'hoat_chat', 'ham_luong', 'dang_bao_che',
+                 'hang_san_xuat', 'nuoc_san_xuat', 'so_dang_ky',
+                 'gia_tham_khao', 'don_vi_tinh', 'mo_ta']
+    for field in updatable:
+        if field in data:
+            setattr(thuoc, field, data[field])
+
+    try:
+        db.session.commit()
+        return jsonify({"message": "Cập nhật thuốc thành công!", "thuoc": thuoc.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Lỗi khi cập nhật thuốc: {str(e)}"}), 500
+
+
+@app.route('/api/thuoc/<int:id>', methods=['DELETE'])
+def delete_thuoc(id):
+    """Xóa một thuốc."""
+    thuoc = Thuoc.query.get(id)
+    if not thuoc:
+        return jsonify({"error": "Không tìm thấy thuốc"}), 404
+    try:
+        db.session.delete(thuoc)
+        db.session.commit()
+        return jsonify({"message": "Xóa thuốc thành công!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Lỗi khi xóa thuốc: {str(e)}"}), 500
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
