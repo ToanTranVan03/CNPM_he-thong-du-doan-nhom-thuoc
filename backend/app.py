@@ -13,7 +13,7 @@ from itertools import permutations
 from pathlib import Path
 
 import joblib
-
+from models import db, User
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -50,10 +50,19 @@ CORS(
                 "http://localhost:5000",
                 "http://localhost:5001",
             ]
+            
         }
     },
 )
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///pharma_predict.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# 3. Khởi tạo Database và tạo bảng
+db.init_app(app)
+
+with app.app_context():
+    db.create_all()
+    print("Database đã sẵn sàng!")
 
 @app.after_request
 def add_no_cache_headers(response):
