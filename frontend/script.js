@@ -993,28 +993,74 @@ if (passwordForm) {
 }
 const drugGroupForm = document.getElementById("drug-group-form");
 const drugGroupList = document.getElementById("drug-group-list");
+const dgNameInput = document.getElementById("dg-name");
+const dgDescInput = document.getElementById("dg-desc");
+const dgSubmitButton = drugGroupForm?.querySelector('button[type="submit"]');
+let editingDrugGroupId = null;
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function setDrugGroupFormMode(mode = "add", group = null) {
+  editingDrugGroupId = mode === "edit" && group ? group.id : null;
+  if (dgNameInput) dgNameInput.value = group?.ten_nhom || "";
+  if (dgDescInput) dgDescInput.value = group?.mo_ta || "";
+
+  if (dgSubmitButton) {
+    dgSubmitButton.innerHTML = editingDrugGroupId
+      ? `<span class="material-symbols-outlined">save</span> Cập nhật`
+      : `<span class="material-symbols-outlined">add</span> Thêm nhóm`;
+  }
+
+  let cancelBtn = document.getElementById("dg-cancel-edit");
+  if (editingDrugGroupId && !cancelBtn && drugGroupForm) {
+    cancelBtn = document.createElement("button");
+    cancelBtn.id = "dg-cancel-edit";
+    cancelBtn.type = "button";
+    cancelBtn.className = "secondary-button";
+    cancelBtn.style.height = "46px";
+    cancelBtn.style.marginBottom = "4px";
+    cancelBtn.innerHTML = `<span class="material-symbols-outlined">close</span> Hủy`;
+    cancelBtn.addEventListener("click", () => {
+      drugGroupForm.reset();
+      setDrugGroupFormMode("add");
+    });
+    drugGroupForm.appendChild(cancelBtn);
+  }
+  if (!editingDrugGroupId && cancelBtn) cancelBtn.remove();
+}
+
 async function loadDrugGroups() {
   if (!drugGroupList) return;
   try {
-    const res = await fetch("http://127.0.0.1:5000/api/drug-groups");
-    if (!res.ok) return;
+    const res = await fetch(`${API_BASE_URL}/api/drug-groups`);
+    if (!res.ok) throw new Error("Không tải được danh sách nhóm thuốc.");
     const data = await res.json();
-    
-    drugGroupList.innerHTML = ""; 
-    
-    if (data.length === 0) {
+
+    drugGroupList.innerHTML = "";
+
+    if (!Array.isArray(data) || data.length === 0) {
       drugGroupList.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 20px; color: var(--text-muted);">Chưa có dữ liệu nhóm thuốc nào.</td></tr>`;
       return;
     }
 
-    data.forEach(g => {
+    data.forEach((g) => {
       const row = document.createElement("tr");
       row.innerHTML = `
         <td style="padding: 12px; border-bottom: 1px solid var(--border); color: var(--text-muted);">${g.id}</td>
-        <td style="padding: 12px; border-bottom: 1px solid var(--border); font-weight: 600;">${g.ten_nhom}</td>
-        <td style="padding: 12px; border-bottom: 1px solid var(--border); color: var(--text-muted);">${g.mo_ta || 'Không có mô tả.'}</td>
-        <td style="padding: 12px; border-bottom: 1px solid var(--border); text-align: center;">
-          <button onclick="deleteDrugGroup(${g.id})" class="text-button" style="color: #ef4444; padding: 4px 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+        <td style="padding: 12px; border-bottom: 1px solid var(--border); font-weight: 600;">${escapeHtml(g.ten_nhom)}</td>
+        <td style="padding: 12px; border-bottom: 1px solid var(--border); color: var(--text-muted);">${escapeHtml(g.mo_ta || "Không có mô tả.")}</td>
+        <td style="padding: 12px; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap;">
+          <button type="button" class="text-button" data-action="edit" data-id="${g.id}" data-name="${escapeHtml(g.ten_nhom)}" data-desc="${escapeHtml(g.mo_ta || "")}" style="color: #2563eb; padding: 4px 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+            <span class="material-symbols-outlined" style="font-size: 18px;">edit</span> Sửa
+          </button>
+          <button type="button" class="text-button" data-action="delete" data-id="${g.id}" style="color: #ef4444; padding: 4px 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
             <span class="material-symbols-outlined" style="font-size: 18px;">delete</span> Xóa
           </button>
         </td>
@@ -1026,41 +1072,78 @@ async function loadDrugGroups() {
   }
 }
 
+if (drugGroupList) {
+  drugGroupList.addEventListener("click", async (e) => {
+    const button = e.target.closest("button[data-action]");
+    if (!button) return;
+
+    const action = button.dataset.action;
+    const id = Number(button.dataset.id);
+
+    if (action === "edit") {
+      setDrugGroupFormMode("edit", {
+        id,
+        ten_nhom: button.dataset.name || "",
+        mo_ta: button.dataset.desc || "",
+      });
+      dgNameInput?.focus();
+      return;
+    }
+
+    if (action === "delete") {
+      await deleteDrugGroup(id);
+    }
+  });
+}
+
 async function deleteDrugGroup(id) {
   if (!confirm("⚠️ Bạn có chắc chắn muốn xóa nhóm thuốc này khỏi hệ thống không?")) return;
   try {
-    const res = await fetch(`http://127.0.0.1:5000/api/drug-groups/${id}`, {
-      method: "DELETE"
+    const res = await fetch(`${API_BASE_URL}/api/drug-groups/${id}`, {
+      method: "DELETE",
     });
-    if (res.ok) {
-      loadDrugGroups(); 
-    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Không thể xóa nhóm thuốc.");
+    if (editingDrugGroupId === id) setDrugGroupFormMode("add");
+    loadDrugGroups();
   } catch (e) {
+    alert(e.message || "Lỗi xóa nhóm thuốc.");
     console.error("Lỗi xóa nhóm thuốc:", e);
   }
 }
+
 if (drugGroupForm) {
   drugGroupForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const nameInput = document.getElementById("dg-name");
-    const descInput = document.getElementById("dg-desc");
-    
+    const ten_nhom = dgNameInput?.value.trim() || "";
+    const mo_ta = dgDescInput?.value.trim() || "";
+
+    if (!ten_nhom) {
+      alert("Vui lòng nhập tên nhóm thuốc.");
+      dgNameInput?.focus();
+      return;
+    }
+
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/drug-groups", {
-        method: "POST",
+      const endpoint = editingDrugGroupId
+        ? `${API_BASE_URL}/api/drug-groups/${editingDrugGroupId}`
+        : `${API_BASE_URL}/api/drug-groups`;
+      const method = editingDrugGroupId ? "PUT" : "POST";
+
+      const res = await fetch(endpoint, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ten_nhom: nameInput.value.trim(),
-          mo_ta: descInput.value.trim()
-        })
+        body: JSON.stringify({ ten_nhom, mo_ta }),
       });
-      
-      if (res.ok) {
-        drugGroupForm.reset(); 
-        loadDrugGroups();     
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Không thể lưu nhóm thuốc.");
+
+      drugGroupForm.reset();
+      setDrugGroupFormMode("add");
+      loadDrugGroups();
     } catch (e) {
-      console.error("Lỗi thêm nhóm thuốc mới:", e);
+      alert(e.message || "Lỗi lưu nhóm thuốc.");
+      console.error("Lỗi lưu nhóm thuốc:", e);
     }
   });
 }
