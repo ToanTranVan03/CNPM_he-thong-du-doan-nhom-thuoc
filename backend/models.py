@@ -18,3 +18,9 @@ class User(db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+class NhomThuoc(db.Model):
+    __tablename__ = 'nhom_thuoc'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    ten_nhom = db.Column(db.String(255), nullable=False, unique=True)
+    mo_ta = db.Column(db.String(500))
