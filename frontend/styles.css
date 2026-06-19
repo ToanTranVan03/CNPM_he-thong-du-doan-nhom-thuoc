@@ -1789,3 +1789,91 @@ input:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* ═════════════════════════════════════════════════════════════
+   FILE UPLOAD COMPONENT STYLES
+   ═════════════════════════════════════════════════════════════ */
+
+.file-upload-zone {
+  position: relative;
+  transition: all 0.3s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.file-upload-zone:hover {
+  border-color: var(--primary) !important;
+  background: rgba(11, 95, 181, 0.02) !important;
+}
+
+.file-upload-zone.drag-over {
+  border-color: var(--primary) !important;
+  background: rgba(11, 95, 181, 0.08) !important;
+}
+
+.upload-content {
+  pointer-events: none;
+}
+
+.upload-content h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.upload-content p {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.upload-progress {
+  animation: slideDown 0.3s ease;
+}
+
+.upload-result {
+  animation: slideDown 0.3s ease;
+  border-radius: 8px;
+}
+
+.upload-result strong {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.upload-result.error {
+  background: rgba(192, 57, 43, 0.1) !important;
+}
+
+.upload-result.error strong {
+  color: var(--error);
+}
+
+.upload-result small {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive upload zone */
+@media (max-width: 768px) {
+  .file-upload-zone {
+    padding: 20px !important;
+  }
+  
+  .file-upload-zone .material-symbols-outlined {
+    font-size: 36px !important;
+  }
+}

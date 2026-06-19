@@ -1486,3 +1486,326 @@ window.showPage = function(pageName) {
     loadNhomThuocOptions().then(reloadThuoc);
   }
 };
+
+// ════════════════════════════════════════════════════════════
+// ── DRAG & DROP FILE UPLOAD COMPONENT ──────────────────────
+// ════════════════════════════════════════════════════════════
+
+const uploadZone = document.getElementById("file-upload-zone");
+const fileInput = document.getElementById("file-upload-input");
+const fileUploadBrowse = document.getElementById("file-upload-browse");
+const btnToggleUpload = document.getElementById("btn-toggle-upload");
+
+if (uploadZone && fileInput && btnToggleUpload) {
+  // Toggle upload zone visibility
+  btnToggleUpload.addEventListener("click", () => {
+    const isVisible = uploadZone.style.display !== "none";
+    uploadZone.style.display = isVisible ? "none" : "block";
+    if (!isVisible) {
+      fileInput.value = "";
+      uploadZone.querySelector(".upload-progress").style.display = "none";
+      uploadZone.querySelector(".upload-result").style.display = "none";
+    }
+  });
+
+  // Browse button click
+  fileUploadBrowse?.addEventListener("click", (e) => {
+    e.preventDefault();
+    fileInput.click();
+  });
+
+  // File input change
+  fileInput.addEventListener("change", (e) => {
+    const files = e.target.files;
+    if (files.length > 0) {
+      handleFileUpload(files[0]);
+    }
+  });
+
+  // Drag and drop events
+  uploadZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadZone.style.borderColor = "var(--primary)";
+    uploadZone.style.background = "rgba(var(--primary-rgb), 0.05)";
+  });
+
+  uploadZone.addEventListener("dragleave", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadZone.style.borderColor = "var(--outline)";
+    uploadZone.style.background = "var(--surface-low)";
+  });
+
+  uploadZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadZone.style.borderColor = "var(--outline)";
+    uploadZone.style.background = "var(--surface-low)";
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileUpload(files[0]);
+    }
+  });
+
+  // Click on zone to select file
+  uploadZone.addEventListener("click", (e) => {
+    if (e.target.id !== "file-upload-browse") {
+      fileInput.click();
+    }
+  });
+}
+
+// Parse CSV data
+function parseCSV(text) {
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l);
+  const header = lines[0].split(",").map(h => h.trim().toLowerCase());
+  
+  const data = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    if (values.length < 2) continue; // Skip empty lines
+    
+    const row = {};
+    header.forEach((col, idx) => {
+      row[col] = values[idx] ? values[idx].trim() : "";
+    });
+    data.push(row);
+  }
+  return { header, data };
+}
+
+// Parse CSV line handling quoted values
+function parseCSVLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+    
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+// Parse XLSX (simplified - requires reading file)
+async function parseXLSX(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const sheet = XLSX.read(data, { type: "array" });
+        const firstSheet = sheet.Sheets[sheet.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+        
+        if (rows.length === 0) {
+          resolve({ header: [], data: [] });
+          return;
+        }
+        
+        const header = Object.keys(rows[0]).map(k => k.toLowerCase());
+        resolve({ header, data: rows });
+      } catch (err) {
+        console.error("XLSX parsing error:", err);
+        resolve({ header: [], data: [] });
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Map column names flexibly
+function mapColumnName(columnName, possibleNames) {
+  const normalized = columnName.toLowerCase().trim();
+  for (const name of possibleNames) {
+    if (normalized.includes(name.toLowerCase()) || name.toLowerCase().includes(normalized)) {
+      return true;
+    }
+  }
+  return normalized.length > 0 && possibleNames.some(n => n.length > 0);
+}
+
+// Main file upload handler
+async function handleFileUpload(file) {
+  const uploadProgress = uploadZone.querySelector(".upload-progress");
+  const uploadResult = uploadZone.querySelector(".upload-result");
+  const uploadStatus = document.getElementById("upload-status");
+  const uploadCount = document.getElementById("upload-count");
+  const uploadResultText = document.getElementById("upload-result-text");
+  const progressBar = document.getElementById("upload-progress-bar");
+
+  uploadProgress.style.display = "block";
+  uploadResult.style.display = "none";
+  progressBar.style.width = "0%";
+
+  const fileName = file.name.toLowerCase();
+  let parsedData;
+
+  try {
+    if (fileName.endsWith(".csv")) {
+      uploadStatus.textContent = "Đang đọc file CSV...";
+      const text = await file.text();
+      parsedData = parseCSV(text);
+    } else if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+      uploadStatus.textContent = "Đang đọc file Excel...";
+      
+      // Load XLSX library if not available
+      if (typeof XLSX === "undefined") {
+        const script = document.createElement("script");
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js";
+        document.head.appendChild(script);
+        
+        await new Promise(resolve => {
+          script.onload = resolve;
+        });
+      }
+      
+      parsedData = await parseXLSX(file);
+    } else {
+      throw new Error("Định dạng file không hỗ trợ. Vui lòng sử dụng CSV hoặc XLSX.");
+    }
+
+    if (!parsedData || parsedData.data.length === 0) {
+      throw new Error("File không chứa dữ liệu hoặc định dạng không đúng.");
+    }
+
+    uploadStatus.textContent = `Đang nhập ${parsedData.data.length} hàng...`;
+    const totalItems = parsedData.data.length;
+
+    // Map columns
+    const header = parsedData.header || Object.keys(parsedData.data[0] || {});
+    const colMap = {
+      ten: header.find(h => h.includes("ten") || h.includes("name") || h === "tên"),
+      hoatChat: header.find(h => h.includes("hoat") || h.includes("active") || h.includes("substance")),
+      hamLuong: header.find(h => h.includes("ham") || h.includes("strength") || h.includes("dose")),
+      dangBaoChe: header.find(h => h.includes("dang") || h.includes("form")),
+      nhom: header.find(h => h.includes("nhom") || h.includes("group")),
+      gia: header.find(h => h.includes("gia") || h.includes("price")),
+      donVi: header.find(h => h.includes("don") || h.includes("unit")),
+      hangSx: header.find(h => h.includes("hang") || h.includes("manufacturer")),
+      nuocSx: header.find(h => h.includes("nuoc") || h.includes("country")),
+      soDk: header.find(h => h.includes("so") || h.includes("registration")),
+      moTa: header.find(h => h.includes("mo") || h.includes("description"))
+    };
+
+    // Check required columns
+    if (!colMap.ten || !colMap.nhom) {
+      throw new Error("File phải chứa cột 'Tên thuốc' (name) và 'Nhóm thuốc' (group). Kiểm tra tiêu đề cột.");
+    }
+
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    // Fetch nhom mapping
+    const nhomsResp = await fetch(`${API_BASE_URL}/api/nhom-thuoc`);
+    const nhomsList = (await nhomsResp.json()) || [];
+    const nhomMap = {};
+    nhomsList.forEach(n => {
+      nhomMap[n.ten.toLowerCase()] = n.id;
+    });
+
+    // Process each row
+    for (let i = 0; i < totalItems; i++) {
+      try {
+        const row = parsedData.data[i];
+        const ten = row[colMap.ten]?.trim();
+        const nhomName = row[colMap.nhom]?.trim();
+
+        if (!ten || !nhomName) {
+          errorCount++;
+          errors.push(`Hàng ${i + 2}: Thiếu tên thuốc hoặc nhóm thuốc`);
+          continue;
+        }
+
+        const nhomId = nhomMap[nhomName.toLowerCase()];
+        if (!nhomId) {
+          errorCount++;
+          errors.push(`Hàng ${i + 2}: Nhóm thuốc "${nhomName}" không tồn tại`);
+          continue;
+        }
+
+        const thuocData = {
+          ten: ten,
+          nhom_id: nhomId,
+          hoat_chat: row[colMap.hoatChat]?.trim() || "",
+          ham_luong: row[colMap.hamLuong]?.trim() || "",
+          dang_bao_che: row[colMap.dangBaoChe]?.trim() || "",
+          don_vi: row[colMap.donVi]?.trim() || "",
+          hang_sx: row[colMap.hangSx]?.trim() || "",
+          nuoc_sx: row[colMap.nuocSx]?.trim() || "",
+          so_dk: row[colMap.soDk]?.trim() || "",
+          gia: parseInt(row[colMap.gia]) || 0,
+          mo_ta: row[colMap.moTa]?.trim() || ""
+        };
+
+        // Send to API
+        const response = await fetch(`${API_BASE_URL}/api/thuoc`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${authToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(thuocData)
+        });
+
+        if (response.ok) {
+          successCount++;
+        } else {
+          errorCount++;
+          const errText = await response.text();
+          errors.push(`Hàng ${i + 2}: ${errText || "Lỗi thêm thuốc"}`);
+        }
+      } catch (err) {
+        errorCount++;
+        errors.push(`Hàng ${i + 2}: ${err.message}`);
+      }
+
+      // Update progress
+      const progress = ((i + 1) / totalItems) * 100;
+      progressBar.style.width = progress + "%";
+      uploadCount.textContent = `${successCount} thành công / ${i + 1} hàng`;
+    }
+
+    // Show result
+    uploadProgress.style.display = "none";
+    uploadResult.style.display = "block";
+    
+    let resultHTML = `<strong>✅ Nhập file thành công!</strong><br>Thêm ${successCount} thuốc`;
+    if (errorCount > 0) {
+      resultHTML += `<br>❌ Lỗi: ${errorCount} hàng`;
+      if (errors.length > 0 && errors.length <= 5) {
+        resultHTML += "<br><small>" + errors.join("<br>") + "</small>";
+      }
+    }
+    uploadResultText.innerHTML = resultHTML;
+
+    // Reload table
+    setTimeout(() => {
+      reloadThuoc();
+    }, 1000);
+
+  } catch (error) {
+    uploadProgress.style.display = "none";
+    uploadResult.style.display = "block";
+    uploadResult.style.background = "rgba(var(--error-rgb, 220, 38, 38), 0.1)";
+    uploadResultText.innerHTML = `<strong>❌ Lỗi:</strong> ${error.message}`;
+  }
+}

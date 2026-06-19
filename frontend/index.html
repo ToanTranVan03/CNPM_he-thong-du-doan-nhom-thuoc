@@ -547,6 +547,30 @@
               <button class="primary-button" type="button" id="btn-add-thuoc" style="height: 34px; padding: 0 16px;">
                 <span class="material-symbols-outlined" style="font-size: 18px;">add</span> Thêm thuốc
               </button>
+              <button class="secondary-button" type="button" id="btn-toggle-upload" style="height: 34px; padding: 0 16px;">
+                <span class="material-symbols-outlined" style="font-size: 18px;">upload_file</span> Nhập từ file
+              </button>
+            </div>
+
+            <!-- Drag & Drop Upload Zone -->
+            <div id="file-upload-zone" class="file-upload-zone" style="display: none; margin-bottom: 20px; padding: 30px; border: 2px dashed var(--outline); border-radius: 8px; background: var(--surface-low); text-align: center; cursor: pointer; transition: all 0.3s ease;">
+              <input type="file" id="file-upload-input" accept=".csv,.xlsx,.xls" style="display: none;" />
+              <div class="upload-content">
+                <span class="material-symbols-outlined" style="font-size: 48px; display: block; color: var(--primary); margin-bottom: 12px;">cloud_upload</span>
+                <h3 style="margin: 0 0 8px 0; color: var(--text);">Kéo thả file vào đây</h3>
+                <p style="margin: 0 0 16px 0; color: var(--text-muted);">hoặc <button type="button" id="file-upload-browse" class="text-button" style="padding: 0; display: inline;">chọn từ máy tính</button></p>
+                <p style="margin: 0; font-size: 12px; color: var(--text-subtle);">Hỗ trợ: CSV, XLSX (Hàng: thuốc, Cột: tên, hoạt chất, hàm lượng, dạng, nhóm, giá, v.v.)</p>
+              </div>
+              <div class="upload-progress" style="display: none; margin-top: 20px;">
+                <p id="upload-status" style="margin: 0 0 12px 0; color: var(--text-muted); font-size: 14px;">Đang xử lý...</p>
+                <div style="width: 100%; height: 6px; background: var(--outline); border-radius: 3px; overflow: hidden;">
+                  <div id="upload-progress-bar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s ease;"></div>
+                </div>
+                <p id="upload-count" style="margin: 12px 0 0 0; font-size: 12px; color: var(--text-muted);">0 / 0 hàng</p>
+              </div>
+              <div class="upload-result" style="display: none; margin-top: 16px; padding: 12px; border-radius: 6px; background: var(--surface); text-align: left;">
+                <p id="upload-result-text" style="margin: 0; color: var(--text);"></p>
+              </div>
             </div>
 
             <div class="summary-table-wrap" style="margin-top: 20px; overflow-x: auto;">
