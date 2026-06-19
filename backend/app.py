@@ -3433,7 +3433,7 @@ def update_profile():
     save_user_store(store)
     
     return jsonify({"message": "Cập nhật hồ sơ thành công", "user": user_public_view(user)})
-# API QUẢN LÝ NHÓM THUỐC (SCRUM-44)
+# API QLÝ NHÓM THUỐC (SCRUM-44)
 @app.route('/api/drug-groups', methods=['GET'])
 def get_drug_groups():
     groups = NhomThuoc.query.all()
