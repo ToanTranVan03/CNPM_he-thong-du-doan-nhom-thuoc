@@ -13,6 +13,7 @@ from itertools import permutations
 from pathlib import Path
 
 import joblib
+
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -3390,6 +3391,39 @@ def predict():
             "top_predictions": probabilities,
         }
     )
+
+
+@app.get("/api/users/profile")
+def get_profile():
+    store = load_user_store()
+    user = current_user_from_request(store)
+    if not user:
+        return jsonify({"error": "Phiên đăng nhập không hợp lệ"}), 401
+    
+    return jsonify({
+        "fullName": user.get("name", ""),
+        "email": user.get("email", ""),
+        "phoneNumber": user.get("phone_number", ""),
+        "specialty": user.get("specialty", "")
+    })
+
+
+@app.put("/api/users/profile")
+def update_profile():
+    store = load_user_store()
+    user = current_user_from_request(store)
+    if not user:
+        return jsonify({"error": "Phiên đăng nhập không hợp lệ"}), 401
+
+    data = request.get_json() or {}
+    
+    user["name"] = data.get("fullName", user.get("name", ""))
+    user["phone_number"] = data.get("phoneNumber", user.get("phone_number", ""))
+    user["specialty"] = data.get("specialty", user.get("specialty", ""))
+    
+    save_user_store(store)
+    
+    return jsonify({"message": "Cập nhật hồ sơ thành công", "user": user_public_view(user)})
 
 
 if __name__ == "__main__":
