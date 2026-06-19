@@ -487,6 +487,45 @@
             <p class="muted-text">Kênh hỗ trợ trong ứng dụng đang được phát triển.</p>
           </article>
         </div>
+        <div class="container" style="margin-top: 30px; margin-bottom: 50px;">
+          <div class="profile-form-section" style="padding: 20px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
+            <div class="profile-form-head" style="margin-bottom: 20px;">
+              <div>
+                <p class="eyebrow">⚙️ Quyền cấu hình nâng cao</p>
+                <h2>Quản lý Danh mục Nhóm thuốc (Admin)</h2>
+              </div>
+            </div>
+            
+            <form id="drug-group-form" style="display: flex; gap: 15px; margin-bottom: 20px; align-items: flex-end; flex-wrap: wrap;">
+              <div class="form-field" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+                <label for="dg-name">Tên nhóm thuốc</label>
+                <input type="text" id="dg-name" required placeholder="VD: Thuốc kháng sinh" style="width: 100%;" />
+              </div>
+              <div class="form-field" style="flex: 2; min-width: 300px; margin-bottom: 0;">
+                <label for="dg-desc">Mô tả chi tiết</label>
+                <input type="text" id="dg-desc" placeholder="Nhập mô tả ngắn gọn về nhóm thuốc..." style="width: 100%;" />
+              </div>
+              <button class="primary-button" type="submit" style="height: 46px; margin-bottom: 4px;">
+                <span class="material-symbols-outlined">add</span> Thêm nhóm
+              </button>
+            </form>
+
+            <div class="summary-table-wrap" style="margin-top: 20px; overflow-x: auto;">
+              <table class="case-summary-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                  <tr>
+                    <th style="text-align: left; padding: 12px; width: 60px;">ID</th>
+                    <th style="text-align: left; padding: 12px; width: 250px;">Tên nhóm thuốc</th>
+                    <th style="text-align: left; padding: 12px;">Mô tả chi tiết hệ thống</th>
+                    <th style="text-align: center; padding: 12px; width: 100px;">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="drug-group-list">
+                  </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </section>
       </main>
     </div>

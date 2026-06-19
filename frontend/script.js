@@ -991,7 +991,82 @@ if (passwordForm) {
         }
     });
 }
+const drugGroupForm = document.getElementById("drug-group-form");
+const drugGroupList = document.getElementById("drug-group-list");
+async function loadDrugGroups() {
+  if (!drugGroupList) return;
+  try {
+    const res = await fetch("http://127.0.0.1:5000/api/drug-groups");
+    if (!res.ok) return;
+    const data = await res.json();
+    
+    drugGroupList.innerHTML = ""; 
+    
+    if (data.length === 0) {
+      drugGroupList.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 20px; color: var(--text-muted);">Chưa có dữ liệu nhóm thuốc nào.</td></tr>`;
+      return;
+    }
+
+    data.forEach(g => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td style="padding: 12px; border-bottom: 1px solid var(--border); color: var(--text-muted);">${g.id}</td>
+        <td style="padding: 12px; border-bottom: 1px solid var(--border); font-weight: 600;">${g.ten_nhom}</td>
+        <td style="padding: 12px; border-bottom: 1px solid var(--border); color: var(--text-muted);">${g.mo_ta || 'Không có mô tả.'}</td>
+        <td style="padding: 12px; border-bottom: 1px solid var(--border); text-align: center;">
+          <button onclick="deleteDrugGroup(${g.id})" class="text-button" style="color: #ef4444; padding: 4px 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+            <span class="material-symbols-outlined" style="font-size: 18px;">delete</span> Xóa
+          </button>
+        </td>
+      `;
+      drugGroupList.appendChild(row);
+    });
+  } catch (e) {
+    console.error("Lỗi kết nối API lấy danh mục nhóm thuốc:", e);
+  }
+}
+
+async function deleteDrugGroup(id) {
+  if (!confirm("⚠️ Bạn có chắc chắn muốn xóa nhóm thuốc này khỏi hệ thống không?")) return;
+  try {
+    const res = await fetch(`http://127.0.0.1:5000/api/drug-groups/${id}`, {
+      method: "DELETE"
+    });
+    if (res.ok) {
+      loadDrugGroups(); 
+    }
+  } catch (e) {
+    console.error("Lỗi xóa nhóm thuốc:", e);
+  }
+}
+if (drugGroupForm) {
+  drugGroupForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nameInput = document.getElementById("dg-name");
+    const descInput = document.getElementById("dg-desc");
+    
+    try {
+      const res = await fetch("http://127.0.0.1:5000/api/drug-groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ten_nhom: nameInput.value.trim(),
+          mo_ta: descInput.value.trim()
+        })
+      });
+      
+      if (res.ok) {
+        drugGroupForm.reset(); 
+        loadDrugGroups();     
+      }
+    } catch (e) {
+      console.error("Lỗi thêm nhóm thuốc mới:", e);
+    }
+  });
+}
+
 initTheme();
 updateCharCount();
 updateSelectedCount();
 initializeAuth();
+loadDrugGroups(); 
