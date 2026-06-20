@@ -3126,6 +3126,60 @@ def prediction_history():
     return jsonify(row.to_dict()), 201
 
 
+@app.delete('/api/prediction-history/<int:history_id>')
+def delete_prediction_history(history_id):
+    email = authenticated_email()
+    if not email:
+        return jsonify({"error": "Chưa đăng nhập hoặc token không hợp lệ."}), 401
+
+    row = LichSuDuDoan.query.filter_by(id=history_id, user_email=email).first()
+    if not row:
+        return jsonify({"error": "Không tìm thấy lịch sử dự đoán."}), 404
+
+    try:
+        db.session.delete(row)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Không thể xóa lịch sử dự đoán")
+        return jsonify({"error": "Không thể xóa lịch sử dự đoán."}), 500
+
+    return jsonify({"message": "Đã xóa lịch sử dự đoán."}), 200
+
+
+@app.after_request
+def auto_save_prediction_history(response):
+    """Tự động lưu Input/Output sau mỗi lần endpoint dự đoán xử lý xong."""
+    if (
+        request.endpoint != 'predict'
+        or request.method != 'POST'
+        or response.status_code not in (200, 422)
+        or not response.is_json
+    ):
+        return response
+
+    input_benh_an = request.get_json(silent=True)
+    output_ket_qua = response.get_json(silent=True)
+    if not isinstance(input_benh_an, dict) or not isinstance(output_ket_qua, dict):
+        return response
+
+    row = LichSuDuDoan(
+        # /api/predict vẫn hỗ trợ client không đăng nhập; các lần đó được gom vào guest.
+        user_email=authenticated_email() or 'guest',
+        input_benh_an=input_benh_an,
+        output_ket_qua=output_ket_qua,
+    )
+    try:
+        db.session.add(row)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        # Không làm hỏng kết quả dự đoán nếu riêng thao tác ghi lịch sử gặp lỗi.
+        app.logger.exception("Không thể tự động lưu lịch sử dự đoán")
+
+    return response
+
+
 @app.post("/api/predict")
 def predict():
     payload = request.get_json(silent=True) or {}

@@ -97,6 +97,48 @@ function loadSavedHistory() {
   }
 }
 
+function historyEntryFromApi(row) {
+  const input = row.input || {};
+  const output = row.output || {};
+  const parsedDate = row.ngay_tao ? new Date(row.ngay_tao) : null;
+  const symptoms = output.matched_symptoms_vi || output.matched_symptom_labels || [];
+
+  return {
+    id: row.id,
+    disease: output.display_title || output.disease_vi || output.disease || "Kết quả dự đoán",
+    symptoms: Array.isArray(symptoms) ? symptoms : [],
+    notes: typeof input.notes === "string" ? input.notes : "",
+    savedAt:
+      parsedDate && !Number.isNaN(parsedDate.getTime())
+        ? parsedDate.toLocaleDateString("vi-VN")
+        : "Không rõ ngày",
+  };
+}
+
+async function loadPredictionHistory() {
+  if (!authToken) {
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/prediction-history", {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Không tải được lịch sử dự đoán.");
+    }
+
+    // API trả mới nhất trước; UI lưu thứ tự cũ -> mới rồi đảo khi render.
+    savedResults = data.map(historyEntryFromApi).reverse();
+    saveHistory();
+    renderSavedHistory();
+    renderRecentActivity();
+  } catch (error) {
+    console.error("Không thể đồng bộ lịch sử dự đoán:", error);
+  }
+}
+
 function showAuthView(viewName) {
   authViews.forEach((view) => {
     view.classList.toggle("is-hidden", view.dataset.authView !== viewName);
@@ -151,6 +193,7 @@ function showAuthenticatedApp() {
   loadSavedHistory();
   renderSavedHistory();
   renderRecentActivity();
+  void loadPredictionHistory();
   if (!symptomsLoaded) {
     loadSymptoms();
   }
@@ -293,6 +336,9 @@ function showPage(pageName) {
 
   if (pageName === "admin-thuoc") {
     loadNhomThuocOptions().then(reloadThuoc);
+  }
+  if (pageName === "history") {
+    void loadPredictionHistory();
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -442,7 +488,7 @@ function saveHistory() {
   localStorage.setItem(historyStorageKey(), JSON.stringify(savedResults.slice(0, 20)));
 }
 
-function deleteHistoryEntry(index) {
+async function deleteHistoryEntry(index) {
   if (!isAdminUser() || !Number.isInteger(index) || index < 0 || index >= savedResults.length) {
     return;
   }
@@ -450,6 +496,24 @@ function deleteHistoryEntry(index) {
   if (!confirmed) {
     return;
   }
+
+  const entry = savedResults[index];
+  if (entry.id) {
+    try {
+      const response = await fetch(`/api/prediction-history/${entry.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Không xóa được lịch sử dự đoán.");
+      }
+    } catch (error) {
+      setMessage(formatError(error), true);
+      return;
+    }
+  }
+
   savedResults.splice(index, 1);
   saveHistory();
   renderSavedHistory();
@@ -498,7 +562,7 @@ function createHistoryCard(entry, index) {
     deleteButton.setAttribute("title", "Xóa lịch sử");
     deleteButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      deleteHistoryEntry(index);
+      void deleteHistoryEntry(index);
     });
 
     const deleteIcon = document.createElement("span");
@@ -751,7 +815,10 @@ async function predict() {
 
   const response = await fetch("/api/predict", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
     body: JSON.stringify({
       symptoms: [...selectedSymptoms],
       notes: textarea.value,
@@ -963,48 +1030,9 @@ historySearch.addEventListener("input", (event) => {
   updateHistoryEmptyState();
 });
 
-saveResultButton.addEventListener("click", async () => {
-  if (!currentResult) {
-    showPage("history");
-    return;
-  }
-
-  const input = {
-    symptoms: [...selectedSymptoms],
-    notes: textarea.value.trim(),
-  };
-
-  saveResultButton.disabled = true;
-  try {
-    const response = await fetch("/api/prediction-history", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({ input, output: currentResult }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Không lưu được lịch sử dự đoán.");
-    }
-
-    savedResults.push({
-      id: data.id,
-      disease: currentResult.display_title || currentResult.disease_vi || currentResult.disease,
-      symptoms: currentResult.matched_symptoms_vi || [],
-      notes: input.notes,
-      savedAt: new Date().toLocaleDateString("vi-VN"),
-    });
-    saveHistory();
-    renderSavedHistory();
-    renderRecentActivity();
-    showPage("history");
-  } catch (error) {
-    setMessage(formatError(error), true);
-  } finally {
-    saveResultButton.disabled = false;
-  }
+saveResultButton.addEventListener("click", () => {
+  // Kết quả đã được backend tự lưu ngay sau /api/predict; chỉ cần tải lại từ DB.
+  showPage("history");
 });
 
 // --- GẮN SỰ KIỆN KÍCH HOẠT SCRUM-40 VÀO NÚT LƯU ---
