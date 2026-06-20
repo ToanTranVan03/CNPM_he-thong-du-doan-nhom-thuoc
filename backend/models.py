@@ -21,6 +21,31 @@ class User(db.Model):
         return check_password_hash(self.password_hash, password)
 
 
+class LichSuDuDoan(db.Model):
+    """Lưu nguyên trạng dữ liệu đầu vào và kết quả của một lần dự đoán."""
+    __tablename__ = 'lich_su_du_doan'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_email = db.Column(db.String(120), nullable=False, index=True)
+    input_benh_an = db.Column(db.JSON, nullable=False)
+    output_ket_qua = db.Column(db.JSON, nullable=False)
+    ngay_tao = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        server_default=db.func.now(),
+        index=True,
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_email': self.user_email,
+            'input': self.input_benh_an,
+            'output': self.output_ket_qua,
+            'ngay_tao': self.ngay_tao.isoformat() if self.ngay_tao else None,
+        }
+
+
 class NhomThuoc(db.Model):
     """Nhóm thuốc — ví dụ: Thuốc kháng sinh, Thuốc giảm đau hạ sốt..."""
     __tablename__ = 'nhom_thuoc'

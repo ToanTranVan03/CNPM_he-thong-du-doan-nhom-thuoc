@@ -15,7 +15,7 @@ from itertools import permutations
 from pathlib import Path
 
 import joblib
-from models import db, User, NhomThuoc, Thuoc
+from models import db, User, NhomThuoc, Thuoc, LichSuDuDoan
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from text_preprocessing import remove_vietnamese_stop_words
@@ -3073,6 +3073,57 @@ def reset_password():
 @app.get("/api/symptoms")
 def symptoms():
     return jsonify({"symptoms": readable_symptoms})
+
+
+def authenticated_email():
+    """Trả về email trong JWT, hoặc None nếu request chưa được xác thực."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    try:
+        token = auth_header.split(" ", 1)[1]
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        return normalize_email(str(payload.get("user") or "")) or None
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return None
+
+
+@app.route('/api/prediction-history', methods=['GET', 'POST'])
+def prediction_history():
+    email = authenticated_email()
+    if not email:
+        return jsonify({"error": "Chưa đăng nhập hoặc token không hợp lệ."}), 401
+
+    if request.method == 'GET':
+        rows = (
+            LichSuDuDoan.query
+            .filter_by(user_email=email)
+            .order_by(LichSuDuDoan.ngay_tao.desc(), LichSuDuDoan.id.desc())
+            .limit(20)
+            .all()
+        )
+        return jsonify([row.to_dict() for row in rows]), 200
+
+    data = request.get_json(silent=True) or {}
+    input_benh_an = data.get('input')
+    output_ket_qua = data.get('output')
+    if not isinstance(input_benh_an, dict) or not isinstance(output_ket_qua, dict):
+        return jsonify({"error": "Input bệnh án và Output kết quả phải là JSON object."}), 400
+
+    row = LichSuDuDoan(
+        user_email=email,
+        input_benh_an=input_benh_an,
+        output_ket_qua=output_ket_qua,
+    )
+    try:
+        db.session.add(row)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Không thể lưu lịch sử dự đoán")
+        return jsonify({"error": "Không thể lưu lịch sử dự đoán."}), 500
+
+    return jsonify(row.to_dict()), 201
 
 
 @app.post("/api/predict")

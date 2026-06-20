@@ -963,19 +963,48 @@ historySearch.addEventListener("input", (event) => {
   updateHistoryEmptyState();
 });
 
-saveResultButton.addEventListener("click", () => {
-  if (currentResult) {
+saveResultButton.addEventListener("click", async () => {
+  if (!currentResult) {
+    showPage("history");
+    return;
+  }
+
+  const input = {
+    symptoms: [...selectedSymptoms],
+    notes: textarea.value.trim(),
+  };
+
+  saveResultButton.disabled = true;
+  try {
+    const response = await fetch("/api/prediction-history", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ input, output: currentResult }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Không lưu được lịch sử dự đoán.");
+    }
+
     savedResults.push({
+      id: data.id,
       disease: currentResult.display_title || currentResult.disease_vi || currentResult.disease,
       symptoms: currentResult.matched_symptoms_vi || [],
-      notes: textarea.value.trim(),
+      notes: input.notes,
       savedAt: new Date().toLocaleDateString("vi-VN"),
     });
     saveHistory();
     renderSavedHistory();
     renderRecentActivity();
+    showPage("history");
+  } catch (error) {
+    setMessage(formatError(error), true);
+  } finally {
+    saveResultButton.disabled = false;
   }
-  showPage("history");
 });
 
 // --- GẮN SỰ KIỆN KÍCH HOẠT SCRUM-40 VÀO NÚT LƯU ---
