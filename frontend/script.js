@@ -846,9 +846,13 @@ if (profileLogoutButton) profileLogoutButton.addEventListener("click", logoutCur
 navButtons.forEach((button) => {
   button.addEventListener("click", () => {
       showPage(button.dataset.page);
-      // Tự động load dữ liệu hồ sơ khi bấm vào tab "Hồ sơ"
+
       if (button.dataset.page === "about") {
           loadProfileData();
+      }
+
+      if (button.dataset.page === "admin-feedback") {
+          loadRejectedFeedbacks();
       }
   });
 });
@@ -1033,6 +1037,121 @@ function escapeHtml(value = "") {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+// SCRUM-78 / Task 47
+// UI Admin xem danh sách phản hồi "Không đồng ý"
+let rejectedFeedbacks = [];
+async function loadRejectedFeedbacks() {
+  const tbody = document.getElementById("feedback-tbody");
+  const empty = document.getElementById("feedback-empty");
+
+  if (!tbody) return;
+
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="5" style="padding:20px; text-align:center; color:var(--text-muted);">
+        Đang tải danh sách phản hồi...
+      </td>
+    </tr>
+  `;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/admin/rejected-feedbacks`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.message || "Không tải được phản hồi.");
+    }
+
+    rejectedFeedbacks = data.feedbacks || [];
+    renderRejectedFeedbacks();
+
+    if (empty) {
+      empty.classList.toggle("is-hidden", rejectedFeedbacks.length > 0);
+    }
+  } catch (error) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" style="padding:20px; text-align:center; color:#ef4444;">
+          ${escapeHtml(error.message || "Lỗi tải phản hồi.")}
+        </td>
+      </tr>
+    `;
+  }
+}
+
+function renderRejectedFeedbacks() {
+  const tbody = document.getElementById("feedback-tbody");
+  const searchInput = document.getElementById("feedback-search");
+
+  if (!tbody) return;
+
+  const keyword = (searchInput?.value || "").trim().toLowerCase();
+
+  const filtered = rejectedFeedbacks.filter((item) => {
+    const text = `${item.trieu_chung_nhap || ""} ${item.ghi_chu || ""}`.toLowerCase();
+    return !keyword || text.includes(keyword);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" style="padding:20px; text-align:center; color:var(--text-muted);">
+          Không có phản hồi phù hợp.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = "";
+
+  filtered.forEach((item) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td style="padding:12px; border-bottom:1px solid var(--border); color:var(--text-muted);">
+        ${item.id}
+      </td>
+      <td style="padding:12px; border-bottom:1px solid var(--border); font-weight:600;">
+        ${escapeHtml(item.trieu_chung_nhap || "Không rõ")}
+      </td>
+      <td style="padding:12px; border-bottom:1px solid var(--border); color:var(--text-muted);">
+        ${escapeHtml(item.ghi_chu || "Không có ghi chú")}
+      </td>
+      <td style="padding:12px; border-bottom:1px solid var(--border); color:var(--text-muted);">
+        ${item.created_at ? new Date(item.created_at).toLocaleString("vi-VN") : "Không rõ"}
+      </td>
+      <td style="padding:12px; border-bottom:1px solid var(--border); text-align:center;">
+        <button class="text-button" type="button" onclick="markFeedbackReviewed(${item.id})" style="color:#22c55e; font-weight:700;">
+          <span class="material-symbols-outlined" style="font-size:18px;">done</span>
+          Đã xem xét
+        </button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+async function markFeedbackReviewed(id) {
+  if (!confirm("Đánh dấu phản hồi này là đã xem xét?")) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/admin/rejected-feedbacks/${id}/reviewed`, {
+      method: "POST"
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.message || "Không cập nhật được phản hồi.");
+    }
+
+    await loadRejectedFeedbacks();
+  } catch (error) {
+    alert(error.message || "Lỗi cập nhật phản hồi.");
+  }
+}
+
+window.markFeedbackReviewed = markFeedbackReviewed;
 
 function setDrugGroupFormMode(mode = "add", group = null) {
   editingDrugGroupId = mode === "edit" && group ? group.id : null;
