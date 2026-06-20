@@ -372,14 +372,49 @@
               <p class="lead">Tra cứu và quản lý các phân loại nhóm thuốc đã thực hiện.</p>
             </div>
             <div class="history-actions">
+              <div class="view-toggle" role="tablist" aria-label="Chế độ hiển thị lịch sử">
+                <button class="text-button view-toggle-btn is-active" type="button" data-history-view="cards" role="tab" aria-selected="true">Thẻ</button>
+                <button class="text-button view-toggle-btn" type="button" data-history-view="table" role="tab" aria-selected="false">Bảng</button>
+              </div>
               <button class="secondary-button compact" type="button">
                 <span class="material-symbols-outlined" aria-hidden="true">filter_list</span>
                 Lọc
               </button>
-              <button class="secondary-button compact" type="button">
+              <button id="history-export-button" class="secondary-button compact" type="button" title="Tùy chọn xuất CSV">
                 <span class="material-symbols-outlined" aria-hidden="true">download</span>
                 Xuất
               </button>
+              <div id="history-export-options" class="export-options is-hidden" aria-hidden="true" style="position: absolute; z-index: 60; background: var(--surface-lowest); border:1px solid var(--outline); padding:12px; border-radius:8px; min-width:260px; box-shadow: var(--shadow);">
+                <div style="margin-bottom:8px; font-weight:700;">Tùy chọn xuất</div>
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                  <label style="font-weight:600; width:80px;">Định dạng</label>
+                  <select id="export-format" style="padding:6px;">
+                    <option value="csv">CSV</option>
+                    <option value="json">JSON</option>
+                  </select>
+                  <label style="font-weight:600; margin-left:8px; width:90px;">Phân cách</label>
+                  <select id="export-sep" style="padding:6px;">
+                    <option value=",">Dấu phẩy (,)</option>
+                    <option value=";">Chấm phẩy (;)</option>
+                  </select>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+                  <label><input type="checkbox" id="col-date" checked> Ngày</label>
+                  <label><input type="checkbox" id="col-disease" checked> Bệnh/Nhóm thuốc</label>
+                  <label><input type="checkbox" id="col-symptoms" checked> Triệu chứng</label>
+                  <label><input type="checkbox" id="col-notes" checked> Ghi chú</label>
+                  <label><input type="checkbox" id="col-user" checked> Người dùng</label>
+                  <label><input type="checkbox" id="col-score" checked> Score (confidence)</label>
+                  <label><input type="checkbox" id="col-score-type" checked> Score type</label>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                  <label><input type="checkbox" id="export-all"> Xuất toàn bộ (bỏ filter)</label>
+                </div>
+                <div style="display:flex; gap:8px; justify-content:flex-end;">
+                  <button id="history-export-cancel" class="secondary-button compact" type="button">Hủy</button>
+                  <button id="history-export-confirm" class="primary-button" type="button">Xuất</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -388,7 +423,45 @@
             <input id="history-search" type="search" placeholder="Tìm theo nhóm thuốc, mô tả hoặc ngày..." />
           </label>
 
-          <div class="history-grid" id="history-list" aria-live="polite"></div>
+          <div class="history-views">
+            <div class="history-grid" id="history-list" aria-live="polite"></div>
+
+            <div class="summary-table-wrap is-hidden" id="history-table-wrap" style="margin-top: 16px; overflow-x: auto;">
+              <table class="case-summary-table" id="history-table" style="width:100%; border-collapse: collapse;">
+                <thead>
+                  <tr style="background: var(--surface-low); border-bottom: 2px solid var(--outline);">
+                    <th style="text-align:left; padding:12px; width:140px;">Ngày</th>
+                    <th style="text-align:left; padding:12px; width:240px;">Bệnh / Nhóm thuốc</th>
+                    <th style="text-align:left; padding:12px;">Triệu chứng</th>
+                    <th style="text-align:left; padding:12px; width:200px;">Ghi chú</th>
+                    <th style="text-align:center; padding:12px; width:120px;">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="history-table-tbody"></tbody>
+              </table>
+              <div id="history-table-pager" class="table-pager" style="display:flex; align-items:center; justify-content:space-between; padding:12px 8px; gap:12px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <button id="history-pager-prev" class="secondary-button compact" type="button">Prev</button>
+                  <button id="history-pager-next" class="secondary-button compact" type="button">Next</button>
+                  <label style="margin-left:8px;color:var(--text-muted);">Trang</label>
+                  <input id="history-jump-input" type="number" min="1" style="width:72px; padding:6px;" />
+                  <button id="history-jump-go" class="secondary-button compact" type="button">Go</button>
+                  <span id="history-jump-error" role="alert" style="color:var(--danger); margin-left:8px; display:none; font-size:13px;"></span>
+                  <span id="history-pager-info" style="margin-left:8px; color:var(--text-muted);"></span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <label for="history-page-size" style="color:var(--text-muted);">Hiển thị</label>
+                  <select id="history-page-size" style="padding:6px;">
+                    <option value="5">5</option>
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="empty-state is-hidden" id="history-empty">
             <span class="empty-icon material-symbols-outlined" aria-hidden="true">inbox</span>
             <h2>Chưa có lịch sử dự đoán</h2>

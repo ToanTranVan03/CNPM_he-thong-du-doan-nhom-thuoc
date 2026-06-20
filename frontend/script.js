@@ -450,7 +450,143 @@ function renderSavedHistory() {
     .forEach((entry) => {
       historyList.prepend(createHistoryCard(entry));
     });
+  renderHistoryTable();
   updateHistoryEmptyState();
+}
+
+function renderHistoryTable() {
+  const tbody = document.getElementById('history-table-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  // Use current filter from search box
+  const allFiltered = getFilteredHistoryEntries();
+  const total = allFiltered.length;
+  historyPageSize = parseInt(document.getElementById('history-page-size')?.value || historyPageSize, 10) || historyPageSize;
+  const totalPages = Math.max(1, Math.ceil(total / historyPageSize));
+  if (historyCurrentPage > totalPages) historyCurrentPage = totalPages;
+  if (historyCurrentPage < 1) historyCurrentPage = 1;
+
+  const start = (historyCurrentPage - 1) * historyPageSize;
+  const pageRows = allFiltered.slice(start, start + historyPageSize);
+
+  pageRows.forEach((entry, localIdx) => {
+    const idx = start + localIdx; // index in reversed array
+    const tr = document.createElement('tr');
+    tr.dataset.search = `${entry.disease || ''} ${entry.notes || ''} ${(entry.symptoms || []).join(' ')} ${entry.savedAt || ''}`.toLowerCase();
+
+    const tdDate = document.createElement('td');
+    tdDate.style.padding = '12px';
+    tdDate.textContent = entry.savedAt || '';
+
+    const tdTitle = document.createElement('td');
+    tdTitle.style.padding = '12px';
+    tdTitle.textContent = entry.disease || '';
+
+    const tdSymptoms = document.createElement('td');
+    tdSymptoms.style.padding = '12px';
+    tdSymptoms.textContent = (entry.symptoms || []).join(', ');
+
+    const tdNotes = document.createElement('td');
+    tdNotes.style.padding = '12px';
+    tdNotes.textContent = entry.notes || '';
+
+    const tdActions = document.createElement('td');
+    tdActions.style.padding = '12px';
+    tdActions.style.textAlign = 'center';
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'text-button';
+    viewBtn.type = 'button';
+    viewBtn.textContent = 'Xem';
+    viewBtn.addEventListener('click', () => {
+      alert(`Chi tiết:\n${entry.disease}\n${(entry.symptoms||[]).join(', ')}\n${entry.notes || ''}`);
+    });
+    const delBtn = document.createElement('button');
+    delBtn.className = 'text-button';
+    delBtn.type = 'button';
+    delBtn.textContent = 'Xóa';
+    delBtn.addEventListener('click', () => {
+      if (confirm('Xác nhận xóa mục lịch sử này?')) {
+        // compute global index in savedResults (reversed earlier)
+        const globalIdx = savedResults.length - 1 - idx;
+        savedResults.splice(globalIdx, 1);
+        saveHistory();
+        renderSavedHistory();
+        renderRecentActivity();
+      }
+    });
+    tdActions.append(viewBtn, delBtn);
+
+    tr.append(tdDate, tdTitle, tdSymptoms, tdNotes, tdActions);
+    tbody.appendChild(tr);
+  });
+
+  // update pager UI
+  const pagerInfo = document.getElementById('history-pager-info');
+  const pagerPrev = document.getElementById('history-pager-prev');
+  const pagerNext = document.getElementById('history-pager-next');
+  if (pagerInfo) {
+    const from = total === 0 ? 0 : start + 1;
+    const to = Math.min(total, start + pageRows.length);
+    pagerInfo.textContent = `Hiển thị ${from}–${to} / ${total}`;
+  }
+  if (pagerPrev) pagerPrev.disabled = historyCurrentPage <= 1;
+  if (pagerNext) pagerNext.disabled = historyCurrentPage >= totalPages;
+
+  // set jump input value
+  const jumpInput = document.getElementById('history-jump-input');
+  if (jumpInput) jumpInput.value = historyCurrentPage;
+
+  // ensure pager controls wired once
+  attachHistoryPagerHandlers();
+}
+
+function attachHistoryPagerHandlers() {
+  const pagerPrev = document.getElementById('history-pager-prev');
+  const pagerNext = document.getElementById('history-pager-next');
+  const pageSizeSelect = document.getElementById('history-page-size');
+  if (pagerPrev && !pagerPrev._hasHandler) {
+    pagerPrev.addEventListener('click', () => { historyCurrentPage = Math.max(1, historyCurrentPage - 1); renderHistoryTable(); updateHistoryEmptyState(); });
+    pagerPrev._hasHandler = true;
+  }
+  if (pagerNext && !pagerNext._hasHandler) {
+    pagerNext.addEventListener('click', () => { historyCurrentPage = historyCurrentPage + 1; renderHistoryTable(); updateHistoryEmptyState(); });
+    pagerNext._hasHandler = true;
+  }
+  if (pageSizeSelect && !pageSizeSelect._hasHandler) {
+    pageSizeSelect.addEventListener('change', () => { historyPageSize = parseInt(pageSizeSelect.value, 10) || 10; historyCurrentPage = 1; renderHistoryTable(); updateHistoryEmptyState(); });
+    pageSizeSelect._hasHandler = true;
+  }
+  // Jump-to-page handlers
+  const jumpInputEl = document.getElementById('history-jump-input');
+  const jumpGo = document.getElementById('history-jump-go');
+  if (jumpGo && !jumpGo._hasHandler) {
+    jumpGo.addEventListener('click', () => {
+      const val = parseInt(jumpInputEl?.value, 10);
+      const total = getFilteredHistoryEntries().length;
+      const totalPages = Math.max(1, Math.ceil(total / historyPageSize));
+      const errorEl = document.getElementById('history-jump-error');
+      if (!Number.isFinite(val) || val < 1 || val > totalPages) {
+        if (errorEl) {
+          errorEl.textContent = `Nhập số trang hợp lệ: 1 - ${totalPages}`;
+          errorEl.style.display = 'inline';
+        } else {
+          alert(`Nhập số trang hợp lệ: 1 - ${totalPages}`);
+        }
+        if (jumpInputEl) jumpInputEl.focus();
+        return;
+      }
+      if (errorEl) { errorEl.textContent = ''; errorEl.style.display = 'none'; }
+      historyCurrentPage = val;
+      renderHistoryTable();
+      updateHistoryEmptyState();
+    });
+    jumpGo._hasHandler = true;
+  }
+  if (jumpInputEl && !jumpInputEl._hasHandler) {
+    jumpInputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('history-jump-go')?.click(); }});
+    jumpInputEl._hasHandler = true;
+  }
 }
 
 function updateHistoryEmptyState() {
@@ -459,17 +595,23 @@ function updateHistoryEmptyState() {
     return;
   }
   const cards = historyList.querySelectorAll(".history-card");
-  const anyVisible = Array.from(cards).some((card) => !card.classList.contains("is-hidden"));
+  const visibleCard = Array.from(cards).some((card) => !card.classList.contains("is-hidden"));
+  const visibleTableRows = document.querySelectorAll("#history-table-tbody tr:not(.is-hidden)");
+  const anyVisible = visibleCard || visibleTableRows.length > 0;
   empty.classList.toggle("is-hidden", anyVisible);
   const title = empty.querySelector("h2");
   const desc = empty.querySelector("p");
   if (title && desc) {
-    if (cards.length === 0) {
+    if (cards.length === 0 && document.querySelectorAll('#history-table-tbody tr').length === 0) {
       title.textContent = "Chưa có lịch sử dự đoán";
       desc.textContent = "Các kết quả bạn lưu sẽ xuất hiện ở đây. Hãy thử tạo một dự đoán mới.";
-    } else {
+    } else if (!anyVisible) {
       title.textContent = "Không tìm thấy kết quả";
       desc.textContent = "Không có mục nào khớp với từ khóa tìm kiếm.";
+    } else {
+      // Có ít nhất một mục, giữ mặc định thông điệp
+      title.textContent = "Kết quả";
+      desc.textContent = "Hiển thị các mục lịch sử phù hợp.";
     }
   }
 }
@@ -893,15 +1035,197 @@ symptomSearch.addEventListener("input", (event) => {
   renderSymptoms(event.target.value);
 });
 
+let historyCurrentPage = 1;
+let historyPageSize = 10;
+
 historySearch.addEventListener("input", (event) => {
   const query = event.target.value.trim().toLowerCase();
 
   document.querySelectorAll(".history-card").forEach((card) => {
-    const haystack = card.dataset.search.toLowerCase();
+    const haystack = (card.dataset.search || '').toLowerCase();
     card.classList.toggle("is-hidden", query !== "" && !haystack.includes(query));
   });
+
+  // Reset to first page when searching
+  historyCurrentPage = 1;
+  renderHistoryTable();
   updateHistoryEmptyState();
 });
+
+// Thiết lập chuyển chế độ Thẻ / Bảng
+(function initHistoryViewToggle(){
+  const historyViewButtons = document.querySelectorAll('.view-toggle-btn');
+  const historyTableWrap = document.getElementById('history-table-wrap');
+  const historyGrid = document.getElementById('history-list');
+  if (!historyViewButtons || historyViewButtons.length === 0) return;
+  historyViewButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      historyViewButtons.forEach((b) => {
+        b.classList.toggle('is-active', b === btn);
+        b.setAttribute('aria-selected', String(b === btn));
+      });
+      const view = btn.dataset.historyView;
+      if (view === 'table') {
+        if (historyGrid) historyGrid.classList.add('is-hidden');
+        if (historyTableWrap) historyTableWrap.classList.remove('is-hidden');
+      } else {
+        if (historyGrid) historyGrid.classList.remove('is-hidden');
+        if (historyTableWrap) historyTableWrap.classList.add('is-hidden');
+      }
+    });
+  });
+})();
+
+// --- CSV EXPORT FOR HISTORY ---
+function getFilteredHistoryEntries() {
+  const query = (historySearch && historySearch.value ? historySearch.value.trim().toLowerCase() : '');
+  return savedResults.slice().reverse().filter((entry) => {
+    const hay = `${entry.disease || ''} ${entry.notes || ''} ${(entry.symptoms || []).join(' ') } ${entry.savedAt || ''}`.toLowerCase();
+    return query === '' || hay.includes(query);
+  });
+}
+
+function toCsvRow(fields, sep = ',') {
+  return fields
+    .map((f) => {
+      if (f === null || f === undefined) return '';
+      const s = String(f);
+      const needsQuote = s.includes('"') || s.includes('\n') || (sep && s.includes(sep));
+      if (needsQuote) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    })
+    .join(sep);
+}
+
+function exportHistoryCsv(selectedCols = ['date','disease','symptoms','notes','user','score','score_type'], exportAll = false, sep = ',') {
+  const rows = exportAll ? savedResults.slice().reverse() : getFilteredHistoryEntries();
+  if (!rows || rows.length === 0) {
+    alert('Không có mục lịch sử để xuất.');
+    return;
+  }
+
+  const colMap = {
+    date: 'Ngày',
+    disease: 'Bệnh/Nhóm thuốc',
+    symptoms: 'Triệu chứng',
+    notes: 'Ghi chú',
+    user: 'Người dùng',
+    score: 'Score',
+    score_type: 'Score type',
+  };
+
+  const header = selectedCols.map((c) => colMap[c] || c);
+  const lines = [toCsvRow(header, sep)];
+
+  rows.forEach((r) => {
+    const values = selectedCols.map((c) => {
+      switch (c) {
+        case 'date':
+          return r.savedAt || '';
+        case 'disease':
+          return r.disease || '';
+        case 'symptoms':
+          return (r.symptoms || []).join('; ');
+        case 'notes':
+          return r.notes || '';
+        case 'user':
+          return r.user || (currentUser ? (currentUser.email || currentUser.name) : 'guest') || '';
+        case 'score':
+          return r.score != null ? String(r.score) : (r._raw_confidence != null ? String(r._raw_confidence) : '');
+        case 'score_type':
+          return r.score_type || r._raw_score_type || '';
+        default:
+          return '';
+      }
+    });
+    lines.push(toCsvRow(values, sep));
+  });
+
+  const csv = '\uFEFF' + lines.join('\r\n'); // BOM for Excel
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `pharma_history_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function exportHistoryJson(selectedCols = ['date','disease','symptoms','notes','user','score','score_type'], exportAll = false) {
+  const rows = exportAll ? savedResults.slice().reverse() : getFilteredHistoryEntries();
+  if (!rows || rows.length === 0) {
+    alert('Không có mục lịch sử để xuất.');
+    return;
+  }
+  const items = rows.map((r) => {
+    const obj = {};
+    selectedCols.forEach((c) => {
+      switch (c) {
+        case 'date': obj['date'] = r.savedAt || ''; break;
+        case 'disease': obj['disease'] = r.disease || ''; break;
+        case 'symptoms': obj['symptoms'] = r.symptoms || []; break;
+        case 'notes': obj['notes'] = r.notes || ''; break;
+        case 'user': obj['user'] = r.user || (currentUser ? (currentUser.email || currentUser.name) : 'guest') || ''; break;
+        case 'score': obj['score'] = r.score != null ? r.score : (r._raw_confidence != null ? r._raw_confidence : null); break;
+        case 'score_type': obj['score_type'] = r.score_type || r._raw_score_type || null; break;
+        default: obj[c] = ''; break;
+      }
+    });
+    return obj;
+  });
+  const json = JSON.stringify(items, null, 2);
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `pharma_history_${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+const historyExportBtn = document.getElementById('history-export-button');
+if (historyExportBtn) {
+  const exportOptions = document.getElementById('history-export-options');
+  historyExportBtn.addEventListener('click', (e) => {
+    if (!exportOptions) return;
+    exportOptions.classList.toggle('is-hidden');
+    // position near button
+    try {
+      const rect = historyExportBtn.getBoundingClientRect();
+      exportOptions.style.left = rect.right - 12 + 'px';
+      exportOptions.style.top = rect.bottom + window.scrollY + 8 + 'px';
+    } catch (err) {}
+  });
+
+  const exportConfirm = document.getElementById('history-export-confirm');
+  const exportCancel = document.getElementById('history-export-cancel');
+  if (exportCancel) exportCancel.addEventListener('click', () => exportOptions && exportOptions.classList.add('is-hidden'));
+  if (exportConfirm) exportConfirm.addEventListener('click', () => {
+    const selected = [];
+    if (document.getElementById('col-date')?.checked) selected.push('date');
+    if (document.getElementById('col-disease')?.checked) selected.push('disease');
+    if (document.getElementById('col-symptoms')?.checked) selected.push('symptoms');
+    if (document.getElementById('col-notes')?.checked) selected.push('notes');
+    if (document.getElementById('col-user')?.checked) selected.push('user');
+    if (document.getElementById('col-score')?.checked) selected.push('score');
+    if (document.getElementById('col-score-type')?.checked) selected.push('score_type');
+    const exportAll = !!document.getElementById('export-all')?.checked;
+    const format = (document.getElementById('export-format')?.value || 'csv').toLowerCase();
+    const sep = (document.getElementById('export-sep')?.value) || ',';
+    if (format === 'json') {
+      exportHistoryJson(selected, exportAll);
+    } else {
+      exportHistoryCsv(selected, exportAll, sep);
+    }
+    exportOptions && exportOptions.classList.add('is-hidden');
+  });
+}
 
 saveResultButton.addEventListener("click", () => {
   if (currentResult) {
@@ -910,6 +1234,12 @@ saveResultButton.addEventListener("click", () => {
       symptoms: currentResult.matched_symptoms_vi || [],
       notes: textarea.value.trim(),
       savedAt: new Date().toLocaleDateString("vi-VN"),
+      user: currentUser ? (currentUser.email || currentUser.name) : 'guest',
+      score: (typeof currentResult.confidence === 'number') ? currentResult.confidence : (currentResult.confidence ?? null),
+      score_type: currentResult.score_type || null,
+      // keep raw fields if downstream code needs them
+      _raw_confidence: currentResult.confidence ?? null,
+      _raw_score_type: currentResult.score_type ?? null,
     });
     saveHistory();
     historyList.prepend(createHistoryCard(savedResults[savedResults.length - 1]));
