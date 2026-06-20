@@ -143,29 +143,3 @@ def json_loads(s: str):
         return __import__('json').loads(s)
     except Exception:
         return []
-
-
-class History(db.Model):
-    """Lưu lịch sử tương tác (ví dụ: predict, truy vấn) để hiển thị lịch sử cho người dùng."""
-    __tablename__ = 'history'
-
-    id = db.Column(db.Integer, primary_key=True)
-    user_email = db.Column(db.String(120), nullable=True)
-    endpoint = db.Column(db.String(200), nullable=True)
-    action = db.Column(db.String(100), nullable=True)
-    payload = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    def to_dict(self):
-        try:
-            payload_json = __import__('json').loads(self.payload) if self.payload else None
-        except Exception:
-            payload_json = self.payload
-        return {
-            'id': self.id,
-            'user_email': self.user_email,
-            'endpoint': self.endpoint,
-            'action': self.action,
-            'payload': payload_json,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-        }

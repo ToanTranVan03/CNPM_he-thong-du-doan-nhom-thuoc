@@ -15,7 +15,7 @@ from itertools import permutations
 from pathlib import Path
 
 import joblib
-from models import db, User, NhomThuoc, Thuoc, TrieuChung, History
+from models import db, User, NhomThuoc, Thuoc, TrieuChung
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -4251,58 +4251,6 @@ def delete_thuoc(id):
         return jsonify({"error": f"Lỗi khi xóa thuốc: {str(e)}"}), 500
 
 
-@app.route('/api/history', methods=['GET'])
-def list_history():
-    """Trả về danh sách lịch sử (phân trang + lọc theo ngày). Query params: page, per_page, start, end (ISO 8601 hoặc YYYY-MM-DD)."""
-    try:
-        page = max(1, int(request.args.get('page', 1)))
-    except Exception:
-        page = 1
-    try:
-        per_page = min(100, max(1, int(request.args.get('per_page', 20))))
-    except Exception:
-        per_page = 20
-
-    query = History.query
-    start = request.args.get('start')
-    end = request.args.get('end')
-    if start:
-        try:
-            start_dt = datetime.fromisoformat(start)
-            query = query.filter(History.created_at >= start_dt)
-        except Exception:
-            pass
-    if end:
-        try:
-            end_dt = datetime.fromisoformat(end)
-            query = query.filter(History.created_at <= end_dt)
-        except Exception:
-            pass
-
-    pagination = query.order_by(History.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
-    items = [h.to_dict() for h in pagination.items]
-    return jsonify({'total': pagination.total, 'page': page, 'per_page': per_page, 'items': items}), 200
-
-
-@app.route('/api/history', methods=['POST'])
-def create_history():
-    """Tạo một bản ghi lịch sử (frontend có thể gọi khi cần ghi lại interaction)."""
-    data = request.get_json(silent=True) or {}
-    user_email = data.get('user_email')
-    endpoint = data.get('endpoint')
-    action = data.get('action')
-    payload = data.get('payload')
-    try:
-        payload_text = json.dumps(payload, ensure_ascii=False) if payload is not None else None
-    except Exception:
-        payload_text = str(payload)
-    obj = History(user_email=user_email, endpoint=endpoint, action=action, payload=payload_text)
-    db.session.add(obj)
-    db.session.commit()
-    return jsonify(obj.to_dict()), 201
-
-
 if __name__ == "__main__":
-
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="127.0.0.1", port=port, debug=False)
