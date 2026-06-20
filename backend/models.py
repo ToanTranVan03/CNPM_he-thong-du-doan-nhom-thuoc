@@ -1,5 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
 
 db = SQLAlchemy()
 
@@ -92,3 +93,36 @@ class Thuoc(db.Model):
                 'ten_nhom': self.nhom_thuoc.ten_nhom,
             } if self.nhom_thuoc else None,
         }
+
+
+class TrieuChung(db.Model):
+    """Bảng từ điển triệu chứng."""
+    __tablename__ = 'trieu_chung'
+
+    id = db.Column(db.Integer, primary_key=True)
+    ma = db.Column(db.String(100), unique=True, nullable=True)
+    ten = db.Column(db.String(255), nullable=False)
+    ten_en = db.Column(db.String(255))
+    synonyms = db.Column(db.Text)  # JSON array stored as text
+    mo_ta = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'ma': self.ma,
+            'ten': self.ten,
+            'ten_en': self.ten_en,
+            'synonyms': json_loads(self.synonyms) if self.synonyms else [],
+            'mo_ta': self.mo_ta,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+def json_loads(s: str):
+    try:
+        return __import__('json').loads(s)
+    except Exception:
+        return []

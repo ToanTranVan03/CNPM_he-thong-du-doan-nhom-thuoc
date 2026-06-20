@@ -15,7 +15,7 @@ from itertools import permutations
 from pathlib import Path
 
 import joblib
-from models import db, User, NhomThuoc, Thuoc
+from models import db, User, NhomThuoc, Thuoc, TrieuChung
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -70,6 +70,112 @@ with app.app_context():
 
 # Đăng ký blueprint cho bulk import
 app.register_blueprint(bulk_import_bp)
+
+
+# ── API quản lý từ điển triệu chứng (Thêm / Sửa) — Yêu cầu Admin ───────────
+@app.route('/api/admin/symptoms', methods=['POST'])
+def create_symptom():
+    # Kiểm tra token Admin
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    data = request.get_json() or {}
+    ten = data.get('ten') or data.get('name') or data.get('ten_trieu_chung')
+    if not ten or not str(ten).strip():
+        return jsonify({'error': 'Tên triệu chứng (ten) là bắt buộc.'}), 400
+    ma = data.get('ma')
+    if ma:
+        existing = TrieuChung.query.filter_by(ma=ma).first()
+        if existing:
+            return jsonify({'error': 'Mã triệu chứng đã tồn tại.'}), 400
+    ten_en = data.get('ten_en')
+    synonyms = data.get('synonyms')
+    if isinstance(synonyms, list):
+        synonyms_text = json.dumps(synonyms, ensure_ascii=False)
+    elif isinstance(synonyms, str):
+        try:
+            # nếu là JSON string
+            json.loads(synonyms)
+            synonyms_text = synonyms
+        except Exception:
+            synonyms_text = json.dumps([s.strip() for s in synonyms.split(',') if s.strip()], ensure_ascii=False)
+    else:
+        synonyms_text = None
+    mo_ta = data.get('mo_ta')
+
+    obj = TrieuChung(ma=ma, ten=ten.strip(), ten_en=ten_en, synonyms=synonyms_text, mo_ta=mo_ta)
+    db.session.add(obj)
+    db.session.commit()
+    # làm mới cache từ điển
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict()), 201
+
+
+@app.route('/api/admin/symptoms/<int:item_id>', methods=['PUT', 'PATCH'])
+def update_symptom(item_id):
+    # Kiểm tra token Admin
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    obj = TrieuChung.query.get(item_id)
+    if not obj:
+        return jsonify({'error': 'Không tìm thấy triệu chứng.'}), 404
+    data = request.get_json() or {}
+    if 'ma' in data:
+        ma = data.get('ma')
+        if ma and ma != obj.ma and TrieuChung.query.filter_by(ma=ma).first():
+            return jsonify({'error': 'Mã triệu chứng đã tồn tại.'}), 400
+        obj.ma = ma
+    if 'ten' in data:
+        ten = data.get('ten')
+        if ten and str(ten).strip():
+            obj.ten = ten.strip()
+    if 'ten_en' in data:
+        obj.ten_en = data.get('ten_en')
+    if 'synonyms' in data:
+        s = data.get('synonyms')
+        if isinstance(s, list):
+            obj.synonyms = json.dumps(s, ensure_ascii=False)
+        elif isinstance(s, str):
+            try:
+                json.loads(s)
+                obj.synonyms = s
+            except Exception:
+                obj.synonyms = json.dumps([ss.strip() for ss in s.split(',') if ss.strip()], ensure_ascii=False)
+        else:
+            obj.synonyms = None
+    if 'mo_ta' in data:
+        obj.mo_ta = data.get('mo_ta')
+
+    obj.updated_at = datetime.utcnow()
+    db.session.commit()
+    # làm mới cache từ điển
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict())
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.after_request
 def add_no_cache_headers(response):
@@ -2811,97 +2917,211 @@ def save_admin_symptoms(items: list) -> None:
 
 @app.route('/api/admin/symptoms', methods=['POST'])
 def admin_add_symptom():
+    # Admin-only create -> use DB TrieuChung
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
     data = request.get_json(silent=True) or {}
-    label_vi = (data.get('label_vi') or data.get('label') or '').strip()
-    label_en = (data.get('label_en') or data.get('label_en') or '').strip()
-    note = (data.get('note') or data.get('note') or '').strip()
+    # accept both label_vi/label_en (old API) and ten/ten_en (new API)
+    label_vi = (data.get('label_vi') or data.get('label') or data.get('ten') or data.get('name') or '').strip()
+    label_en = (data.get('label_en') or data.get('ten_en') or '').strip()
+    note = (data.get('note') or data.get('mo_ta') or '').strip()
     if not label_vi or not label_en:
-        return jsonify({"error": "Vui lòng cung cấp label_vi và label_en."}), 400
-    admin = load_admin_symptoms()
-    candidate_id = data.get('id') or slugify(label_en)
-    # ensure unique id
-    if any(str(a.get('id')) == str(candidate_id) for a in admin):
-        candidate_id = f"{candidate_id}_{secrets.token_hex(3)}"
-    item = {"id": candidate_id, "label_vi": label_vi, "label_en": label_en, "note": note}
-    admin.append(item)
-    save_admin_symptoms(admin)
-    return jsonify(item), 201
+        return jsonify({"error": "Vui lòng cung cấp label_vi và label_en (hoặc ten/ten_en)."}), 400
+
+    ma = (data.get('id') or data.get('ma') or slugify(label_en))
+    # ensure unique ma
+    if TrieuChung.query.filter_by(ma=ma).first():
+        ma = f"{ma}_{secrets.token_hex(3)}"
+
+    obj = TrieuChung(ma=ma, ten=label_vi, ten_en=label_en, mo_ta=note)
+    db.session.add(obj)
+    db.session.commit()
+    # invalidate cache
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict()), 201
 
 
 @app.route('/api/admin/symptoms/<string:item_id>', methods=['PUT'])
 def admin_update_symptom(item_id):
+    # Admin-only update -> DB
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
     data = request.get_json(silent=True) or {}
-    admin = load_admin_symptoms()
-    for i, it in enumerate(admin):
-        if str(it.get('id')) == str(item_id):
-            it['label_vi'] = (data.get('label_vi') or data.get('label') or it.get('label_vi') or '').strip()
-            it['label_en'] = (data.get('label_en') or it.get('label_en') or '').strip() or it.get('label_en')
-            it['note'] = (data.get('note') or it.get('note') or '').strip()
-            admin[i] = it
-            save_admin_symptoms(admin)
-            return jsonify(it), 200
-    return jsonify({"error": "Không tìm thấy mục"}), 404
+    # find by numeric id or by ma
+    obj = None
+    if str(item_id).isdigit():
+        obj = TrieuChung.query.get(int(item_id))
+    if obj is None:
+        obj = TrieuChung.query.filter_by(ma=str(item_id)).first()
+    if not obj:
+        return jsonify({"error": "Không tìm thấy mục"}), 404
+
+    label_vi = (data.get('label_vi') or data.get('label') )
+    label_en = data.get('label_en')
+    note = data.get('note')
+    if label_vi:
+        obj.ten = label_vi.strip()
+    if label_en is not None:
+        obj.ten_en = label_en.strip()
+    if note is not None:
+        obj.mo_ta = note
+    obj.updated_at = datetime.utcnow()
+    db.session.commit()
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict()), 200
 
 
 @app.route('/api/admin/symptoms/<string:item_id>', methods=['DELETE'])
 def admin_delete_symptom(item_id):
-    admin = load_admin_symptoms()
-    new = [it for it in admin if str(it.get('id')) != str(item_id)]
-    if len(new) == len(admin):
+    # Admin-only delete -> DB
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    obj = None
+    if str(item_id).isdigit():
+        obj = TrieuChung.query.get(int(item_id))
+    if obj is None:
+        obj = TrieuChung.query.filter_by(ma=str(item_id)).first()
+    if not obj:
         return jsonify({"error": "Không tìm thấy mục"}), 404
-    save_admin_symptoms(new)
+    db.session.delete(obj)
+    db.session.commit()
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
     return jsonify({"message": "Đã xóa"}), 200
 
 
 @app.route('/api/symptoms', methods=['GET','POST'])
 def add_symptom_public():
+    # GET: return combined dictionary from model + DB TrieuChung
     if request.method == 'GET':
         try:
             base = build_readable_symptoms() or []
         except Exception:
             base = []
-        admin = load_admin_symptoms()
-        existing_ids = {str(s.get('id')) for s in base if isinstance(s, dict) and s.get('id')}
-        for a in admin:
-            if str(a.get('id')) not in existing_ids:
+        # append DB-managed symptoms
+        try:
+            db_items = TrieuChung.query.order_by(TrieuChung.ten).all()
+            existing_ids = {str(s.get('id')) for s in base if isinstance(s, dict) and s.get('id')}
+            for o in db_items:
+                id_val = o.ma or f"db_{o.id}"
+                if str(id_val) in existing_ids:
+                    continue
                 base.append({
-                    'id': a.get('id'),
-                    'label': a.get('label_vi') or a.get('label') or a.get('label_en') or '',
-                    'label_vi': a.get('label_vi') or a.get('label') or '',
-                    'label_en': a.get('label_en') or '',
-                    'note': a.get('note') or ''
+                    'id': str(id_val),
+                    'label': o.ten or o.ten_en or '',
+                    'label_vi': o.ten or '',
+                    'label_en': o.ten_en or '',
+                    'note': o.mo_ta or ''
                 })
+        except Exception:
+            pass
         return jsonify({"symptoms": base})
 
+    # POST: require Admin token and create DB entry
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
     data = request.get_json(silent=True) or {}
-    label_vi = (data.get('label_vi') or data.get('label') or '').strip()
-    label_en = (data.get('label_en') or data.get('label_en') or '').strip()
-    note = (data.get('note') or data.get('note') or '').strip()
+    # accept both label_vi/label_en and ten/ten_en
+    label_vi = (data.get('label_vi') or data.get('label') or data.get('ten') or '').strip()
+    label_en = (data.get('label_en') or data.get('ten_en') or '').strip()
+    note = (data.get('note') or data.get('mo_ta') or '').strip()
     if not label_vi or not label_en:
-        return jsonify({"error": "Vui lòng cung cấp label_vi và label_en."}), 400
-    admin = load_admin_symptoms()
-    candidate_id = data.get('id') or slugify(label_en)
-    if any(str(a.get('id')) == str(candidate_id) for a in admin):
-        candidate_id = f"{candidate_id}_{secrets.token_hex(3)}"
-    item = {"id": candidate_id, "label_vi": label_vi, "label_en": label_en, "note": note}
-    admin.append(item)
-    save_admin_symptoms(admin)
-    return jsonify(item), 201
+        return jsonify({"error": "Vui lòng cung cấp label_vi và label_en (hoặc ten/ten_en)."}), 400
+    ma = (data.get('id') or data.get('ma') or slugify(label_en))
+    if TrieuChung.query.filter_by(ma=ma).first():
+        ma = f"{ma}_{secrets.token_hex(3)}"
+    obj = TrieuChung(ma=ma, ten=label_vi, ten_en=label_en, mo_ta=note)
+    db.session.add(obj)
+    db.session.commit()
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict()), 201
 
 
 @app.route('/api/symptoms/<string:item_id>', methods=['PUT'])
 def update_symptom_public(item_id):
+    # require admin token and update DB-backed symptom
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
     data = request.get_json(silent=True) or {}
-    admin = load_admin_symptoms()
-    for i, it in enumerate(admin):
-        if str(it.get('id')) == str(item_id):
-            it['label_vi'] = (data.get('label_vi') or data.get('label') or it.get('label_vi') or '').strip()
-            it['label_en'] = (data.get('label_en') or it.get('label_en') or '').strip() or it.get('label_en')
-            it['note'] = (data.get('note') or it.get('note') or '').strip()
-            admin[i] = it
-            save_admin_symptoms(admin)
-            return jsonify(it), 200
-    return jsonify({"error": "Không tìm thấy mục"}), 404
+    obj = None
+    if str(item_id).isdigit():
+        obj = TrieuChung.query.get(int(item_id))
+    if obj is None:
+        obj = TrieuChung.query.filter_by(ma=str(item_id)).first()
+    if not obj:
+        return jsonify({"error": "Không tìm thấy mục"}), 404
+    label_vi = (data.get('label_vi') or data.get('label'))
+    label_en = data.get('label_en')
+    note = data.get('note')
+    if label_vi:
+        obj.ten = label_vi.strip()
+    if label_en is not None:
+        obj.ten_en = label_en.strip()
+    if note is not None:
+        obj.mo_ta = note
+    obj.updated_at = datetime.utcnow()
+    db.session.commit()
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict()), 200
 
 
 @app.route('/api/symptoms/<string:item_id>', methods=['DELETE'])
@@ -3216,6 +3436,72 @@ def refresh_symptom_cache():
         "message": "Đã làm mới cache từ điển triệu chứng.",
         "dictionary_size": len(get_cached_symptom_dictionary())
     }), 200
+
+
+# ── API admin: danh sách, chi tiết, xóa từ điển triệu chứng ───────────────────────
+@app.route('/api/admin/symptoms', methods=['GET'])
+def list_symptoms():
+    q = (request.args.get('q') or '').strip()
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+    except Exception:
+        page = 1
+    try:
+        per_page = min(100, max(1, int(request.args.get('per_page', 20))))
+    except Exception:
+        per_page = 20
+
+    query = TrieuChung.query
+    if q:
+        q_like = f"%{q}%"
+        query = query.filter(
+            (TrieuChung.ten.ilike(q_like)) | (TrieuChung.ten_en.ilike(q_like)) | (TrieuChung.ma.ilike(q_like))
+        )
+
+    pagination = query.order_by(TrieuChung.ten).paginate(page=page, per_page=per_page, error_out=False)
+    items = [item.to_dict() for item in pagination.items]
+    return jsonify({
+        'total': pagination.total,
+        'page': page,
+        'per_page': per_page,
+        'items': items,
+    }), 200
+
+
+@app.route('/api/admin/symptoms/<int:item_id>', methods=['GET'])
+def get_symptom(item_id):
+    obj = TrieuChung.query.get(item_id)
+    if not obj:
+        return jsonify({'error': 'Không tìm thấy triệu chứng.'}), 404
+    return jsonify(obj.to_dict()), 200
+
+
+@app.route('/api/admin/symptoms/<int:item_id>', methods=['DELETE'])
+def delete_symptom(item_id):
+    # Kiểm tra token Admin
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    obj = TrieuChung.query.get(item_id)
+    if not obj:
+        return jsonify({'error': 'Không tìm thấy triệu chứng.'}), 404
+    db.session.delete(obj)
+    db.session.commit()
+    # làm mới cache từ điển
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify({'success': True}), 200
+
 
 @app.post("/api/predict")
 def predict():
