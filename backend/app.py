@@ -159,64 +159,7 @@ def save_evaluation():
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Lỗi hệ thống: {str(e)}'}), 500
 
-# =========================================================
-# SCRUM-77 / Task 46
-# API lấy danh sách phản hồi "Không đồng ý" cần xem xét
-# =========================================================
-@app.get("/api/admin/rejected-feedbacks")
-def get_rejected_feedbacks():
-    try:
-        feedbacks = (
-            DanhGiaDuDoan.query
-            .filter(DanhGiaDuDoan.trang_thai == "REJECT")
-            .order_by(DanhGiaDuDoan.created_at.desc())
-            .all()
-        )
 
-        return jsonify({
-            "success": True,
-            "total": len(feedbacks),
-            "feedbacks": [item.to_dict() for item in feedbacks]
-        }), 200
-
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Lỗi lấy danh sách phản hồi: {str(e)}",
-            "feedbacks": []
-        }), 500
-
-
-# =========================================================
-# SCRUM-78 / Task 47
-# API đánh dấu phản hồi đã xem xét
-# =========================================================
-@app.post("/api/admin/rejected-feedbacks/<int:feedback_id>/reviewed")
-def mark_feedback_reviewed(feedback_id):
-    try:
-        feedback = DanhGiaDuDoan.query.get(feedback_id)
-
-        if not feedback:
-            return jsonify({
-                "success": False,
-                "message": "Không tìm thấy phản hồi."
-            }), 404
-
-        feedback.trang_thai = "REVIEWED"
-        db.session.commit()
-
-        return jsonify({
-            "success": True,
-            "message": "Đã đánh dấu phản hồi là đã xem xét.",
-            "data": feedback.to_dict()
-        }), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            "success": False,
-            "message": f"Lỗi cập nhật phản hồi: {str(e)}"
-        }), 500
 
 
 
