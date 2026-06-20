@@ -9,6 +9,7 @@ PyJWT
 # Xử lý dữ liệu
 pandas
 pyarrow               # đọc file .parquet (dataset HuggingFace)
+openpyxl               # xuất lịch sử dự đoán ra file Excel .xlsx
 
 # Hiểu ngữ nghĩa tiếng Việt (khớp triệu chứng câu lạ cùng nghĩa)
 # Lần đầu chạy sẽ tự tải model SBERT (~500MB). Thiếu 2 gói này app vẫn chạy (fallback keyword).

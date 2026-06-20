@@ -16,8 +16,11 @@ from pathlib import Path
 
 import joblib
 from models import db, User, NhomThuoc, Thuoc, LichSuDuDoan
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.worksheet.table import Table, TableStyleInfo
 from text_preprocessing import remove_vietnamese_stop_words
 from werkzeug.security import check_password_hash, generate_password_hash
 from translations import (
@@ -3124,6 +3127,196 @@ def prediction_history():
         return jsonify({"error": "Không thể lưu lịch sử dự đoán."}), 500
 
     return jsonify(row.to_dict()), 201
+
+
+def excel_safe_text(value):
+    """Ngăn dữ liệu người dùng bị Excel diễn giải thành công thức."""
+    text = "" if value is None else str(value)
+    return f"'{text}" if text.startswith(('=', '+', '-', '@')) else text
+
+
+@app.get('/api/prediction-history/export')
+def export_prediction_history():
+    email = authenticated_email()
+    if not email:
+        return jsonify({"error": "Chưa đăng nhập hoặc token không hợp lệ."}), 401
+
+    rows = (
+        LichSuDuDoan.query
+        .filter_by(user_email=email)
+        .order_by(LichSuDuDoan.ngay_tao.desc(), LichSuDuDoan.id.desc())
+        .all()
+    )
+    if not rows:
+        return jsonify({"error": "Chưa có lịch sử dự đoán để xuất."}), 404
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Lịch sử dự đoán"
+    sheet.sheet_view.showGridLines = False
+
+    # Phần đầu báo cáo: tách khỏi bảng để file có ngữ cảnh và dễ in/gửi.
+    sheet.merge_cells("A1:H1")
+    sheet["A1"] = "BÁO CÁO LỊCH SỬ DỰ ĐOÁN"
+    sheet["A1"].font = Font(name="Arial", size=18, bold=True, color="FFFFFF")
+    sheet["A1"].fill = PatternFill("solid", fgColor="17365D")
+    sheet["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    sheet.row_dimensions[1].height = 34
+
+    sheet.merge_cells("A2:D2")
+    sheet["A2"] = f"Người dùng: {excel_safe_text(email)}"
+    sheet.merge_cells("E2:H2")
+    sheet["E2"] = f"Thời điểm xuất: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+    sheet.merge_cells("A3:H3")
+    sheet["A3"] = f"Tổng số bản ghi: {len(rows)}"
+    for row_number in (2, 3):
+        for cell in sheet[row_number]:
+            cell.fill = PatternFill("solid", fgColor="D9EAF7")
+            cell.font = Font(name="Arial", size=10, bold=row_number == 3, color="1F2937")
+            cell.alignment = Alignment(vertical="center")
+        sheet.row_dimensions[row_number].height = 22
+
+    headers = [
+        "STT", "Thời gian", "Bệnh án", "Kết quả dự đoán",
+        "Triệu chứng nhận diện", "Độ tin cậy", "Trạng thái", "Cảnh báo",
+    ]
+    sheet.append(headers)
+    sheet.row_dimensions[4].height = 30
+    header_fill = PatternFill("solid", fgColor="2F75B5")
+    thin_border = Border(
+        left=Side(style="thin", color="D6E2EA"),
+        right=Side(style="thin", color="D6E2EA"),
+        top=Side(style="thin", color="D6E2EA"),
+        bottom=Side(style="thin", color="D6E2EA"),
+    )
+    for cell in sheet[4]:
+        cell.font = Font(name="Arial", size=10, color="FFFFFF", bold=True)
+        cell.fill = header_fill
+        cell.border = thin_border
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    raw_sheet = workbook.create_sheet("Dữ liệu gốc")
+    raw_sheet.sheet_view.showGridLines = False
+    raw_headers = ["ID", "Thời gian", "Người dùng", "Input JSON", "Output JSON"]
+    raw_sheet.append(raw_headers)
+    for cell in raw_sheet[1]:
+        cell.font = Font(name="Arial", size=10, color="FFFFFF", bold=True)
+        cell.fill = PatternFill("solid", fgColor="5B6573")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    raw_sheet.row_dimensions[1].height = 26
+
+    for index, row in enumerate(rows, start=1):
+        input_data = row.input_benh_an or {}
+        output_data = row.output_ket_qua or {}
+        matched_symptoms = (
+            output_data.get("matched_symptoms_vi")
+            or output_data.get("matched_symptom_labels")
+            or []
+        )
+        prediction = (
+            output_data.get("display_title")
+            or output_data.get("disease_vi")
+            or output_data.get("disease")
+            or ""
+        )
+        confidence = output_data.get("confidence")
+        if output_data.get("score_type") == "emergency":
+            status = "Cần cấp cứu"
+        elif output_data.get("needs_more_input"):
+            status = "Cần bổ sung"
+        else:
+            status = "Đã dự đoán"
+        sheet.append([
+            index,
+            row.ngay_tao.strftime("%d/%m/%Y %H:%M:%S") if row.ngay_tao else "",
+            excel_safe_text(input_data.get("notes", "")),
+            excel_safe_text(prediction),
+            excel_safe_text(", ".join(map(str, matched_symptoms))),
+            confidence if isinstance(confidence, (int, float)) else "",
+            status,
+            excel_safe_text(output_data.get("warning") or output_data.get("error") or ""),
+        ])
+        raw_sheet.append([
+            row.id,
+            row.ngay_tao.strftime("%d/%m/%Y %H:%M:%S") if row.ngay_tao else "",
+            excel_safe_text(row.user_email),
+            json.dumps(input_data, ensure_ascii=False),
+            json.dumps(output_data, ensure_ascii=False),
+        ])
+
+    last_row = sheet.max_row
+    table = Table(displayName="BangLichSuDuDoan", ref=f"A4:H{last_row}")
+    table.tableStyleInfo = TableStyleInfo(
+        name="TableStyleMedium2",
+        showFirstColumn=False,
+        showLastColumn=False,
+        showRowStripes=True,
+        showColumnStripes=False,
+    )
+    sheet.add_table(table)
+    sheet.freeze_panes = "C5"
+    widths = [7, 20, 42, 36, 32, 14, 18, 44]
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[chr(64 + index)].width = width
+    centered_columns = {1, 2, 6, 7}
+    for row_number, excel_row in enumerate(sheet.iter_rows(min_row=5), start=5):
+        sheet.row_dimensions[row_number].height = 54
+        for column_number, cell in enumerate(excel_row, start=1):
+            cell.font = Font(name="Arial", size=10, color="1F2937")
+            cell.border = thin_border
+            cell.alignment = Alignment(
+                horizontal="center" if column_number in centered_columns else "left",
+                vertical="top",
+                wrap_text=True,
+            )
+        status_cell = sheet.cell(row=row_number, column=7)
+        status_colors = {
+            "Đã dự đoán": ("E2F0D9", "375623"),
+            "Cần bổ sung": ("FFF2CC", "7F6000"),
+            "Cần cấp cứu": ("FCE4D6", "9C0006"),
+        }
+        status_fill, status_font = status_colors.get(status_cell.value, ("E7E6E6", "404040"))
+        status_cell.fill = PatternFill("solid", fgColor=status_fill)
+        status_cell.font = Font(name="Arial", size=10, bold=True, color=status_font)
+        status_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for cell in sheet["F"][4:]:
+        if isinstance(cell.value, (int, float)):
+            cell.number_format = "0.00%"
+
+    sheet.auto_filter.ref = f"A4:H{last_row}"
+    sheet.print_title_rows = "4:4"
+    sheet.print_area = f"A1:H{last_row}"
+    sheet.page_setup.orientation = "landscape"
+    sheet.page_setup.paperSize = sheet.PAPERSIZE_A4
+    sheet.page_setup.fitToWidth = 1
+    sheet.page_setup.fitToHeight = 0
+    sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    sheet.oddHeader.center.text = "PharmaPredict - Lịch sử dự đoán"
+    sheet.oddFooter.center.text = "Trang &P / &N"
+    sheet.oddFooter.right.text = "Xuất từ hệ thống PharmaPredict"
+
+    raw_widths = [10, 20, 28, 80, 100]
+    for index, width in enumerate(raw_widths, start=1):
+        raw_sheet.column_dimensions[chr(64 + index)].width = width
+    for row_number, excel_row in enumerate(raw_sheet.iter_rows(min_row=2), start=2):
+        raw_sheet.row_dimensions[row_number].height = 34
+        for cell in excel_row:
+            cell.font = Font(name="Consolas", size=9, color="374151")
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical="top", wrap_text=False)
+    raw_sheet.freeze_panes = "D2"
+    raw_sheet.auto_filter.ref = raw_sheet.dimensions
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    filename = f"lich_su_du_doan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @app.delete('/api/prediction-history/<int:history_id>')

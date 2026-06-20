@@ -31,6 +31,7 @@ const selectedCount = document.getElementById("selected-count");
 const formMessage = document.getElementById("form-message");
 const historySearch = document.getElementById("history-search");
 const historyList = document.getElementById("history-list");
+const exportHistoryButton = document.getElementById("export-history");
 const resultTitle = document.getElementById("result-title");
 const resultSubtitle = document.getElementById("result-subtitle");
 const scoreLabel = document.getElementById("score-label");
@@ -136,6 +137,40 @@ async function loadPredictionHistory() {
     renderRecentActivity();
   } catch (error) {
     console.error("Không thể đồng bộ lịch sử dự đoán:", error);
+  }
+}
+
+async function exportPredictionHistory() {
+  if (!authToken || !exportHistoryButton) {
+    return;
+  }
+
+  exportHistoryButton.disabled = true;
+  try {
+    const response = await fetch("/api/prediction-history/export", {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Không xuất được lịch sử dự đoán.");
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = filenameMatch?.[1] || "lich_su_du_doan.xlsx";
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    window.alert(formatError(error));
+  } finally {
+    exportHistoryButton.disabled = false;
   }
 }
 
@@ -1028,6 +1063,10 @@ historySearch.addEventListener("input", (event) => {
     card.classList.toggle("is-hidden", query !== "" && !haystack.includes(query));
   });
   updateHistoryEmptyState();
+});
+
+exportHistoryButton?.addEventListener("click", () => {
+  void exportPredictionHistory();
 });
 
 saveResultButton.addEventListener("click", () => {
