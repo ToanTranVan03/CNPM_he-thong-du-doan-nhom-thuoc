@@ -280,6 +280,41 @@
                 <p id="result-subtitle">Chọn triệu chứng và bấm dự đoán</p>
               </div>
             </div>
+            <div class="card p-4 shadow-sm border-0 mt-4" style="border-radius: 15px; background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px);">
+    <h5 class="card-title fw-bold text-secondary mb-3">Đánh giá kết quả dự đoán của hệ thống</h5>
+    <p class="text-muted small">Kết quả dự đoán này có chính xác với chuyên môn của bạn không?</p>
+    
+    <div class="d-flex gap-3">
+        <button type="button" class="btn btn-outline-success px-4 py-2 fw-semibold" id="btnApprove" onclick="handleApprove()">
+            Đồng ý (Chính xác)
+        </button>
+        
+        <button type="button" class="btn btn-outline-danger px-4 py-2 fw-semibold" data-bs-toggle="modal" data-bs-target="#feedbackModal">
+            Không đồng ý
+        </button>
+    </div>
+</div>
+
+<div class="modal fade" id="feedbackModal" tabindex="-1" aria-labelledby="feedbackModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+            <div class="modal-header bg-danger text-white border-0" style="border-top-left-radius: 20px; border-top-right-radius: 20px;">
+                <h5 class="modal-title fw-bold" id="feedbackModalLabel">Lý do không đồng ý?</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-3">
+                    <label for="feedbackNotes" class="form-label fw-semibold text-secondary">Vui lòng để lại ghi chú hoặc góp ý chuyên môn:</label>
+                    <textarea class="form-control border-2" id="feedbackNotes" rows="4" style="border-radius: 10px; resize: none;" placeholder="Ví dụ: Triệu chứng này nên đi kèm nhóm thuốc kháng sinh..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer border-0 p-3 bg-light" style="border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;">
+                <button type="button" class="btn btn-secondary px-3" style="border-radius: 8px;" data-bs-dismiss="modal">Hủy bỏ</button>
+                <button type="button" class="btn btn-danger px-4 fw-semibold" style="border-radius: 8px;" onclick="submitRejectFeedback()">Gửi đánh giá</button>
+            </div>
+        </div>
+    </div>
+</div>
             <div class="confidence-box" aria-label="Do tin cay">
               <div class="confidence-head">
                 <span id="score-label">Độ tương đồng</span>

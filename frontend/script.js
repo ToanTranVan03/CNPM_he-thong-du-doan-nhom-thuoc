@@ -2129,3 +2129,89 @@ function renderTop3DrugGroups(predictions = [], matchedSymptoms = []) {
         </div>
     `;
 }
+
+
+
+// Hàm xử lý khi bấm "Đồng ý"
+function handleApprove() {
+    alert("Cảm ơn bác sĩ đã xác nhận kết quả chính xác!");
+    const btn = document.getElementById('btnApprove');
+    if (btn) {
+        btn.className = "btn btn-success px-4 py-2 fw-semibold";
+        btn.disabled = true;
+    }
+}
+
+/// ==========================================
+// ĐOẠN MÃ MỚI SỬ DỤNG FETCH() ĐỂ GỌI API (TASK 45)
+// ==========================================
+
+// 1. Hàm xử lý khi bấm nút "Đồng ý" -> Gửi trạng thái APPROVE về Backend
+function handleApprove() {
+    // Lấy tên triệu chứng hiện tại từ giao diện (ví dụ lấy từ thẻ h1 hiển thị kết quả)
+    const symptomName = document.getElementById('result-title')?.innerText || "Triệu chứng ẩn danh";
+
+    fetch('http://127.0.0.1:5000/api/evaluation', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            trieu_chung_nhap: symptomName,
+            trang_thai: 'APPROVE',
+            ghi_chu: ''
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert("Cảm ơn bác sĩ đã xác nhận kết quả chính xác!");
+            const btn = document.getElementById('btnApprove');
+            if (btn) {
+                btn.style.background = "#059669";
+                btn.style.color = "#ffffff";
+                btn.disabled = true;
+                btn.innerText = "Đã đồng ý";
+            }
+        }
+    })
+    .catch(err => console.error("Lỗi gửi đánh giá:", err));
+}
+
+// 2. Hàm xử lý khi viết ghi chú và bấm "Gửi đánh giá" -> Gửi trạng thái REJECT kèm lời nhắn
+function submitRejectFeedback() {
+    const notes = document.getElementById('feedbackNotes').value.trim();
+    const symptomName = document.getElementById('result-title')?.innerText || "Triệu chứng ẩn danh";
+
+    if (!notes) {
+        alert("Vui lòng nhập lý do hoặc ghi chú trước khi gửi!");
+        return;
+    }
+
+    fetch('http://127.0.0.1:5000/api/evaluation', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            trieu_chung_nhap: symptomName,
+            trang_thai: 'REJECT',
+            ghi_chu: notes
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert("Hệ thống đã ghi nhận phản hồi đóng góp của bạn!");
+            
+            // Xóa nội dung trong ô nhập và đóng Modal ẩn đi
+            document.getElementById('feedbackNotes').value = '';
+            const modalEl = document.getElementById('feedbackModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) {
+                modal.hide();
+            }
+        }
+    })
+    .catch(err => console.error("Lỗi gửi phản hồi:", err));
+}
