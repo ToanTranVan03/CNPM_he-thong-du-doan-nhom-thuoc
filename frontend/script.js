@@ -1633,7 +1633,95 @@ document.getElementById("btn-reload-feedback")
 
 document.getElementById("feedback-search")
   ?.addEventListener("input", renderRejectedFeedbacks);
-  
+// ============================================================
+// SCRUM-75 / SCRUM-76
+// Bác sĩ đánh giá kết quả dự đoán: Đồng ý / Không đồng ý
+// ============================================================
+
+const btnEvalApprove = document.getElementById("btn-eval-approve");
+const btnEvalReject = document.getElementById("btn-eval-reject");
+const btnEvalCancel = document.getElementById("btn-eval-cancel");
+const btnEvalSubmit = document.getElementById("btn-eval-submit");
+const evaluationNoteBox = document.getElementById("evaluation-note-box");
+const evaluationNote = document.getElementById("evaluation-note");
+const evaluationMessage = document.getElementById("evaluation-message");
+
+function setEvaluationMessage(message, isError = false) {
+  if (!evaluationMessage) return;
+  evaluationMessage.textContent = message;
+  evaluationMessage.classList.toggle("is-error", isError);
+}
+
+async function sendEvaluation(status, note = "") {
+  if (!currentResult) {
+    setEvaluationMessage("Chưa có kết quả dự đoán để đánh giá.", true);
+    return;
+  }
+
+  const symptomsText =
+    textarea?.value?.trim() ||
+    (currentResult.matched_symptoms_vi || []).join(", ") ||
+    "Không rõ";
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/evaluation`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        trieu_chung_nhap: symptomsText,
+        trang_thai: status,
+        ghi_chu: note
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Không gửi được đánh giá.");
+    }
+
+    setEvaluationMessage("Đã gửi đánh giá thành công.", false);
+
+    if (evaluationNoteBox) {
+      evaluationNoteBox.classList.add("is-hidden");
+    }
+
+    if (evaluationNote) {
+      evaluationNote.value = "";
+    }
+  } catch (error) {
+    setEvaluationMessage(error.message || "Lỗi gửi đánh giá.", true);
+  }
+}
+
+btnEvalApprove?.addEventListener("click", () => {
+  sendEvaluation("APPROVE", "Bác sĩ đồng ý với kết quả dự đoán.");
+});
+
+btnEvalReject?.addEventListener("click", () => {
+  setEvaluationMessage("");
+  evaluationNoteBox?.classList.remove("is-hidden");
+  evaluationNote?.focus();
+});
+
+btnEvalCancel?.addEventListener("click", () => {
+  evaluationNoteBox?.classList.add("is-hidden");
+  if (evaluationNote) evaluationNote.value = "";
+  setEvaluationMessage("");
+});
+
+btnEvalSubmit?.addEventListener("click", () => {
+  const note = evaluationNote?.value?.trim() || "";
+
+  if (!note) {
+    setEvaluationMessage("Vui lòng nhập lý do không đồng ý.", true);
+    return;
+  }
+
+  sendEvaluation("REJECT", note);
+});
 initTheme();
 updateCharCount();
 updateSelectedCount();

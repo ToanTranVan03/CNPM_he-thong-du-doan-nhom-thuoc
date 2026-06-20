@@ -1958,3 +1958,36 @@ input:focus {
     margin-right: 6px;
     margin-top: 4px;
 }
+.evaluation-box {
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.evaluation-box h3 {
+  margin-bottom: 8px;
+}
+
+.evaluation-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+#evaluation-note-box {
+  margin-top: 16px;
+}
+
+#evaluation-note {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text);
+  resize: vertical;
+}
