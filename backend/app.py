@@ -25,7 +25,8 @@ from translations import (
     translate_items,
 )
 from route_bulk_import import bulk_import_bp
-
+from flask import request, jsonify
+from models import db, DanhGiaDuDoan
 
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
@@ -120,6 +121,47 @@ def create_symptom():
     global SYMPTOM_DICTIONARY_CACHE
     SYMPTOM_DICTIONARY_CACHE = None
     return jsonify(obj.to_dict()), 201
+
+
+
+
+
+@app.route('/api/evaluation', methods=['POST'])
+def save_evaluation():
+    try:
+        data = request.get_json()
+        
+        # Lấy dữ liệu gửi lên từ frontend
+        trieu_chung = data.get('trieu_chung_nhap', 'Không rõ')
+        trang_thai = data.get('trang_thai')  # 'APPROVE' hoặc 'REJECT'
+        ghi_chu = data.get('ghi_chu', '')
+
+        if not trang_thai:
+            return jsonify({'success': False, 'message': 'Thiếu trạng thái đánh giá!'}), 400
+
+        # Khởi tạo đối tượng và lưu vào Database
+        new_feedback = DanhGiaDuDoan(
+            trieu_chung_nhap=trieu_chung,
+            trang_thai=trang_thai,
+            ghi_chu=ghi_chu
+        )
+        
+        db.session.add(new_feedback)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Cập nhật trạng thái phản hồi vào database thành công!',
+            'data': new_feedback.to_dict()
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Lỗi hệ thống: {str(e)}'}), 500
+
+
+
+
 
 
 @app.route('/api/admin/symptoms/<int:item_id>', methods=['PUT', 'PATCH'])

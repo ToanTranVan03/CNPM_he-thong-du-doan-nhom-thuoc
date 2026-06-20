@@ -117,7 +117,26 @@ class TrieuChung(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
+# =========================================================
+# 6. BẢNG LƯU PHẢN HỒI ĐÁNH GIÁ CỦA BÁC SĨ (TASK 45)
+# =========================================================
+class DanhGiaDuDoan(db.Model):
+    __tablename__ = 'danh_gia_du_doan'
 
+    id = db.Column(db.Integer, primary_key=True)
+    trieu_chung_nhap = db.Column(db.String(255), nullable=False) # Triệu chứng bác sĩ đã nhập
+    trang_thai = db.Column(db.String(50), nullable=False)        # 'APPROVE' (Đồng ý) hoặc 'REJECT' (Không đồng ý)
+    ghi_chu = db.Column(db.Text, nullable=True)                  # Lý do nếu không đồng ý
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,  
+            'trieu_chung_nhap': self.trieu_chung_nhap,
+            'trang_thai': self.trang_thai,
+            'ghi_chu': self.ghi_chu,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
 def json_loads(s: str):
     try:
