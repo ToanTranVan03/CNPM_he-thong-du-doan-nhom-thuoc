@@ -18,3 +18,7 @@ data/train_combined.csv
 models_old/
 models_v2/
 data/learned_context.jsonl
+
+# US15/US18: log lịch sử dự đoán + feedback (runtime, sinh khi chạy) — KHÔNG đẩy lên
+data/prediction_log.jsonl
+data/feedback.jsonl

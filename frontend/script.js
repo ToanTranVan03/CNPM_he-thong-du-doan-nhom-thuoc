@@ -475,6 +475,7 @@ function renderPrediction(result) {
   currentResult = result;
   renderCaseSummary(result);
   renderSuggestedSymptoms(result);
+  resetFeedbackBox(true); // US18: cho phép đánh giá khi đã có gợi ý
   if (scoreLabel) {
     scoreLabel.textContent = isRuleBased ? "Cơ chế gợi ý" : scoreText;
   }
@@ -573,6 +574,7 @@ function renderInsufficientInput(result) {
   currentResult = null;
   renderCaseSummary(result);
   renderSuggestedSymptoms(result);
+  resetFeedbackBox(false); // US18: chưa đủ dữ liệu thì không có gì để đánh giá
   if (scoreLabel) {
     scoreLabel.textContent = "Trạng thái";
   }
@@ -754,6 +756,52 @@ if (dashboardRefresh) {
     loadDashboard();
   });
 }
+
+// ── US18: phản hồi Đồng ý / Không đồng ý ─────────────────────────────────────
+const feedbackBox = document.getElementById("feedback-box");
+const feedbackApprove = document.getElementById("feedback-approve");
+const feedbackReject = document.getElementById("feedback-reject");
+const feedbackThanks = document.getElementById("feedback-thanks");
+
+function resetFeedbackBox(show) {
+  if (!feedbackBox) return;
+  feedbackBox.classList.toggle("is-hidden", !show);
+  if (feedbackThanks) feedbackThanks.classList.add("is-hidden");
+  [feedbackApprove, feedbackReject].forEach((b) => {
+    if (b) {
+      b.disabled = false;
+      b.classList.remove("is-chosen");
+    }
+  });
+}
+
+async function sendFeedback(verdict, button) {
+  const group = currentResult?.case_summary?.drug_group || null;
+  [feedbackApprove, feedbackReject].forEach((b) => b && (b.disabled = true));
+  if (button) button.classList.add("is-chosen");
+  try {
+    const response = await fetch("/api/feedback", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify({ verdict, predicted_group: group }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Không gửi được phản hồi.");
+    }
+    if (feedbackThanks) feedbackThanks.classList.remove("is-hidden");
+  } catch (error) {
+    setMessage(formatError(error), true);
+    [feedbackApprove, feedbackReject].forEach((b) => b && (b.disabled = false));
+    if (button) button.classList.remove("is-chosen");
+  }
+}
+
+if (feedbackApprove) feedbackApprove.addEventListener("click", () => sendFeedback("APPROVE", feedbackApprove));
+if (feedbackReject) feedbackReject.addEventListener("click", () => sendFeedback("REJECT", feedbackReject));
 
 authSwitchButtons.forEach((button) => {
   button.addEventListener("click", () => {

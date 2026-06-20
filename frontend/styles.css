@@ -1668,3 +1668,58 @@ input:focus {
 .dashboard-empty {
   margin-top: 12px;
 }
+
+/* ── US18: phản hồi Đồng ý / Không đồng ý ──────────────────────────────────── */
+.feedback-box {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--surface-container);
+  border-radius: var(--radius-lg);
+  background: var(--surface-low);
+}
+.feedback-question {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.feedback-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.feedback-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--surface-container);
+  background: var(--surface-lowest);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.feedback-button:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+.feedback-button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.feedback-approve.is-chosen {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+.feedback-reject.is-chosen {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.feedback-thanks {
+  margin: 10px 0 0;
+  color: var(--success);
+  font-weight: 600;
+}

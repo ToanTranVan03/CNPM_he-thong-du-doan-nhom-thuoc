@@ -156,6 +156,16 @@ def save_user_store(store: dict) -> None:
     tmp_path.replace(USERS_PATH)
 
 
+def _append_jsonl(path: Path, record: dict) -> None:
+    """Ghi nối 1 bản ghi JSON xuống file JSONL (US15/US18). Lỗi I/O không làm hỏng request."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        app.logger.exception("Không ghi được %s", path)
+
+
 def normalize_email(email: str) -> str:
     return re.sub(r"\s+", "", email or "").lower()
 
@@ -3022,6 +3032,76 @@ def admin_stats():
             "agree_rate": agree_rate,
         }
     )
+
+
+# ── US15 (port): tự động lưu lịch sử mỗi lần dự đoán ──────────────────────────
+# Ghi vào prediction_log.jsonl — đúng nguồn mà US19 (stats_source) đọc. Port theo hook
+# @app.after_request của nhánh toan/tu, nhưng dùng kiến trúc file-JSON + Bearer của nhánh này.
+def _prediction_status_from(response, body: dict) -> str:
+    if response.status_code == 200:
+        return "suggest"
+    if body.get("score_type") == "emergency":
+        return "emergency"
+    return "safety_block"  # các 422 còn lại: né an toàn / chưa đủ dữ liệu
+
+
+def _group_from_body(body: dict) -> str | None:
+    group = (body.get("case_summary") or {}).get("drug_group")
+    if not isinstance(group, str) or not group.strip() or group.startswith("Chưa"):
+        return None
+    return group.strip()
+
+
+@app.after_request
+def log_prediction_after_request(response):
+    try:
+        if request.endpoint != "predict" or request.method != "POST" or not response.is_json:
+            return response
+        if response.status_code not in (200, 422):
+            return response
+        body = response.get_json(silent=True) or {}
+        user = current_user_from_request(load_user_store())
+        _append_jsonl(
+            stats_source.PREDICTION_LOG_PATH,
+            {
+                "ts": iso_utc(now_utc()),
+                "status": _prediction_status_from(response, body),
+                "predicted_group": _group_from_body(body),
+                "user_email": (user or {}).get("email") or "guest",
+            },
+        )
+    except Exception:
+        app.logger.exception("US15: không ghi được prediction_log")
+    return response
+
+
+# ── US18 (port): thu phản hồi Đồng ý / Không đồng ý ───────────────────────────
+@app.post("/api/feedback")
+def submit_feedback():
+    """Lưu đánh giá của người dùng về kết quả dự đoán. verdict: APPROVE | REJECT.
+
+    Tương thích contract của nhánh toan/main: chấp nhận cả 'trang_thai' (alias verdict)
+    và 'ghi_chu' (alias note). Ghi vào feedback.jsonl — nguồn US19 đọc tính tỷ lệ 'Đồng ý'.
+    """
+    payload = request.get_json(silent=True) or {}
+    verdict = str(payload.get("verdict") or payload.get("trang_thai") or "").upper()
+    if verdict not in stats_source.FEEDBACK_VERDICTS:
+        return jsonify({"error": "verdict phải là APPROVE (Đồng ý) hoặc REJECT (Không đồng ý)."}), 400
+
+    group = payload.get("predicted_group")
+    note = str(payload.get("note") or payload.get("ghi_chu") or "")[:1000]
+    user = current_user_from_request(load_user_store())
+    _append_jsonl(
+        stats_source.FEEDBACK_LOG_PATH,
+        {
+            "ts": iso_utc(now_utc()),
+            "verdict": verdict,
+            "predicted_group": group.strip() if isinstance(group, str) and group.strip() else None,
+            "user_email": (user or {}).get("email") or "guest",
+            "note": note,
+        },
+    )
+    return jsonify({"ok": True, "message": "Đã ghi nhận phản hồi. Cảm ơn bạn!"}), 201
 
 
 @app.post("/api/predict")
