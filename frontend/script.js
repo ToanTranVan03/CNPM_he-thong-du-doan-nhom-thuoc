@@ -537,7 +537,29 @@ function setConfidenceLevel(level) {
     tag.textContent = labels[level] || "";
   }
 }
+function renderDangerWarning(dangerWarning) {
+  if (!dangerWarning || !dangerWarning.has_danger) {
+    return;
+  }
 
+  const warningContainer = document.getElementById("warning-text");
+
+  if (!warningContainer) {
+    return;
+  }
+
+  const keywords = dangerWarning.danger_keywords || [];
+
+  warningContainer.innerHTML = `
+    <div class="danger-banner">
+      <h3>🚨 CẢNH BÁO Y KHOA KHẨN CẤP</h3>
+      <p>${dangerWarning.warning_message}</p>
+      <div class="danger-keywords">
+        ${keywords.map(x => `<span>${x}</span>`).join("")}
+      </div>
+    </div>
+  `;
+}
 function renderPrediction(result) {
   const isRuleBased = result.score_type === "rule";
   const confidence = result.confidence === null || result.confidence === undefined ? "0.0" : (result.confidence * 100).toFixed(1);
@@ -547,6 +569,7 @@ function renderPrediction(result) {
   const scoreText = result.score_label || "Độ tin cậy";
 
   currentResult = result;
+  renderDangerWarning(result.danger_warning);
   renderCaseSummary(result);
   renderSuggestedSymptoms(result);
   if (scoreLabel) {
