@@ -3385,7 +3385,63 @@ def extract_symptoms_from_medical_text(text):
 
     return result
 
+# =========================
+# SCRUM-68, SCRUM-69, SCRUM-70
+# Cảnh báo y khoa nguy hiểm
+# =========================
 
+DANGEROUS_KEYWORDS = [
+    "khó thở cấp",
+    "khó thở nặng",
+    "thở gấp",
+    "đau ngực",
+    "tức ngực",
+    "lơ mơ",
+    "mất ý thức",
+    "co giật",
+    "nhồi máu",
+    "nhồi máu cơ tim",
+    "đột quỵ",
+    "liệt nửa người",
+    "sốt cao kéo dài",
+    "nôn ra máu",
+    "ho ra máu",
+    "đau đầu dữ dội",
+    "phát ban toàn thân",
+    "môi tím",
+    "tím tái",
+    "mất nước nặng"
+]
+
+
+def detect_dangerous_keywords(text, symptoms_vi=None):
+    """
+    SCRUM-69:
+    Kiểm tra từ khóa nguy hiểm trong mô tả bệnh án và triệu chứng đã nhận diện.
+    """
+    symptoms_vi = symptoms_vi or []
+
+    source_text = " ".join([
+        str(text or ""),
+        " ".join([str(s) for s in symptoms_vi])
+    ]).lower()
+
+    matched = []
+
+    for keyword in DANGEROUS_KEYWORDS:
+        if keyword.lower() in source_text:
+            matched.append(keyword)
+
+    return {
+        "has_danger": len(matched) > 0,
+        "danger_keywords": matched,
+        "danger_level": "HIGH" if matched else "NORMAL",
+        "warning_message": (
+            "Phát hiện dấu hiệu nguy hiểm. Người bệnh cần được thăm khám y tế sớm, "
+            "không tự ý dùng thuốc nếu có triệu chứng nặng."
+            if matched else ""
+        )
+    }
 @app.post("/api/extract-symptoms")
 def extract_symptoms_api():
     """
@@ -3411,7 +3467,11 @@ def extract_symptoms_api():
 
     dictionary = get_cached_symptom_dictionary()
     symptoms = extract_symptoms_from_medical_text(text)
-
+    # SCRUM-69
+    danger_info = detect_dangerous_keywords(
+        text,
+        [item["label_vi"] for item in symptoms]
+    )
     return jsonify({
         "success": True,
         "message": "Trích xuất triệu chứng thành công.",
@@ -3419,7 +3479,8 @@ def extract_symptoms_api():
         "total": len(symptoms),
         "symptoms": symptoms,
         "symptoms_vi": [item["label_vi"] for item in symptoms],
-        "symptoms_en": [item["label_en"] for item in symptoms]
+        "symptoms_en": [item["label_en"] for item in symptoms],
+        "danger_warning": danger_info
     }), 200
 
 
