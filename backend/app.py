@@ -116,7 +116,7 @@ MIN_TOPGAP = float(os.environ.get("MIN_TOPGAP", "0.12"))
 MIN_RELIABLE_SYMPTOMS = 2
 MAX_NOTES_LENGTH = 2000
 MIN_PASSWORD_LENGTH = 6
-ALLOWED_STATIC_FILES = {"index.html", "styles.css", "script.js"}
+ALLOWED_STATIC_FILES = {"index.html", "styles.css", "script.js", "vendor/chart.umd.min.js"}
 SCORE_LABEL = "Độ tương đồng" if metadata.get("model_type") == "json_symptom_search" else "Độ tin cậy"
 
 

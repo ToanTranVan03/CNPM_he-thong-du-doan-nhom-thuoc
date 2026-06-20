@@ -653,45 +653,94 @@ function setDashboardMessage(message, isError = false) {
   dashboardMessage.classList.toggle("is-error", isError);
 }
 
+// SCRUM-80: biểu đồ vẽ bằng Chart.js (vendor cục bộ frontend/vendor/chart.umd.min.js).
+let barsChart = null;
+let donutChart = null;
+
+function cssVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+// Plugin nhỏ: vẽ % Đồng ý ở tâm donut.
+const donutCenterText = {
+  id: "donutCenterText",
+  afterDraw(chart) {
+    const txt = chart.config.options.plugins?.centerText?.text;
+    if (!txt) return;
+    const { ctx, chartArea } = chart;
+    const x = (chartArea.left + chartArea.right) / 2;
+    const y = (chartArea.top + chartArea.bottom) / 2;
+    ctx.save();
+    ctx.font = "700 26px Inter, sans-serif";
+    ctx.fillStyle = cssVar("--text", "#0e1b2b");
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(txt, x, y);
+    ctx.restore();
+  },
+};
+
 function renderDashboard(stats) {
   document.getElementById("stat-total-predictions").textContent = (stats.total_predictions || 0).toLocaleString("vi-VN");
   document.getElementById("stat-agree-rate").textContent =
     stats.agree_rate === null || stats.agree_rate === undefined ? "—" : `${stats.agree_rate}%`;
   document.getElementById("stat-feedback-total").textContent = (stats.feedback_total || 0).toLocaleString("vi-VN");
 
-  // Biểu đồ cột: ca dự đoán theo ngày.
-  const bars = document.getElementById("dashboard-bars");
-  const barsEmpty = document.getElementById("dashboard-bars-empty");
+  // Biểu đồ cột: ca dự đoán theo ngày (Chart.js).
   const series = stats.predictions_over_time || [];
-  bars.innerHTML = "";
-  barsEmpty.classList.toggle("is-hidden", series.length > 0);
-  const maxCount = series.reduce((m, d) => Math.max(m, d.count || 0), 0) || 1;
-  series.forEach((point) => {
-    const col = document.createElement("div");
-    col.className = "bar-col";
-    col.title = `${point.date}: ${point.count} ca`;
-    const fill = document.createElement("span");
-    fill.className = "bar-fill";
-    fill.style.height = `${Math.round(((point.count || 0) / maxCount) * 100)}%`;
-    const label = document.createElement("span");
-    label.className = "bar-label";
-    label.textContent = (point.date || "").slice(5); // MM-DD
-    col.append(fill, label);
-    bars.appendChild(col);
+  document.getElementById("dashboard-bars-empty").classList.toggle("is-hidden", series.length > 0);
+  const barsCanvas = document.getElementById("dashboard-bars-canvas");
+  if (barsChart) barsChart.destroy();
+  barsChart = new Chart(barsCanvas, {
+    type: "bar",
+    data: {
+      labels: series.map((p) => (p.date || "").slice(5)),
+      datasets: [{
+        label: "Số ca",
+        data: series.map((p) => p.count || 0),
+        backgroundColor: cssVar("--primary", "#0b5fb5"),
+        borderRadius: 6,
+        maxBarThickness: 48,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+    },
   });
 
-  // Donut: Đồng ý vs Không đồng ý (conic-gradient thuần CSS).
+  // Donut: Đồng ý vs Không đồng ý (Chart.js doughnut).
   const agree = stats.agree_count || 0;
   const disagree = stats.disagree_count || 0;
   const total = agree + disagree;
-  const donut = document.getElementById("dashboard-donut");
   const agreePct = total ? Math.round((agree / total) * 100) : 0;
-  donut.style.background = total
-    ? `conic-gradient(var(--success, #16a34a) 0 ${agreePct}%, var(--danger, #dc2626) ${agreePct}% 100%)`
-    : "conic-gradient(var(--border, #d1d5db) 0 100%)";
-  document.getElementById("donut-center").textContent = total ? `${agreePct}%` : "—";
-  document.getElementById("legend-agree").textContent = agree;
-  document.getElementById("legend-disagree").textContent = disagree;
+  document.getElementById("dashboard-donut-empty").classList.toggle("is-hidden", total > 0);
+  const donutCanvas = document.getElementById("dashboard-donut-canvas");
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(donutCanvas, {
+    type: "doughnut",
+    data: {
+      labels: ["Đồng ý", "Không đồng ý"],
+      datasets: [{
+        data: total ? [agree, disagree] : [0, 0],
+        backgroundColor: [cssVar("--success", "#16a34a"), cssVar("--danger", "#dc2626")],
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "62%",
+      plugins: {
+        legend: { position: "bottom" },
+        centerText: { text: total ? `${agreePct}%` : "" },
+      },
+    },
+    plugins: [donutCenterText],
+  });
 
   // Top nhóm thuốc.
   const topGroups = document.getElementById("dashboard-top-groups");

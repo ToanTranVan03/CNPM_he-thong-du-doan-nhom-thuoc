@@ -460,20 +460,13 @@
           <div class="dashboard-grid">
             <article class="detail-card">
               <h2>Ca dự đoán theo ngày</h2>
-              <div class="bar-chart" id="dashboard-bars" aria-live="polite"></div>
+              <div class="chart-box"><canvas id="dashboard-bars-canvas" aria-label="Biểu đồ ca dự đoán theo ngày" role="img"></canvas></div>
               <p class="muted-text dashboard-empty is-hidden" id="dashboard-bars-empty">Chưa có dữ liệu ca dự đoán trong khoảng thời gian này.</p>
             </article>
             <article class="detail-card">
               <h2>Đồng ý vs Không đồng ý</h2>
-              <div class="donut-wrap">
-                <div class="donut" id="dashboard-donut" role="img" aria-label="Tỷ lệ đồng ý và không đồng ý">
-                  <span class="donut-center" id="donut-center">—</span>
-                </div>
-                <ul class="donut-legend">
-                  <li><span class="legend-swatch swatch-agree"></span>Đồng ý <strong id="legend-agree">0</strong></li>
-                  <li><span class="legend-swatch swatch-disagree"></span>Không đồng ý <strong id="legend-disagree">0</strong></li>
-                </ul>
-              </div>
+              <div class="chart-box"><canvas id="dashboard-donut-canvas" aria-label="Tỷ lệ đồng ý và không đồng ý" role="img"></canvas></div>
+              <p class="muted-text dashboard-empty is-hidden" id="dashboard-donut-empty">Chưa có lượt đánh giá nào.</p>
             </article>
             <article class="detail-card">
               <h2>Nhóm thuốc được gợi ý nhiều nhất</h2>
@@ -558,6 +551,7 @@
       </button>
     </nav>
 
+    <script src="vendor/chart.umd.min.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

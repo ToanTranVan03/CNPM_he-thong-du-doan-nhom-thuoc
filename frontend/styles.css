@@ -1580,90 +1580,10 @@ input:focus {
   margin-top: 8px;
 }
 
-.bar-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  height: 180px;
-  padding-top: 12px;
-  overflow-x: auto;
-}
-.bar-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  min-width: 28px;
-  flex: 1 0 auto;
-  height: 100%;
-}
-.bar-fill {
-  width: 70%;
-  min-height: 4px;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  background: linear-gradient(180deg, var(--primary), var(--primary-hover));
-}
-.bar-label {
-  font-size: 0.7rem;
-  color: var(--text-subtle);
-  white-space: nowrap;
-}
-
-.donut-wrap {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-.donut {
+/* Container canvas cho Chart.js (cần chiều cao cố định vì maintainAspectRatio:false). */
+.chart-box {
   position: relative;
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: conic-gradient(var(--surface-container) 0 100%);
-}
-.donut::after {
-  content: "";
-  position: absolute;
-  width: 86px;
-  height: 86px;
-  border-radius: 50%;
-  background: var(--surface-lowest);
-}
-.donut-center {
-  position: relative;
-  z-index: 1;
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: var(--text);
-}
-.donut-legend {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-.donut-legend li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-muted);
-}
-.legend-swatch {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  display: inline-block;
-}
-.swatch-agree {
-  background: var(--success);
-}
-.swatch-disagree {
-  background: var(--danger);
+  height: 240px;
 }
 .dashboard-empty {
   margin-top: 12px;
