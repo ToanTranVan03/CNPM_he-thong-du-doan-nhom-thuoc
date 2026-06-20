@@ -1502,3 +1502,169 @@ input:focus {
 .secondary-button:disabled:hover {
   background: var(--surface-lowest);
 }
+
+/* ── US19: DASHBOARD ADMIN ────────────────────────────────────────────────── */
+/* Tiện ích ẩn dùng chung. File này vốn chỉ định nghĩa .is-hidden riêng cho vài thành
+   phần; bổ sung quy tắc chung để class hoạt động cho nav admin-only và các phần tử
+   mới của Dashboard (giữ !important để thắng các selector cụ thể hơn). */
+.is-hidden {
+  display: none !important;
+}
+
+.dashboard-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dashboard-filter input[type="date"] {
+  padding: 8px 10px;
+  border: 1px solid var(--surface-container);
+  border-radius: var(--radius-md);
+  background: var(--surface-lowest);
+  color: var(--text);
+  font: inherit;
+}
+
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--surface-container);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.stat-card-accent {
+  background: var(--success-soft);
+  border-color: transparent;
+}
+.stat-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 26px;
+}
+.stat-card-accent .stat-icon {
+  background: var(--success);
+  color: #fff;
+}
+.stat-label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.stat-value {
+  display: block;
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 180px;
+  padding-top: 12px;
+  overflow-x: auto;
+}
+.bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 28px;
+  flex: 1 0 auto;
+  height: 100%;
+}
+.bar-fill {
+  width: 70%;
+  min-height: 4px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: linear-gradient(180deg, var(--primary), var(--primary-hover));
+}
+.bar-label {
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+  white-space: nowrap;
+}
+
+.donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.donut {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--surface-container) 0 100%);
+}
+.donut::after {
+  content: "";
+  position: absolute;
+  width: 86px;
+  height: 86px;
+  border-radius: 50%;
+  background: var(--surface-lowest);
+}
+.donut-center {
+  position: relative;
+  z-index: 1;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  display: inline-block;
+}
+.swatch-agree {
+  background: var(--success);
+}
+.swatch-disagree {
+  background: var(--danger);
+}
+.dashboard-empty {
+  margin-top: 12px;
+}

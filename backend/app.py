@@ -21,6 +21,7 @@ from translations import (
     disease_name_vi,
     translate_items,
 )
+import stats_source  # US19: lớp ĐỌC dữ liệu cho Dashboard thống kê (adapter, chỉ đọc)
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -33,6 +34,13 @@ DATA_SOURCE = Path(os.environ.get("DATA_SOURCE", PROJECT_ROOT / "data" / "train_
 DATA_ARCHIVE = Path(os.environ.get("DATA_ARCHIVE", DATA_SOURCE))
 GUIDANCE_PATH = Path(os.environ.get("GUIDANCE_PATH", PROJECT_ROOT / "data" / "disease_guidance.json"))
 USERS_PATH = Path(os.environ.get("USERS_PATH", PROJECT_ROOT / "data" / "users.json"))
+# US19: danh sách email được cấp quyền Admin (phân tách bằng dấu phẩy). Một user là admin nếu
+# email nằm trong danh sách này HOẶC bản ghi user có "role": "admin".
+ADMIN_EMAILS = frozenset(
+    re.sub(r"\s+", "", e).lower()
+    for e in os.environ.get("ADMIN_EMAILS", "").split(",")
+    if e.strip()
+)
 # Vòng 6: mapping nhóm -> 2-3 hoạt chất tiêu biểu (đã curate, làm sạch) cho output trọng tâm.
 DRUG_REPRESENTATIVES_PATH = Path(
     os.environ.get("DRUG_REPRESENTATIVES_PATH", PROJECT_ROOT / "data" / "drug_group_representatives.json")
@@ -166,6 +174,7 @@ def user_public_view(user: dict) -> dict:
         "name": user.get("name", ""),
         "email": user.get("email", ""),
         "created_at": user.get("created_at"),
+        "role": user_role(user),
     }
 
 
@@ -202,6 +211,36 @@ def current_user_from_request(store: dict) -> dict | None:
             return None
         return user
     return None
+
+
+# ── US19: PHÂN QUYỀN ADMIN ────────────────────────────────────────────────────
+def user_role(user: dict | None) -> str:
+    """Vai trò của user: 'admin' nếu role lưu trong store là admin, hoặc email thuộc ADMIN_EMAILS."""
+    if not user:
+        return "user"
+    if str(user.get("role", "")).lower() == "admin":
+        return "admin"
+    if normalize_email(user.get("email", "")) in ADMIN_EMAILS:
+        return "admin"
+    return "user"
+
+
+def is_admin(user: dict | None) -> bool:
+    return user_role(user) == "admin"
+
+
+def current_admin_from_request(store: dict) -> tuple[dict | None, tuple | None]:
+    """Trả (user, None) nếu là admin hợp lệ; ngược lại (None, (json, status)) để route trả thẳng.
+
+    - Chưa đăng nhập / token sai/hết hạn -> 401.
+    - Đã đăng nhập nhưng không phải admin -> 403.
+    """
+    user = current_user_from_request(store)
+    if not user:
+        return None, (jsonify({"error": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."}), 401)
+    if not is_admin(user):
+        return None, (jsonify({"error": "Bạn không có quyền truy cập trang quản trị."}), 403)
+    return user, None
 
 DRUG_GROUP_GUIDANCE = {
     "thuốc điều trị sốt rét": {
@@ -2911,6 +2950,78 @@ def reset_password():
 @app.get("/api/symptoms")
 def symptoms():
     return jsonify({"symptoms": readable_symptoms})
+
+
+def _valid_date_param(value: str | None) -> str | None:
+    """Chấp nhận 'YYYY-MM-DD'; sai định dạng -> None (bỏ lọc thay vì báo lỗi)."""
+    if not value:
+        return None
+    value = value.strip()
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return None
+    return value
+
+
+@app.get("/api/admin/stats")
+def admin_stats():
+    """US19: Dashboard tổng quan cho Admin — số ca dự đoán + tỷ lệ 'Đồng ý'.
+
+    CHỈ ĐỌC qua stats_source (adapter). Hỗ trợ lọc ?from=YYYY-MM-DD&to=YYYY-MM-DD.
+    """
+    store = load_user_store()
+    _admin, error = current_admin_from_request(store)
+    if error:
+        return error
+
+    date_from = _valid_date_param(request.args.get("from"))
+    date_to = _valid_date_param(request.args.get("to"))
+
+    predictions = stats_source.read_predictions(date_from, date_to)
+    feedback = stats_source.read_feedback(date_from, date_to)
+
+    # ── Số ca dự đoán + phân loại theo trạng thái ──
+    by_status = {status: 0 for status in stats_source.PREDICTION_STATUSES}
+    over_time: dict[str, int] = {}
+    group_counter: Counter = Counter()
+    for record in predictions:
+        status = record.get("status")
+        if status in by_status:
+            by_status[status] += 1
+        day = stats_source.record_day(record)
+        if day:
+            over_time[day] = over_time.get(day, 0) + 1
+        group = record.get("predicted_group")
+        if isinstance(group, str) and group.strip():
+            group_counter[group.strip()] += 1
+
+    predictions_over_time = [
+        {"date": day, "count": over_time[day]} for day in sorted(over_time)
+    ]
+    top_groups = [
+        {"group": group, "count": count} for group, count in group_counter.most_common(5)
+    ]
+
+    # ── Tỷ lệ đánh giá 'Đồng ý' ──
+    agree_count = sum(1 for r in feedback if str(r.get("verdict", "")).upper() == "APPROVE")
+    disagree_count = sum(1 for r in feedback if str(r.get("verdict", "")).upper() == "REJECT")
+    feedback_total = agree_count + disagree_count
+    agree_rate = round(agree_count / feedback_total * 100, 1) if feedback_total else None
+
+    return jsonify(
+        {
+            "range": {"from": date_from, "to": date_to},
+            "total_predictions": len(predictions),
+            "by_status": by_status,
+            "predictions_over_time": predictions_over_time,
+            "top_groups": top_groups,
+            "feedback_total": feedback_total,
+            "agree_count": agree_count,
+            "disagree_count": disagree_count,
+            "agree_rate": agree_rate,
+        }
+    )
 
 
 @app.post("/api/predict")

@@ -151,6 +151,10 @@
             <span class="material-symbols-outlined" aria-hidden="true">history</span>
             <span>Lịch Sử Dự Đoán</span>
           </button>
+          <button class="nav-link admin-only is-hidden" type="button" data-page="dashboard">
+            <span class="material-symbols-outlined" aria-hidden="true">monitoring</span>
+            <span>Dashboard</span>
+          </button>
           <button class="nav-link" type="button" data-page="result">
             <span class="material-symbols-outlined" aria-hidden="true">medical_services</span>
             <span>Quản Lý Thuốc</span>
@@ -389,6 +393,80 @@
               <span class="material-symbols-outlined" aria-hidden="true">add</span>
               Tạo dự đoán
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-dashboard" aria-labelledby="dashboard-title">
+        <div class="container">
+          <div class="history-head">
+            <div>
+              <p class="eyebrow">Quản trị hệ thống</p>
+              <h1 id="dashboard-title">Dashboard tổng quan</h1>
+              <p class="lead">Số lượng ca dự đoán và tỷ lệ đánh giá "Đồng ý" để theo dõi hiệu quả hệ thống.</p>
+            </div>
+            <div class="history-actions dashboard-filter">
+              <label class="sr-only" for="dashboard-from">Từ ngày</label>
+              <input id="dashboard-from" type="date" aria-label="Từ ngày" />
+              <label class="sr-only" for="dashboard-to">Đến ngày</label>
+              <input id="dashboard-to" type="date" aria-label="Đến ngày" />
+              <button class="secondary-button compact" type="button" id="dashboard-refresh">
+                <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                Cập nhật
+              </button>
+            </div>
+          </div>
+
+          <p class="form-message" id="dashboard-message" role="status"></p>
+
+          <div class="stat-cards" id="dashboard-cards">
+            <article class="stat-card">
+              <span class="stat-icon material-symbols-outlined" aria-hidden="true">analytics</span>
+              <div>
+                <span class="stat-label">Tổng số ca dự đoán</span>
+                <strong class="stat-value" id="stat-total-predictions">—</strong>
+              </div>
+            </article>
+            <article class="stat-card stat-card-accent">
+              <span class="stat-icon material-symbols-outlined" aria-hidden="true">thumb_up</span>
+              <div>
+                <span class="stat-label">Tỷ lệ "Đồng ý"</span>
+                <strong class="stat-value" id="stat-agree-rate">—</strong>
+              </div>
+            </article>
+            <article class="stat-card">
+              <span class="stat-icon material-symbols-outlined" aria-hidden="true">reviews</span>
+              <div>
+                <span class="stat-label">Tổng lượt đánh giá</span>
+                <strong class="stat-value" id="stat-feedback-total">—</strong>
+              </div>
+            </article>
+          </div>
+
+          <div class="dashboard-grid">
+            <article class="detail-card">
+              <h2>Ca dự đoán theo ngày</h2>
+              <div class="bar-chart" id="dashboard-bars" aria-live="polite"></div>
+              <p class="muted-text dashboard-empty is-hidden" id="dashboard-bars-empty">Chưa có dữ liệu ca dự đoán trong khoảng thời gian này.</p>
+            </article>
+            <article class="detail-card">
+              <h2>Đồng ý vs Không đồng ý</h2>
+              <div class="donut-wrap">
+                <div class="donut" id="dashboard-donut" role="img" aria-label="Tỷ lệ đồng ý và không đồng ý">
+                  <span class="donut-center" id="donut-center">—</span>
+                </div>
+                <ul class="donut-legend">
+                  <li><span class="legend-swatch swatch-agree"></span>Đồng ý <strong id="legend-agree">0</strong></li>
+                  <li><span class="legend-swatch swatch-disagree"></span>Không đồng ý <strong id="legend-disagree">0</strong></li>
+                </ul>
+              </div>
+            </article>
+            <article class="detail-card">
+              <h2>Nhóm thuốc được gợi ý nhiều nhất</h2>
+              <ul class="top-predictions" id="dashboard-top-groups">
+                <li class="muted-text">Chưa có dữ liệu.</li>
+              </ul>
+            </article>
           </div>
         </div>
       </section>

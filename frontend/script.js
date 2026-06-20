@@ -125,6 +125,7 @@ function updateUserUi() {
   userEmail.textContent = displayEmail;
   userAvatar.textContent = initialsForName(displayName, displayEmail);
   profileSummary.textContent = `${displayName} (${displayEmail}) đang đăng nhập vào hệ thống hỗ trợ nhập triệu chứng tiếng Việt và gợi ý nhóm thuốc khi dữ liệu đủ tin cậy.`;
+  updateAdminUi();
 }
 
 function showAuthenticatedApp() {
@@ -182,7 +183,24 @@ async function initializeAuth() {
   }
 }
 
+function isAdminUser() {
+  return currentUser?.role === "admin";
+}
+
+function updateAdminUi() {
+  // US19: chỉ hiển thị mục Dashboard khi user có quyền admin.
+  const admin = isAdminUser();
+  document.querySelectorAll(".admin-only").forEach((el) => {
+    el.classList.toggle("is-hidden", !admin);
+  });
+}
+
 function showPage(pageName) {
+  // US19: chặn truy cập Dashboard nếu không phải admin (kể cả khi gọi trực tiếp).
+  if (pageName === "dashboard" && !isAdminUser()) {
+    pageName = "home";
+  }
+
   pages.forEach((page) => {
     page.classList.toggle("is-active", page.id === `page-${pageName}`);
   });
@@ -190,6 +208,10 @@ function showPage(pageName) {
   navButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.page === pageName);
   });
+
+  if (pageName === "dashboard") {
+    loadDashboard();
+  }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -614,6 +636,123 @@ async function loadSymptoms() {
     symptomList.innerHTML = '<p class="muted-text">Không kết nối được API. Hãy chạy bằng lệnh python backend/app.py.</p>';
     setMessage(error.message, true);
   }
+}
+
+// ── US19: DASHBOARD ADMIN ────────────────────────────────────────────────────
+const dashboardMessage = document.getElementById("dashboard-message");
+const dashboardFrom = document.getElementById("dashboard-from");
+const dashboardTo = document.getElementById("dashboard-to");
+const dashboardRefresh = document.getElementById("dashboard-refresh");
+let dashboardLoading = false;
+
+function setDashboardMessage(message, isError = false) {
+  if (!dashboardMessage) return;
+  dashboardMessage.textContent = message || "";
+  dashboardMessage.classList.toggle("is-error", isError);
+}
+
+function renderDashboard(stats) {
+  document.getElementById("stat-total-predictions").textContent = (stats.total_predictions || 0).toLocaleString("vi-VN");
+  document.getElementById("stat-agree-rate").textContent =
+    stats.agree_rate === null || stats.agree_rate === undefined ? "—" : `${stats.agree_rate}%`;
+  document.getElementById("stat-feedback-total").textContent = (stats.feedback_total || 0).toLocaleString("vi-VN");
+
+  // Biểu đồ cột: ca dự đoán theo ngày.
+  const bars = document.getElementById("dashboard-bars");
+  const barsEmpty = document.getElementById("dashboard-bars-empty");
+  const series = stats.predictions_over_time || [];
+  bars.innerHTML = "";
+  barsEmpty.classList.toggle("is-hidden", series.length > 0);
+  const maxCount = series.reduce((m, d) => Math.max(m, d.count || 0), 0) || 1;
+  series.forEach((point) => {
+    const col = document.createElement("div");
+    col.className = "bar-col";
+    col.title = `${point.date}: ${point.count} ca`;
+    const fill = document.createElement("span");
+    fill.className = "bar-fill";
+    fill.style.height = `${Math.round(((point.count || 0) / maxCount) * 100)}%`;
+    const label = document.createElement("span");
+    label.className = "bar-label";
+    label.textContent = (point.date || "").slice(5); // MM-DD
+    col.append(fill, label);
+    bars.appendChild(col);
+  });
+
+  // Donut: Đồng ý vs Không đồng ý (conic-gradient thuần CSS).
+  const agree = stats.agree_count || 0;
+  const disagree = stats.disagree_count || 0;
+  const total = agree + disagree;
+  const donut = document.getElementById("dashboard-donut");
+  const agreePct = total ? Math.round((agree / total) * 100) : 0;
+  donut.style.background = total
+    ? `conic-gradient(var(--success, #16a34a) 0 ${agreePct}%, var(--danger, #dc2626) ${agreePct}% 100%)`
+    : "conic-gradient(var(--border, #d1d5db) 0 100%)";
+  document.getElementById("donut-center").textContent = total ? `${agreePct}%` : "—";
+  document.getElementById("legend-agree").textContent = agree;
+  document.getElementById("legend-disagree").textContent = disagree;
+
+  // Top nhóm thuốc.
+  const topGroups = document.getElementById("dashboard-top-groups");
+  topGroups.innerHTML = "";
+  const groups = stats.top_groups || [];
+  if (groups.length === 0) {
+    const li = document.createElement("li");
+    li.className = "muted-text";
+    li.textContent = "Chưa có dữ liệu.";
+    topGroups.appendChild(li);
+  } else {
+    const maxGroup = groups.reduce((m, g) => Math.max(m, g.count || 0), 0) || 1;
+    groups.forEach((g) => {
+      const li = document.createElement("li");
+      li.className = "prediction-row";
+      const name = document.createElement("span");
+      name.className = "prediction-name";
+      name.textContent = g.group;
+      const value = document.createElement("span");
+      value.className = "prediction-value";
+      value.textContent = g.count;
+      const track = document.createElement("span");
+      track.className = "prediction-track";
+      const fill = document.createElement("span");
+      fill.className = "prediction-fill";
+      fill.style.width = `${Math.round(((g.count || 0) / maxGroup) * 100)}%`;
+      track.appendChild(fill);
+      li.append(name, value, track);
+      topGroups.appendChild(li);
+    });
+  }
+}
+
+async function loadDashboard() {
+  if (!isAdminUser() || dashboardLoading) return;
+  dashboardLoading = true;
+  setDashboardMessage("Đang tải số liệu thống kê...");
+  const params = new URLSearchParams();
+  if (dashboardFrom?.value) params.set("from", dashboardFrom.value);
+  if (dashboardTo?.value) params.set("to", dashboardTo.value);
+  const query = params.toString();
+  try {
+    const response = await fetch(`/api/admin/stats${query ? `?${query}` : ""}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Không tải được số liệu thống kê.");
+    }
+    renderDashboard(data);
+    setDashboardMessage(data.total_predictions === 0 ? "Chưa có ca dự đoán nào được ghi nhận." : "");
+  } catch (error) {
+    setDashboardMessage(formatError(error), true);
+  } finally {
+    dashboardLoading = false;
+  }
+}
+
+if (dashboardRefresh) {
+  dashboardRefresh.addEventListener("click", () => {
+    dashboardLoading = false;
+    loadDashboard();
+  });
 }
 
 authSwitchButtons.forEach((button) => {
