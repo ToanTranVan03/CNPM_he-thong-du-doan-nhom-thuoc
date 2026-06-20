@@ -9,6 +9,7 @@ import unicodedata
 import zipfile
 import jwt
 import datetime
+from xml.sax.saxutils import escape as xml_escape
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from itertools import permutations
@@ -21,6 +22,14 @@ from flask_cors import CORS
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.table import Table, TableStyleInfo
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table as PdfTable, TableStyle as PdfTableStyle
 from text_preprocessing import remove_vietnamese_stop_words
 from werkzeug.security import check_password_hash, generate_password_hash
 from translations import (
@@ -3135,6 +3144,46 @@ def excel_safe_text(value):
     return f"'{text}" if text.startswith(('=', '+', '-', '@')) else text
 
 
+def pdf_text(value):
+    """Escape nội dung động trước khi đưa vào ReportLab Paragraph."""
+    return xml_escape("" if value is None else str(value)).replace("\n", "<br/>")
+
+
+def register_pdf_fonts():
+    """Đăng ký font Unicode để tiếng Việt hiển thị đúng trong PDF."""
+    regular_name = "PharmaPredictPDF"
+    bold_name = "PharmaPredictPDF-Bold"
+    if regular_name in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFontFamily(
+            regular_name,
+            normal=regular_name,
+            bold=bold_name,
+            italic=regular_name,
+            boldItalic=bold_name,
+        )
+        return regular_name, bold_name
+
+    windows_fonts = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+    candidates = [
+        (windows_fonts / "arial.ttf", windows_fonts / "arialbd.ttf"),
+        (Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"), Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")),
+    ]
+    for regular_path, bold_path in candidates:
+        if regular_path.exists():
+            pdfmetrics.registerFont(TTFont(regular_name, str(regular_path)))
+            pdfmetrics.registerFont(TTFont(bold_name, str(bold_path if bold_path.exists() else regular_path)))
+            pdfmetrics.registerFontFamily(
+                regular_name,
+                normal=regular_name,
+                bold=bold_name,
+                italic=regular_name,
+                boldItalic=bold_name,
+            )
+            return regular_name, bold_name
+
+    raise RuntimeError("Không tìm thấy font Unicode để tạo báo cáo PDF.")
+
+
 @app.get('/api/prediction-history/export')
 def export_prediction_history():
     email = authenticated_email()
@@ -3316,6 +3365,192 @@ def export_prediction_history():
         as_attachment=True,
         download_name=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.get('/api/prediction-history/export/pdf')
+def export_prediction_history_pdf():
+    email = authenticated_email()
+    if not email:
+        return jsonify({"error": "Chưa đăng nhập hoặc token không hợp lệ."}), 401
+
+    rows = (
+        LichSuDuDoan.query
+        .filter_by(user_email=email)
+        .order_by(LichSuDuDoan.ngay_tao.desc(), LichSuDuDoan.id.desc())
+        .all()
+    )
+    if not rows:
+        return jsonify({"error": "Chưa có lịch sử dự đoán để tạo báo cáo."}), 404
+
+    try:
+        regular_font, bold_font = register_pdf_fonts()
+        output = io.BytesIO()
+        document = SimpleDocTemplate(
+            output,
+            pagesize=A4,
+            rightMargin=16 * mm,
+            leftMargin=16 * mm,
+            topMargin=18 * mm,
+            bottomMargin=18 * mm,
+            title="Báo cáo lịch sử dự đoán",
+            author="PharmaPredict",
+        )
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            "ReportTitle",
+            parent=styles["Title"],
+            fontName=bold_font,
+            fontSize=18,
+            leading=23,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor("#17365D"),
+            spaceAfter=5 * mm,
+        )
+        meta_style = ParagraphStyle(
+            "ReportMeta",
+            parent=styles["Normal"],
+            fontName=regular_font,
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor("#475569"),
+        )
+        heading_style = ParagraphStyle(
+            "RecordHeading",
+            parent=styles["Heading2"],
+            fontName=bold_font,
+            fontSize=11,
+            leading=15,
+            textColor=colors.white,
+            spaceAfter=0,
+        )
+        label_style = ParagraphStyle(
+            "RecordLabel",
+            parent=styles["Normal"],
+            fontName=bold_font,
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor("#334155"),
+        )
+        body_style = ParagraphStyle(
+            "RecordBody",
+            parent=styles["Normal"],
+            fontName=regular_font,
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor("#1F2937"),
+        )
+        warning_style = ParagraphStyle(
+            "RecordWarning",
+            parent=body_style,
+            textColor=colors.HexColor("#9C0006"),
+        )
+
+        story = [
+            Paragraph("BÁO CÁO LỊCH SỬ DỰ ĐOÁN", title_style),
+            PdfTable(
+                [[
+                    Paragraph(f"<b>Người dùng:</b> {pdf_text(email)}", meta_style),
+                    Paragraph(f"<b>Thời điểm xuất:</b> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}", meta_style),
+                    Paragraph(f"<b>Số bản ghi:</b> {len(rows)}", meta_style),
+                ]],
+                colWidths=[70 * mm, 70 * mm, 35 * mm],
+                style=PdfTableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#EAF2F8")),
+                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#B8CCE4")),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D6E2EA")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]),
+            ),
+            Spacer(1, 7 * mm),
+        ]
+
+        for index, row in enumerate(rows, start=1):
+            input_data = row.input_benh_an or {}
+            output_data = row.output_ket_qua or {}
+            prediction = (
+                output_data.get("display_title")
+                or output_data.get("disease_vi")
+                or output_data.get("disease")
+                or "Chưa có kết quả"
+            )
+            matched = output_data.get("matched_symptoms_vi") or output_data.get("matched_symptom_labels") or []
+            confidence = output_data.get("confidence")
+            confidence_text = f"{confidence * 100:.2f}%" if isinstance(confidence, (int, float)) else "Không áp dụng"
+            if output_data.get("score_type") == "emergency":
+                status = "Cần hỗ trợ y tế khẩn cấp"
+                heading_color = "#C00000"
+            elif output_data.get("needs_more_input"):
+                status = "Cần bổ sung thông tin"
+                heading_color = "#BF9000"
+            else:
+                status = "Đã dự đoán"
+                heading_color = "#2F75B5"
+
+            heading = PdfTable(
+                [[Paragraph(
+                    f"#{index}  •  {row.ngay_tao.strftime('%d/%m/%Y %H:%M:%S') if row.ngay_tao else 'Không rõ thời gian'}  •  {pdf_text(status)}",
+                    heading_style,
+                )]],
+                colWidths=[175 * mm],
+                style=PdfTableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(heading_color)),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]),
+            )
+            details = [
+                [Paragraph("Bệnh án", label_style), Paragraph(pdf_text(input_data.get("notes") or "Không có mô tả"), body_style)],
+                [Paragraph("Kết quả", label_style), Paragraph(pdf_text(prediction), body_style)],
+                [Paragraph("Triệu chứng nhận diện", label_style), Paragraph(pdf_text(", ".join(map(str, matched)) or "Không có"), body_style)],
+                [Paragraph("Độ tin cậy", label_style), Paragraph(confidence_text, body_style)],
+                [
+                    Paragraph("Cảnh báo", label_style),
+                    Paragraph(pdf_text(output_data.get("warning") or output_data.get("error") or "Không có"), warning_style),
+                ],
+            ]
+            detail_table = PdfTable(
+                details,
+                colWidths=[40 * mm, 135 * mm],
+                repeatRows=0,
+                style=PdfTableStyle([
+                    ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F1F5F9")),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D6E2EA")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]),
+            )
+            story.extend([heading, detail_table, Spacer(1, 5 * mm)])
+
+        def draw_page(canvas, doc):
+            canvas.saveState()
+            canvas.setFont(regular_font, 8)
+            canvas.setFillColor(colors.HexColor("#64748B"))
+            canvas.drawString(16 * mm, 10 * mm, "PharmaPredict • Báo cáo tham khảo, không thay thế chẩn đoán y tế")
+            canvas.drawRightString(194 * mm, 10 * mm, f"Trang {doc.page}")
+            canvas.restoreState()
+
+        document.build(story, onFirstPage=draw_page, onLaterPages=draw_page)
+        output.seek(0)
+    except Exception:
+        app.logger.exception("Không thể tạo báo cáo PDF")
+        return jsonify({"error": "Không thể tạo báo cáo PDF."}), 500
+
+    filename = f"bao_cao_lich_su_du_doan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/pdf",
     )
 
 

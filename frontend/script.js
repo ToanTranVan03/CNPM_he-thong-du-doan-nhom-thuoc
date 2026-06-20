@@ -32,6 +32,7 @@ const formMessage = document.getElementById("form-message");
 const historySearch = document.getElementById("history-search");
 const historyList = document.getElementById("history-list");
 const exportHistoryButton = document.getElementById("export-history");
+const downloadHistoryReportButton = document.getElementById("download-history-report");
 const resultTitle = document.getElementById("result-title");
 const resultSubtitle = document.getElementById("result-subtitle");
 const scoreLabel = document.getElementById("score-label");
@@ -171,6 +172,40 @@ async function exportPredictionHistory() {
     window.alert(formatError(error));
   } finally {
     exportHistoryButton.disabled = false;
+  }
+}
+
+async function downloadPredictionHistoryReport() {
+  if (!authToken || !downloadHistoryReportButton) {
+    return;
+  }
+
+  downloadHistoryReportButton.disabled = true;
+  try {
+    const response = await fetch("/api/prediction-history/export/pdf", {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Không tạo được báo cáo PDF.");
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = filenameMatch?.[1] || "bao_cao_lich_su_du_doan.pdf";
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    window.alert(formatError(error));
+  } finally {
+    downloadHistoryReportButton.disabled = false;
   }
 }
 
@@ -1067,6 +1102,10 @@ historySearch.addEventListener("input", (event) => {
 
 exportHistoryButton?.addEventListener("click", () => {
   void exportPredictionHistory();
+});
+
+downloadHistoryReportButton?.addEventListener("click", () => {
+  void downloadPredictionHistoryReport();
 });
 
 saveResultButton.addEventListener("click", () => {
