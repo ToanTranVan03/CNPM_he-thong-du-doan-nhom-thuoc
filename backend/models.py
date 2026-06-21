@@ -140,6 +140,30 @@ class DanhGiaDuDoan(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
+# =========================================================
+# 7. BẢNG LƯU PHẢN HỒI NGƯỜI DÙNG VỀ KẾT QUẢ DỰ ĐOÁN
+# =========================================================
+class Feedback(db.Model):
+    """Phản hồi Đồng ý / Không đồng ý của người dùng về kết quả dự đoán nhóm thuốc."""
+    __tablename__ = 'feedback'
+
+    id = db.Column(db.Integer, primary_key=True)
+    prediction_id = db.Column(db.Integer, nullable=True)  # ID của dự đoán mà người dùng đánh giá
+    user_id = db.Column(db.Integer, nullable=True)  # ID của người dùng
+    feedback_type = db.Column(db.String(20), nullable=False)  # 'agree' hoặc 'disagree'
+    comment = db.Column(db.Text, nullable=True)  # Ghi chú bổ sung từ người dùng
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'prediction_id': self.prediction_id,
+            'user_id': self.user_id,
+            'feedback_type': self.feedback_type,
+            'comment': self.comment,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
 def json_loads(s: str):
     try:
         return __import__('json').loads(s)
