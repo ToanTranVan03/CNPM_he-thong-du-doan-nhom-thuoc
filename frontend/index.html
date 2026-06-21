@@ -159,6 +159,10 @@
             <span class="material-symbols-outlined" aria-hidden="true">menu_book</span>
             <span>Từ Điển Triệu Chứng</span>
           </button>
+          <button class="nav-link admin-only is-hidden" type="button" data-page="samples">
+            <span class="material-symbols-outlined" aria-hidden="true">description</span>
+            <span>Bệnh Án Mẫu</span>
+          </button>
           <button class="nav-link" type="button" data-page="result">
             <span class="material-symbols-outlined" aria-hidden="true">medical_services</span>
             <span>Quản Lý Thuốc</span>
@@ -259,6 +263,13 @@
                 <li>Bổ sung bệnh nền, dị ứng thuốc, thuốc đang dùng.</li>
                 <li>Thêm xét nghiệm liên quan như CRP, bạch cầu, men gan, creatinine.</li>
               </ul>
+              <!-- US29 (SCRUM-119): nạp nhanh bệnh án mẫu vào ô nhập -->
+              <div class="sample-picker is-hidden" id="sample-picker">
+                <label for="sample-select">Nạp bệnh án mẫu</label>
+                <select id="sample-select">
+                  <option value="">— Chọn bệnh án mẫu —</option>
+                </select>
+              </div>
               <button class="text-button" type="button" id="example-case">Dùng thử ví dụ</button>
             </div>
           </aside>
@@ -573,6 +584,42 @@
               Sau
               <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
             </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- US29 (SCRUM-116): quản lý bệnh án mẫu (admin) -->
+      <section class="page" id="page-samples" aria-labelledby="samples-title">
+        <div class="container">
+          <div class="history-head">
+            <div>
+              <p class="eyebrow">Quản trị dữ liệu</p>
+              <h1 id="samples-title">Bệnh án mẫu</h1>
+              <p class="lead">Quản lý các bệnh án mẫu để bác sĩ nạp nhanh vào ô nhập liệu ở Trang Chủ.</p>
+            </div>
+            <span class="status-pill status-secure" id="samples-count">0 mẫu</span>
+          </div>
+
+          <form class="sample-form" id="sample-form">
+            <h2>Thêm bệnh án mẫu</h2>
+            <label for="sample-tieu-de">Tiêu đề</label>
+            <input id="sample-tieu-de" type="text" maxlength="255" required placeholder="Ví dụ: Viêm họng cấp" />
+            <label for="sample-noi-dung">Nội dung bệnh án</label>
+            <textarea id="sample-noi-dung" rows="3" maxlength="2000" required placeholder="Mô tả triệu chứng để nạp vào ô nhập..."></textarea>
+            <label for="sample-mo-ta">Ghi chú (tùy chọn)</label>
+            <input id="sample-mo-ta" type="text" maxlength="500" placeholder="Ghi chú ngắn" />
+            <p class="form-message" id="sample-form-message" role="status"></p>
+            <button class="primary-button" type="submit">
+              <span class="material-symbols-outlined" aria-hidden="true">add</span>
+              Thêm mẫu
+            </button>
+          </form>
+
+          <div class="history-grid" id="samples-list" aria-live="polite"></div>
+          <div class="empty-state is-hidden" id="samples-empty">
+            <span class="empty-icon material-symbols-outlined" aria-hidden="true">description</span>
+            <h2>Chưa có bệnh án mẫu</h2>
+            <p>Thêm mẫu đầu tiên để hỗ trợ bác sĩ nhập liệu nhanh.</p>
           </div>
         </div>
       </section>

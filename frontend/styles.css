@@ -1638,6 +1638,49 @@ input:focus {
   cursor: pointer;
 }
 
+/* US29: picker bệnh án mẫu (Trang Chủ) + form quản lý */
+.sample-picker {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+.sample-picker label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.sample-picker select,
+.sample-form input,
+.sample-form textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--surface-container);
+  border-radius: var(--radius-md);
+  background: var(--surface-lowest);
+  color: var(--text);
+  font: inherit;
+}
+.sample-form {
+  display: grid;
+  gap: 8px;
+  max-width: 640px;
+  margin: 16px 0 24px;
+  padding: 20px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--surface-container);
+  border-radius: var(--radius-lg);
+}
+.sample-form h2 {
+  margin: 0 0 4px;
+}
+.sample-form label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.sample-form textarea {
+  resize: vertical;
+}
+
 /* US28: Modal ánh xạ triệu chứng ↔ nhóm thuốc */
 .modal-overlay {
   position: fixed;
