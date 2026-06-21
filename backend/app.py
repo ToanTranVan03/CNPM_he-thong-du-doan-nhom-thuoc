@@ -4308,6 +4308,40 @@ def delete_thuoc(id):
         return jsonify({"error": f"Lỗi khi xóa thuốc: {str(e)}"}), 500
 
 
+
+@app.route('/api/evaluation/<int:id>', methods=['DELETE'])
+def delete_evaluation(id):
+    try:
+        # 1. Tìm bản ghi lịch sử dự đoán theo ID trong Database
+        record = DanhGiaDuDoan.query.get(id)
+        
+        # 2. Nếu không tìm thấy, trả về lỗi 404
+        if not record:
+            return jsonify({
+                'success': False,
+                'message': f'Không tìm thấy bản ghi lịch sử với ID = {id}!'
+            }), 404
+
+        # 3. Tiến hành xóa và lưu (commit) vào Database
+        db.session.delete(record)
+        db.session.commit()
+
+        # 4. Trả về phản hồi thành công
+        return jsonify({
+            'success': True,
+            'message': f'Xóa bản ghi lịch sử dự đoán ID = {id} thành công!'
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()  # Thu hồi lệnh nếu xảy ra lỗi hệ thống
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi hệ thống khi xóa: {str(e)}'
+        }), 500
+    
+
+
+    
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="127.0.0.1", port=port, debug=False)
