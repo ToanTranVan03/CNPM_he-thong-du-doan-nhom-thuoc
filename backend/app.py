@@ -8,6 +8,7 @@ import secrets
 import unicodedata
 import zipfile
 import jwt
+import pandas as pd
 import datetime
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,7 @@ from itertools import permutations
 from pathlib import Path
 
 import joblib
+from flask import send_file, jsonify
 from models import db, User, NhomThuoc, Thuoc, TrieuChung, Feedback
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -4437,8 +4439,57 @@ def get_feedback_statistics():
             'error': str(e)
         }), 500
 
+# ĐẶT Ở CUỐI CÙNG FILE APP.PY VÀ SÁT LỀ TRÁI
+@app.route('/api/predict/evaluation/export/excel', methods=['GET'])
+def export_history_excel():
+    try:
+        import io
+        import pandas as pd
+        
+        # Lấy dữ liệu chuẩn từ model DanhGiaDuDoan
+        evaluations = DanhGiaDuDoan.query.order_by(DanhGiaDuDoan.id.desc()).all()
+        
+        if not evaluations:
+            return jsonify({"success": False, "message": "Không có dữ liệu lịch sử để xuất file."}), 404
+        
+        data = []
+        for index, item in enumerate(evaluations, start=1):
+            ngay_raw = getattr(item, 'created_at', getattr(item, 'ngay_tao', None))
+            if ngay_raw and hasattr(ngay_raw, 'strftime'):
+                ngay_hien_thi = ngay_raw.strftime('%d/%m/%Y %H:%M')
+            else:
+                ngay_hien_thi = "N/A"
 
-    
+            data.append({
+                "STT": index,
+                "Ngày thực hiện": ngay_hien_thi,
+                "Triệu chứng nhập": getattr(item, 'trieu_chung_nhap', 'Không rõ'),
+                "Kết quả / Nhóm thuốc": getattr(item, 'trang_thai', 'Chưa rõ'),
+                "Ghi chú / Phản hồi": getattr(item, 'ghi_chu', 'Không có')
+            })
+            
+        df = pd.DataFrame(data)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Lịch sử dự đoán')
+            
+            worksheet = writer.sheets['Lịch sử dự đoán']
+            for col in worksheet.columns:
+                max_len = max(len(str(cell.value or '')) for cell in col)
+                col_letter = chr(65 + col[0].column - 1)
+                worksheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
+                
+        output.seek(0)
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name='Lich_Su_Du_Doan_Thuoc.xlsx'
+        )
+    except Exception as e:
+        print(f"Lỗi xuất Excel chi tiết: {str(e)}")
+        return jsonify({"success": False, "message": f"Có lỗi xảy ra khi tạo file Excel: {str(e)}"}), 500
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="127.0.0.1", port=port, debug=False)
