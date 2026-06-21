@@ -1681,6 +1681,61 @@ input:focus {
   resize: vertical;
 }
 
+/* PORT: Quản lý thuốc — form inline + danh sách quản trị */
+.inline-form {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+.inline-form input,
+.inline-form select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--surface-container);
+  border-radius: var(--radius-md);
+  background: var(--surface-lowest);
+  color: var(--text);
+  font: inherit;
+}
+.inline-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.admin-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.admin-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--surface-container);
+  border-radius: var(--radius-md);
+  background: var(--surface-lowest);
+}
+.admin-list-item strong {
+  display: block;
+}
+.admin-list-item .muted-text {
+  font-size: 0.82rem;
+}
+.admin-row-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.text-button.danger {
+  color: var(--danger);
+}
+
 /* US28: Modal ánh xạ triệu chứng ↔ nhóm thuốc */
 .modal-overlay {
   position: fixed;

@@ -3424,11 +3424,148 @@ def admin_db_nhom_thuoc():
                 "ten": n.ten_nhom_thuoc,
                 "mo_ta": n.mo_ta,
                 "so_thuoc": len(n.thuoc_list),
-                "thuoc": [t.ten_thuoc for t in n.thuoc_list[:20]],
+                "thuoc": [{"ma": t.ma_thuoc, "ten": t.ten_thuoc, "hoat_chat": t.hoat_chat} for t in n.thuoc_list[:50]],
             }
             for n in rows
         ]
     })
+
+
+# ── PORT toan/main: CRUD QUẢN LÝ THUỐC (nhóm thuốc + thuốc) — adapt schema huy ──
+@app.post("/api/admin/db/nhom-thuoc")
+def create_nhom_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    p = request.get_json(silent=True) or {}
+    ten = str(p.get("ten") or p.get("ten_nhom") or "").strip()
+    if not ten:
+        return jsonify({"error": "Cần tên nhóm thuốc."}), 400
+    if db.session.query(db_models.NhomThuoc).filter_by(ten_nhom_thuoc=ten).first():
+        return jsonify({"error": "Nhóm thuốc đã tồn tại."}), 409
+    n = db_models.NhomThuoc(ten_nhom_thuoc=ten[:255], mo_ta=(str(p.get("mo_ta") or "").strip() or None))
+    db.session.add(n)
+    db.session.commit()
+    return jsonify({"ok": True, "ma": n.ma_nhom_thuoc}), 201
+
+
+@app.put("/api/admin/db/nhom-thuoc/<int:ma>")
+def update_nhom_thuoc(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    n = db.session.get(db_models.NhomThuoc, ma)
+    if not n:
+        return jsonify({"error": "Không tìm thấy nhóm thuốc."}), 404
+    p = request.get_json(silent=True) or {}
+    ten = str(p.get("ten") or "").strip()
+    if ten:
+        dup = db.session.query(db_models.NhomThuoc).filter_by(ten_nhom_thuoc=ten).first()
+        if dup and dup.ma_nhom_thuoc != ma:
+            return jsonify({"error": "Tên nhóm thuốc đã tồn tại."}), 409
+        n.ten_nhom_thuoc = ten[:255]
+    if "mo_ta" in p:
+        n.mo_ta = (str(p.get("mo_ta") or "").strip() or None)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+@app.delete("/api/admin/db/nhom-thuoc/<int:ma>")
+def delete_nhom_thuoc(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    n = db.session.get(db_models.NhomThuoc, ma)
+    if not n:
+        return jsonify({"error": "Không tìm thấy nhóm thuốc."}), 404
+    db.session.delete(n)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+@app.get("/api/admin/db/thuoc")
+def admin_db_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        per_page = max(1, min(100, int(request.args.get("per_page", 10))))
+    except (TypeError, ValueError):
+        page, per_page = 1, 10
+    TH = db_models.ThuocThamKhao
+    query = db.session.query(TH)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(db.or_(TH.ten_thuoc.ilike(like), TH.hoat_chat.ilike(like)))
+    total = query.count()
+    rows = query.order_by(TH.ten_thuoc).offset((page - 1) * per_page).limit(per_page).all()
+    return jsonify({
+        "total": total, "page": page, "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page if total else 0,
+        "thuoc": [
+            {"ma": t.ma_thuoc, "ten": t.ten_thuoc, "hoat_chat": t.hoat_chat, "cong_dung": t.cong_dung,
+             "nhom": [n.ten_nhom_thuoc for n in t.nhom_thuoc_list]}
+            for t in rows
+        ],
+    })
+
+
+@app.post("/api/admin/db/thuoc")
+def create_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    p = request.get_json(silent=True) or {}
+    ten = str(p.get("ten") or "").strip()
+    if not ten:
+        return jsonify({"error": "Cần tên thuốc."}), 400
+    t = db_models.ThuocThamKhao(
+        ten_thuoc=ten[:255],
+        hoat_chat=(str(p.get("hoat_chat") or "").strip() or None),
+        cong_dung=(str(p.get("cong_dung") or "").strip() or None),
+    )
+    ma_nhom = p.get("ma_nhom_thuoc")
+    if ma_nhom:
+        n = db.session.get(db_models.NhomThuoc, int(ma_nhom))
+        if n:
+            t.nhom_thuoc_list.append(n)
+    db.session.add(t)
+    db.session.commit()
+    return jsonify({"ok": True, "ma": t.ma_thuoc}), 201
+
+
+@app.put("/api/admin/db/thuoc/<int:ma>")
+def update_thuoc(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    t = db.session.get(db_models.ThuocThamKhao, ma)
+    if not t:
+        return jsonify({"error": "Không tìm thấy thuốc."}), 404
+    p = request.get_json(silent=True) or {}
+    if str(p.get("ten") or "").strip():
+        t.ten_thuoc = str(p["ten"]).strip()[:255]
+    if "hoat_chat" in p:
+        t.hoat_chat = (str(p.get("hoat_chat") or "").strip() or None)
+    if "cong_dung" in p:
+        t.cong_dung = (str(p.get("cong_dung") or "").strip() or None)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+@app.delete("/api/admin/db/thuoc/<int:ma>")
+def delete_thuoc(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    t = db.session.get(db_models.ThuocThamKhao, ma)
+    if not t:
+        return jsonify({"error": "Không tìm thấy thuốc."}), 404
+    db.session.delete(t)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
 
 
 @app.get("/api/admin/db/trieu-chung")

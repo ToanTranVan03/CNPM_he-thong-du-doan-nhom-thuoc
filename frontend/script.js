@@ -196,7 +196,7 @@ function updateAdminUi() {
   });
 }
 
-const ADMIN_PAGES = new Set(["dashboard", "dictionary", "samples"]);
+const ADMIN_PAGES = new Set(["dashboard", "dictionary", "samples", "drug-admin"]);
 
 function showPage(pageName) {
   // US19/US27: chặn trang admin nếu không phải admin (kể cả khi gọi trực tiếp).
@@ -218,6 +218,8 @@ function showPage(pageName) {
     loadDictionary(1);
   } else if (pageName === "samples") {
     loadSamples();
+  } else if (pageName === "drug-admin") {
+    loadDrugAdmin();
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1440,6 +1442,166 @@ if (sampleForm) {
     }
   });
 }
+
+// ── PORT: Quản lý thuốc (CRUD nhóm thuốc + thuốc) ────────────────────────────
+const dgForm = document.getElementById("dg-form");
+const dgList = document.getElementById("dg-list");
+const dgCount = document.getElementById("dg-count");
+const dgMessage = document.getElementById("dg-message");
+const dgEditMa = document.getElementById("dg-edit-ma");
+const dgSubmit = document.getElementById("dg-submit");
+const dgCancel = document.getElementById("dg-cancel");
+const thForm = document.getElementById("th-form");
+const thList = document.getElementById("th-list");
+const thCount = document.getElementById("th-count");
+const thMessage = document.getElementById("th-message");
+const thNhom = document.getElementById("th-nhom");
+const thSearch = document.getElementById("th-search");
+const thPageInfo = document.getElementById("th-page-info");
+const thPrev = document.getElementById("th-prev");
+const thNext = document.getElementById("th-next");
+const TH_PER_PAGE = 10;
+let thPage = 1, thTotalPages = 0, thDebounce = null;
+
+function adminHeaders(json) {
+  return { ...(json ? { "Content-Type": "application/json" } : {}), Authorization: `Bearer ${authToken}` };
+}
+
+function adminRow(text, sub, onEdit, onDelete) {
+  const li = document.createElement("li");
+  li.className = "admin-list-item";
+  const info = document.createElement("div");
+  const t = document.createElement("strong");
+  t.textContent = text;
+  info.appendChild(t);
+  if (sub) {
+    const s = document.createElement("span");
+    s.className = "muted-text";
+    s.textContent = sub;
+    info.appendChild(s);
+  }
+  const actions = document.createElement("div");
+  actions.className = "admin-row-actions";
+  if (onEdit) {
+    const e = document.createElement("button");
+    e.className = "text-button";
+    e.type = "button";
+    e.textContent = "Sửa";
+    e.addEventListener("click", onEdit);
+    actions.appendChild(e);
+  }
+  const d = document.createElement("button");
+  d.className = "text-button danger";
+  d.type = "button";
+  d.textContent = "Xóa";
+  d.addEventListener("click", onDelete);
+  actions.appendChild(d);
+  li.append(info, actions);
+  return li;
+}
+
+async function loadDrugGroups() {
+  const r = await fetch("/api/admin/db/nhom-thuoc", { headers: adminHeaders() });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || "Không tải được nhóm thuốc.");
+  const groups = data.nhom_thuoc || [];
+  if (dgCount) dgCount.textContent = String(groups.length);
+  dgList.innerHTML = "";
+  // select gắn nhóm cho thuốc
+  if (thNhom) {
+    thNhom.innerHTML = '<option value="">— Gắn vào nhóm (tùy chọn) —</option>';
+    groups.forEach((g) => {
+      const o = document.createElement("option");
+      o.value = String(g.ma); o.textContent = g.ten;
+      thNhom.appendChild(o);
+    });
+  }
+  groups.forEach((g) => {
+    dgList.appendChild(adminRow(
+      g.ten, `${g.so_thuoc} thuốc${g.mo_ta ? " · " + g.mo_ta : ""}`,
+      () => { dgEditMa.value = g.ma; document.getElementById("dg-ten").value = g.ten; document.getElementById("dg-mo-ta").value = g.mo_ta || ""; dgSubmit.textContent = "Lưu sửa"; dgCancel.hidden = false; },
+      async () => {
+        if (!confirm(`Xóa nhóm "${g.ten}"? Các liên kết thuốc cũng bị gỡ.`)) return;
+        const dr = await fetch(`/api/admin/db/nhom-thuoc/${g.ma}`, { method: "DELETE", headers: adminHeaders() });
+        if (dr.ok) loadDrugAdmin(); else dgMessage.textContent = (await dr.json()).error || "Không xóa được.";
+      }));
+  });
+}
+
+async function loadDrugs(page) {
+  thPage = page || 1;
+  const q = thSearch ? thSearch.value.trim() : "";
+  const params = new URLSearchParams({ page: String(thPage), per_page: String(TH_PER_PAGE) });
+  if (q) params.set("q", q);
+  const r = await fetch(`/api/admin/db/thuoc?${params}`, { headers: adminHeaders() });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || "Không tải được thuốc.");
+  thTotalPages = data.total_pages || 0;
+  if (thCount) thCount.textContent = (data.total || 0).toLocaleString("vi-VN");
+  thList.innerHTML = "";
+  (data.thuoc || []).forEach((t) => {
+    const sub = [t.hoat_chat, (t.nhom || []).join(", ")].filter(Boolean).join(" · ");
+    thList.appendChild(adminRow(t.ten, sub, null, async () => {
+      if (!confirm(`Xóa thuốc "${t.ten}"?`)) return;
+      const dr = await fetch(`/api/admin/db/thuoc/${t.ma}`, { method: "DELETE", headers: adminHeaders() });
+      if (dr.ok) loadDrugs(thPage); else thMessage.textContent = (await dr.json()).error || "Không xóa được.";
+    }));
+  });
+  if (thPageInfo) thPageInfo.textContent = thTotalPages ? `Trang ${thPage} / ${thTotalPages}` : "Trang 0";
+  if (thPrev) thPrev.disabled = thPage <= 1;
+  if (thNext) thNext.disabled = thPage >= thTotalPages;
+}
+
+async function loadDrugAdmin() {
+  if (!isAdminUser()) return;
+  try {
+    await loadDrugGroups();
+    await loadDrugs(1);
+  } catch (error) {
+    if (dgMessage) dgMessage.textContent = formatError(error);
+  }
+}
+
+if (dgForm) {
+  dgForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const ma = dgEditMa.value;
+    const body = JSON.stringify({ ten: document.getElementById("dg-ten").value, mo_ta: document.getElementById("dg-mo-ta").value });
+    const url = ma ? `/api/admin/db/nhom-thuoc/${ma}` : "/api/admin/db/nhom-thuoc";
+    try {
+      const r = await fetch(url, { method: ma ? "PUT" : "POST", headers: adminHeaders(true), body });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Không lưu được.");
+      dgForm.reset(); dgEditMa.value = ""; dgSubmit.textContent = "Thêm nhóm"; dgCancel.hidden = true;
+      dgMessage.textContent = ma ? "Đã cập nhật nhóm." : "Đã thêm nhóm.";
+      loadDrugAdmin();
+    } catch (error) { dgMessage.textContent = formatError(error); }
+  });
+}
+if (dgCancel) dgCancel.addEventListener("click", () => { dgForm.reset(); dgEditMa.value = ""; dgSubmit.textContent = "Thêm nhóm"; dgCancel.hidden = true; });
+
+if (thForm) {
+  thForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const body = JSON.stringify({
+      ten: document.getElementById("th-ten").value,
+      hoat_chat: document.getElementById("th-hoat-chat").value,
+      ma_nhom_thuoc: thNhom.value || null,
+    });
+    try {
+      const r = await fetch("/api/admin/db/thuoc", { method: "POST", headers: adminHeaders(true), body });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Không thêm được.");
+      thForm.reset();
+      thMessage.textContent = "Đã thêm thuốc.";
+      loadDrugGroups();
+      loadDrugs(1);
+    } catch (error) { thMessage.textContent = formatError(error); }
+  });
+}
+if (thSearch) thSearch.addEventListener("input", () => { clearTimeout(thDebounce); thDebounce = setTimeout(() => loadDrugs(1), 250); });
+if (thPrev) thPrev.addEventListener("click", () => { if (thPage > 1) loadDrugs(thPage - 1); });
+if (thNext) thNext.addEventListener("click", () => { if (thPage < thTotalPages) loadDrugs(thPage + 1); });
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

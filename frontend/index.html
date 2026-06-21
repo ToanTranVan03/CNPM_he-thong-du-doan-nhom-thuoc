@@ -163,8 +163,8 @@
             <span class="material-symbols-outlined" aria-hidden="true">description</span>
             <span>Bệnh Án Mẫu</span>
           </button>
-          <button class="nav-link" type="button" data-page="result">
-            <span class="material-symbols-outlined" aria-hidden="true">medical_services</span>
+          <button class="nav-link admin-only is-hidden" type="button" data-page="drug-admin">
+            <span class="material-symbols-outlined" aria-hidden="true">medication</span>
             <span>Quản Lý Thuốc</span>
           </button>
           <button class="nav-link" type="button" data-page="about">
@@ -620,6 +620,59 @@
             <span class="empty-icon material-symbols-outlined" aria-hidden="true">description</span>
             <h2>Chưa có bệnh án mẫu</h2>
             <p>Thêm mẫu đầu tiên để hỗ trợ bác sĩ nhập liệu nhanh.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- PORT toan/main: Quản lý thuốc (CRUD nhóm thuốc + thuốc) -->
+      <section class="page" id="page-drug-admin" aria-labelledby="drug-admin-title">
+        <div class="container">
+          <div class="history-head">
+            <div>
+              <p class="eyebrow">Quản trị danh mục</p>
+              <h1 id="drug-admin-title">Quản lý thuốc</h1>
+              <p class="lead">Thêm, sửa, xóa nhóm thuốc và thuốc tham khảo trong cơ sở dữ liệu.</p>
+            </div>
+          </div>
+
+          <div class="dashboard-grid dashboard-grid-2">
+            <article class="detail-card">
+              <h2>Nhóm thuốc <span class="status-pill status-secure" id="dg-count">0</span></h2>
+              <form class="inline-form" id="dg-form">
+                <input type="hidden" id="dg-edit-ma" value="" />
+                <input id="dg-ten" type="text" maxlength="255" required placeholder="Tên nhóm thuốc" />
+                <input id="dg-mo-ta" type="text" maxlength="500" placeholder="Mô tả (tùy chọn)" />
+                <div class="inline-form-actions">
+                  <button class="primary-button compact" type="submit" id="dg-submit">Thêm nhóm</button>
+                  <button class="text-button" type="button" id="dg-cancel" hidden>Hủy sửa</button>
+                </div>
+                <p class="form-message" id="dg-message" role="status"></p>
+              </form>
+              <ul class="admin-list" id="dg-list"></ul>
+            </article>
+
+            <article class="detail-card">
+              <h2>Thuốc tham khảo <span class="status-pill status-secure" id="th-count">0</span></h2>
+              <form class="inline-form" id="th-form">
+                <input id="th-ten" type="text" maxlength="255" required placeholder="Tên thuốc" />
+                <input id="th-hoat-chat" type="text" maxlength="255" placeholder="Hoạt chất (tùy chọn)" />
+                <select id="th-nhom"><option value="">— Gắn vào nhóm (tùy chọn) —</option></select>
+                <div class="inline-form-actions">
+                  <button class="primary-button compact" type="submit">Thêm thuốc</button>
+                </div>
+                <p class="form-message" id="th-message" role="status"></p>
+              </form>
+              <label class="search-box compact-search" for="th-search">
+                <span class="material-symbols-outlined" aria-hidden="true">search</span>
+                <input id="th-search" type="search" placeholder="Tìm thuốc theo tên/hoạt chất..." autocomplete="off" />
+              </label>
+              <ul class="admin-list" id="th-list"></ul>
+              <div class="dict-pagination">
+                <button class="secondary-button compact" type="button" id="th-prev">Trước</button>
+                <span id="th-page-info">Trang 1</span>
+                <button class="secondary-button compact" type="button" id="th-next">Sau</button>
+              </div>
+            </article>
           </div>
         </div>
       </section>
