@@ -48,7 +48,8 @@ def seed(tmp: Path):
     fb = [
         {"ts": f"{d2}T08:05:00+00:00", "verdict": "APPROVE"},
         {"ts": f"{d2}T09:05:00+00:00", "verdict": "APPROVE"},
-        {"ts": f"{d1}T10:05:00+00:00", "verdict": "REJECT"},
+        {"ts": f"{d1}T10:05:00+00:00", "verdict": "REJECT", "predicted_group": "thuốc kháng sinh", "note": "Chẩn đoán sai nhóm thuốc"},
+        {"ts": f"{d1}T11:05:00+00:00", "verdict": "REJECT", "predicted_group": "thuốc kháng sinh", "note": "sai nhóm, thiếu cảnh báo"},
         {"ts": f"{d0}T07:35:00+00:00", "verdict": "APPROVE"},
     ]
     (tmp / "prediction_log.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in preds), encoding="utf-8")
@@ -126,12 +127,21 @@ def run():
             bars_data = page.evaluate("() => Chart.getChart('dashboard-bars-canvas').data.datasets[0].data")
             donut_data = page.evaluate("() => Chart.getChart('dashboard-donut-canvas').data.datasets[0].data")
             rec("Admin: tổng ca dự đoán = 5", total == "5", f"thấy '{total}'")
-            rec("Admin: tỷ lệ Đồng ý = 75%", rate == "75%", f"thấy '{rate}'")
-            rec("Admin: tổng đánh giá = 4", feedback_total == "4", f"thấy '{feedback_total}'")
+            rec("Admin: tỷ lệ Đồng ý = 60%", rate == "60%", f"thấy '{rate}'")
+            rec("Admin: tổng đánh giá = 5", feedback_total == "5", f"thấy '{feedback_total}'")
             rec("Admin: Chart.js cột có 3 ngày, tổng 5", len(bars_data) == 3 and sum(bars_data) == 5, str(bars_data))
-            rec("Admin: Chart.js donut [đồng ý, không] = [3,1]", donut_data == [3, 1], str(donut_data))
+            rec("Admin: Chart.js donut [đồng ý, không] = [3,2]", donut_data == [3, 2], str(donut_data))
             rec("Admin: top nhóm thuốc có dòng", top_rows >= 1, f"thấy {top_rows} dòng")
-            page.screenshot(path=str(ROOT / "screenshots" / "us19_dashboard_admin.png"))
+
+            # US22: section lý do không đồng ý
+            page.wait_for_function("() => !!(window.Chart && Chart.getChart('reject-bars-canvas'))", timeout=10000)
+            reject_bars = page.evaluate("() => Chart.getChart('reject-bars-canvas').data.datasets[0].data")
+            kw_rows = page.locator("#reject-keywords .prediction-row").count()
+            pill = page.inner_text("#reject-total-pill").strip()
+            rec("US22: pill '2 lượt không đồng ý'", pill.startswith("2"), pill)
+            rec("US22: chart REJECT theo ngày tổng=2", sum(reject_bars) == 2, str(reject_bars))
+            rec("US22: có từ khóa lý do (>=1 dòng)", kw_rows >= 1, f"{kw_rows} dòng")
+            page.screenshot(path=str(ROOT / "screenshots" / "us22_feedback_dashboard.png"))
 
             # Lọc theo ngày: chỉ hôm nay -> 1 ca
             d0 = datetime.now(timezone.utc).date().isoformat()

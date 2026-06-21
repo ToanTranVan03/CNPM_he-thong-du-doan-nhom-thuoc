@@ -792,10 +792,91 @@ async function loadDashboard() {
     }
     renderDashboard(data);
     setDashboardMessage(data.total_predictions === 0 ? "Chưa có ca dự đoán nào được ghi nhận." : "");
+    await loadFeedbackStats(query);
   } catch (error) {
     setDashboardMessage(formatError(error), true);
   } finally {
     dashboardLoading = false;
+  }
+}
+
+// US22: tải + render thống kê lý do "Không đồng ý".
+let rejectBarsChart = null;
+
+function fillTopList(elId, items, labelKey, fallback) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.innerHTML = "";
+  if (!items || items.length === 0) {
+    const li = document.createElement("li");
+    li.className = "muted-text";
+    li.textContent = fallback;
+    el.appendChild(li);
+    return;
+  }
+  const max = items.reduce((m, it) => Math.max(m, it.count || 0), 0) || 1;
+  items.forEach((it) => {
+    const li = document.createElement("li");
+    li.className = "prediction-row";
+    const name = document.createElement("span");
+    name.className = "prediction-name";
+    name.textContent = it[labelKey];
+    const value = document.createElement("span");
+    value.className = "prediction-value";
+    value.textContent = it.count;
+    const track = document.createElement("span");
+    track.className = "prediction-track";
+    const fill = document.createElement("span");
+    fill.className = "prediction-fill";
+    fill.style.width = `${Math.round(((it.count || 0) / max) * 100)}%`;
+    track.appendChild(fill);
+    li.append(name, value, track);
+    el.appendChild(li);
+  });
+}
+
+function renderFeedbackStats(stats) {
+  const pill = document.getElementById("reject-total-pill");
+  if (pill) pill.textContent = `${(stats.reject_total || 0).toLocaleString("vi-VN")} lượt không đồng ý`;
+
+  const series = stats.reject_over_time || [];
+  document.getElementById("reject-bars-empty").classList.toggle("is-hidden", series.length > 0);
+  const canvas = document.getElementById("reject-bars-canvas");
+  if (rejectBarsChart) rejectBarsChart.destroy();
+  rejectBarsChart = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: series.map((p) => (p.date || "").slice(5)),
+      datasets: [{
+        label: "Không đồng ý",
+        data: series.map((p) => p.count || 0),
+        backgroundColor: cssVar("--danger", "#dc2626"),
+        borderRadius: 6,
+        maxBarThickness: 48,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+    },
+  });
+
+  fillTopList("reject-keywords", stats.top_keywords, "keyword", "Chưa có ghi chú lý do.");
+  fillTopList("reject-by-group", stats.reject_by_group, "group", "Chưa có dữ liệu.");
+}
+
+async function loadFeedbackStats(query) {
+  try {
+    const response = await fetch(`/api/admin/feedback-stats${query ? `?${query}` : ""}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Không tải được thống kê phản hồi.");
+    renderFeedbackStats(data);
+  } catch (error) {
+    setDashboardMessage(formatError(error), true);
   }
 }
 
@@ -811,11 +892,17 @@ const feedbackBox = document.getElementById("feedback-box");
 const feedbackApprove = document.getElementById("feedback-approve");
 const feedbackReject = document.getElementById("feedback-reject");
 const feedbackThanks = document.getElementById("feedback-thanks");
+const feedbackReason = document.getElementById("feedback-reason");
+const feedbackReasonText = document.getElementById("feedback-reason-text");
+const feedbackReasonSubmit = document.getElementById("feedback-reason-submit");
+const feedbackReasonCancel = document.getElementById("feedback-reason-cancel");
 
 function resetFeedbackBox(show) {
   if (!feedbackBox) return;
   feedbackBox.classList.toggle("is-hidden", !show);
   if (feedbackThanks) feedbackThanks.classList.add("is-hidden");
+  if (feedbackReason) feedbackReason.classList.add("is-hidden");
+  if (feedbackReasonText) feedbackReasonText.value = "";
   [feedbackApprove, feedbackReject].forEach((b) => {
     if (b) {
       b.disabled = false;
@@ -824,7 +911,7 @@ function resetFeedbackBox(show) {
   });
 }
 
-async function sendFeedback(verdict, button) {
+async function sendFeedback(verdict, note, button) {
   const group = currentResult?.case_summary?.drug_group || null;
   [feedbackApprove, feedbackReject].forEach((b) => b && (b.disabled = true));
   if (button) button.classList.add("is-chosen");
@@ -835,12 +922,13 @@ async function sendFeedback(verdict, button) {
         "Content-Type": "application/json",
         ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
-      body: JSON.stringify({ verdict, predicted_group: group }),
+      body: JSON.stringify({ verdict, predicted_group: group, note: note || "" }),
     });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.error || "Không gửi được phản hồi.");
     }
+    if (feedbackReason) feedbackReason.classList.add("is-hidden");
     if (feedbackThanks) feedbackThanks.classList.remove("is-hidden");
   } catch (error) {
     setMessage(formatError(error), true);
@@ -849,8 +937,27 @@ async function sendFeedback(verdict, button) {
   }
 }
 
-if (feedbackApprove) feedbackApprove.addEventListener("click", () => sendFeedback("APPROVE", feedbackApprove));
-if (feedbackReject) feedbackReject.addEventListener("click", () => sendFeedback("REJECT", feedbackReject));
+// Đồng ý: gửi ngay. Không đồng ý (US22): mở ô nhập LÝ DO trước khi gửi.
+if (feedbackApprove) feedbackApprove.addEventListener("click", () => sendFeedback("APPROVE", "", feedbackApprove));
+if (feedbackReject) {
+  feedbackReject.addEventListener("click", () => {
+    feedbackReject.classList.add("is-chosen");
+    if (feedbackReason) feedbackReason.classList.remove("is-hidden");
+    if (feedbackReasonText) feedbackReasonText.focus();
+  });
+}
+if (feedbackReasonSubmit) {
+  feedbackReasonSubmit.addEventListener("click", () =>
+    sendFeedback("REJECT", feedbackReasonText ? feedbackReasonText.value.trim() : "", feedbackReject)
+  );
+}
+if (feedbackReasonCancel) {
+  feedbackReasonCancel.addEventListener("click", () => {
+    if (feedbackReason) feedbackReason.classList.add("is-hidden");
+    if (feedbackReject) feedbackReject.classList.remove("is-chosen");
+    [feedbackApprove, feedbackReject].forEach((b) => b && (b.disabled = false));
+  });
+}
 
 authSwitchButtons.forEach((button) => {
   button.addEventListener("click", () => {

@@ -3207,6 +3207,118 @@ def admin_stats():
     )
 
 
+# ── US22 (SCRUM-88): thống kê lý do KHÔNG ĐỒNG Ý phổ biến ─────────────────────
+# Stopword tiếng Việt (từ ngữ pháp) — bỏ khi đếm từ khóa lý do để giữ từ có nghĩa.
+_VI_STOPWORDS = frozenset(
+    "và là của cho các có được khi này đó một những để ở ra vào thì mà với đã sẽ bị nên "
+    "cũng rất quá lại còn do vì nếu hơn như trong trên dưới theo tôi bạn mình nó họ ông bà "
+    "anh chị em không bệnh nhân thuốc bị thấy nhưng hay rồi đang tại bởi the a an is are of to "
+    "này nọ kia ấy đây đấy nhiều ít hoặc tuy dù mỗi vẫn chỉ".split()
+)
+
+
+def _top_keywords(notes, top=12):
+    """SCRUM-90: đếm từ khóa phổ biến trong ghi chú phản hồi.
+
+    Đếm cả từ đơn lẫn cụm 2 âm tiết (bigram) vì tiếng Việt nghĩa thường theo cụm
+    ('chẩn đoán', 'sai nhóm'). Bỏ stopword/số/từ ngắn.
+    """
+    counter: Counter = Counter()
+    for note in notes:
+        if not note:
+            continue
+        text = re.sub(r"[^\w\s]", " ", str(note).lower(), flags=re.UNICODE)
+        toks = [t for t in text.split() if len(t) >= 2 and not t.isdigit() and t not in _VI_STOPWORDS]
+        counter.update(toks)
+        for a, b in zip(toks, toks[1:]):
+            counter[f"{a} {b}"] += 1
+    return [{"keyword": k, "count": c} for k, c in counter.most_common(top)]
+
+
+@app.get("/api/admin/feedback-stats")
+def admin_feedback_stats():
+    """US22: thống kê phản hồi 'Không đồng ý' — số lượng theo ngày + từ khóa lý do phổ biến.
+
+    Admin-only. Lọc ?from=YYYY-MM-DD&to=YYYY-MM-DD. Chạy DB hoặc JSONL (graceful).
+    """
+    store = load_user_store()
+    _admin, error = current_admin_from_request(store)
+    if error:
+        return error
+    date_from = _valid_date_param(request.args.get("from"))
+    date_to = _valid_date_param(request.args.get("to"))
+
+    if DB_ENABLED:
+        from sqlalchemy import Date, cast, func
+        PH = db_models.PhanHoi
+
+        def drange(col):
+            conds = [PH.trang_thai == "REJECT"]
+            if date_from:
+                conds.append(cast(col, Date) >= date_from)
+            if date_to:
+                conds.append(cast(col, Date) <= date_to)
+            return conds
+
+        reject_total = db.session.query(func.count()).filter(*drange(PH.thoi_gian_gui)).scalar() or 0
+        approve_total = db.session.query(func.count()).filter(
+            PH.trang_thai == "APPROVE",
+            *([cast(PH.thoi_gian_gui, Date) >= date_from] if date_from else []),
+            *([cast(PH.thoi_gian_gui, Date) <= date_to] if date_to else []),
+        ).scalar() or 0
+        over_time = [
+            {"date": d.isoformat(), "count": cnt}
+            for d, cnt in (
+                db.session.query(cast(PH.thoi_gian_gui, Date).label("d"), func.count())
+                .filter(*drange(PH.thoi_gian_gui)).group_by("d").order_by("d")
+            )
+        ]
+        by_group = [
+            {"group": g, "count": cnt}
+            for g, cnt in (
+                db.session.query(PH.nhom_thuoc_du_doan, func.count())
+                .filter(PH.nhom_thuoc_du_doan.isnot(None), *drange(PH.thoi_gian_gui))
+                .group_by(PH.nhom_thuoc_du_doan).order_by(func.count().desc()).limit(5)
+            )
+        ]
+        notes = [n for (n,) in db.session.query(PH.noi_dung).filter(*drange(PH.thoi_gian_gui)) if n]
+        source = "postgres"
+    else:
+        rows = [r for r in stats_source.read_feedback(date_from, date_to)
+                if str(r.get("verdict", "")).upper() == "REJECT"]
+        approves = [r for r in stats_source.read_feedback(date_from, date_to)
+                    if str(r.get("verdict", "")).upper() == "APPROVE"]
+        reject_total = len(rows)
+        approve_total = len(approves)
+        ot: dict[str, int] = {}
+        grp: Counter = Counter()
+        notes = []
+        for r in rows:
+            day = stats_source.record_day(r)
+            if day:
+                ot[day] = ot.get(day, 0) + 1
+            g = r.get("predicted_group")
+            if isinstance(g, str) and g.strip():
+                grp[g.strip()] += 1
+            if r.get("note"):
+                notes.append(r["note"])
+        over_time = [{"date": d, "count": ot[d]} for d in sorted(ot)]
+        by_group = [{"group": g, "count": c} for g, c in grp.most_common(5)]
+        source = "jsonl"
+
+    total_fb = reject_total + approve_total
+    return jsonify({
+        "range": {"from": date_from, "to": date_to},
+        "reject_total": reject_total,
+        "approve_total": approve_total,
+        "reject_rate": round(reject_total / total_fb * 100, 1) if total_fb else None,
+        "reject_over_time": over_time,        # SCRUM-89
+        "top_keywords": _top_keywords(notes),  # SCRUM-90
+        "reject_by_group": by_group,
+        "source": source,
+    })
+
+
 # ── DB-BACKED: đọc danh mục đã seed từ Postgres (admin) ───────────────────────
 # Tích hợp SQLAlchemy vào Flask app: các endpoint sau ĐỌC trực tiếp từ Postgres
 # (nhom_thuoc/thuoc_tham_khao/trieu_chung) — phục vụ QuanLyNhomThuoc() của Admin.

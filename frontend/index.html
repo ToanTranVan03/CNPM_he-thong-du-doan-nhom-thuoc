@@ -316,6 +316,14 @@
                   Không đồng ý
                 </button>
               </div>
+              <div class="feedback-reason is-hidden" id="feedback-reason">
+                <label for="feedback-reason-text">Lý do không đồng ý (giúp cải thiện hệ thống)</label>
+                <textarea id="feedback-reason-text" rows="2" maxlength="500" placeholder="Ví dụ: chẩn đoán sai nhóm, thiếu cảnh báo tương tác, liều chưa phù hợp..."></textarea>
+                <div class="feedback-reason-actions">
+                  <button class="primary-button compact" type="button" id="feedback-reason-submit">Gửi phản hồi</button>
+                  <button class="text-button" type="button" id="feedback-reason-cancel">Hủy</button>
+                </div>
+              </div>
               <p class="feedback-thanks is-hidden" id="feedback-thanks" role="status">Đã ghi nhận phản hồi. Cảm ơn bạn!</p>
             </div>
           </div>
@@ -471,6 +479,31 @@
             <article class="detail-card">
               <h2>Nhóm thuốc được gợi ý nhiều nhất</h2>
               <ul class="top-predictions" id="dashboard-top-groups">
+                <li class="muted-text">Chưa có dữ liệu.</li>
+              </ul>
+            </article>
+          </div>
+
+          <!-- US22 (SCRUM-88): thống kê lý do không đồng ý phổ biến -->
+          <div class="section-heading">
+            <h2>Phản hồi chuyên gia — Lý do không đồng ý</h2>
+            <span class="status-pill status-secondary" id="reject-total-pill">0 lượt không đồng ý</span>
+          </div>
+          <div class="dashboard-grid">
+            <article class="detail-card">
+              <h2>"Không đồng ý" theo ngày</h2>
+              <div class="chart-box"><canvas id="reject-bars-canvas" aria-label="Số lượt không đồng ý theo ngày" role="img"></canvas></div>
+              <p class="muted-text dashboard-empty is-hidden" id="reject-bars-empty">Chưa có phản hồi không đồng ý trong khoảng thời gian này.</p>
+            </article>
+            <article class="detail-card">
+              <h2>Từ khóa lý do phổ biến</h2>
+              <ul class="top-predictions" id="reject-keywords">
+                <li class="muted-text">Chưa có dữ liệu.</li>
+              </ul>
+            </article>
+            <article class="detail-card">
+              <h2>Nhóm thuốc bị phản đối nhiều</h2>
+              <ul class="top-predictions" id="reject-by-group">
                 <li class="muted-text">Chưa có dữ liệu.</li>
               </ul>
             </article>
