@@ -793,6 +793,7 @@ async function loadDashboard() {
     renderDashboard(data);
     setDashboardMessage(data.total_predictions === 0 ? "Chưa có ca dự đoán nào được ghi nhận." : "");
     await loadFeedbackStats(query);
+    await loadGroupStats(query);
   } catch (error) {
     setDashboardMessage(formatError(error), true);
   } finally {
@@ -875,6 +876,81 @@ async function loadFeedbackStats(query) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Không tải được thống kê phản hồi.");
     renderFeedbackStats(data);
+  } catch (error) {
+    setDashboardMessage(formatError(error), true);
+  }
+}
+
+// US23: Top nhóm thuốc được dự đoán nhiều nhất (biểu đồ ngang + xếp hạng %).
+let groupBarsChart = null;
+
+function renderGroupStats(stats) {
+  const groups = stats.groups || [];
+  const pill = document.getElementById("group-stats-pill");
+  if (pill) pill.textContent = `${stats.distinct_groups || 0} nhóm`;
+
+  document.getElementById("group-bars-empty").classList.toggle("is-hidden", groups.length > 0);
+  const canvas = document.getElementById("group-bars-canvas");
+  if (groupBarsChart) groupBarsChart.destroy();
+  groupBarsChart = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: groups.map((g) => g.group),
+      datasets: [{
+        label: "Số ca dự đoán",
+        data: groups.map((g) => g.count || 0),
+        backgroundColor: cssVar("--primary", "#0b5fb5"),
+        borderRadius: 6,
+      }],
+    },
+    options: {
+      indexAxis: "y", // biểu đồ thanh NGANG cho dễ đọc tên nhóm
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+    },
+  });
+
+  // Xếp hạng: tên nhóm + count (percent%)
+  const rank = document.getElementById("group-rank");
+  rank.innerHTML = "";
+  if (groups.length === 0) {
+    const li = document.createElement("li");
+    li.className = "muted-text";
+    li.textContent = "Chưa có dữ liệu.";
+    rank.appendChild(li);
+    return;
+  }
+  const max = groups.reduce((m, g) => Math.max(m, g.count || 0), 0) || 1;
+  groups.forEach((g, i) => {
+    const li = document.createElement("li");
+    li.className = "prediction-row";
+    const name = document.createElement("span");
+    name.className = "prediction-name";
+    name.textContent = `${i + 1}. ${g.group}`;
+    const value = document.createElement("span");
+    value.className = "prediction-value";
+    value.textContent = `${g.count} (${g.percent}%)`;
+    const track = document.createElement("span");
+    track.className = "prediction-track";
+    const fill = document.createElement("span");
+    fill.className = "prediction-fill";
+    fill.style.width = `${Math.round(((g.count || 0) / max) * 100)}%`;
+    track.appendChild(fill);
+    li.append(name, value, track);
+    rank.appendChild(li);
+  });
+}
+
+async function loadGroupStats(query) {
+  try {
+    const response = await fetch(`/api/admin/group-stats${query ? `?${query}&limit=10` : "?limit=10"}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Không tải được thống kê nhóm thuốc.");
+    renderGroupStats(data);
   } catch (error) {
     setDashboardMessage(formatError(error), true);
   }

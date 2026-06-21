@@ -1585,6 +1585,13 @@ input:focus {
   position: relative;
   height: 240px;
 }
+.chart-box-tall {
+  height: 360px;
+}
+/* US23: lưới 2 cột (biểu đồ rộng + bảng xếp hạng) */
+.dashboard-grid-2 {
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+}
 .dashboard-empty {
   margin-top: 12px;
 }

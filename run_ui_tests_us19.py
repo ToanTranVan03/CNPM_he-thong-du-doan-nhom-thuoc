@@ -143,6 +143,18 @@ def run():
             rec("US22: có từ khóa lý do (>=1 dòng)", kw_rows >= 1, f"{kw_rows} dòng")
             page.screenshot(path=str(ROOT / "screenshots" / "us22_feedback_dashboard.png"))
 
+            # US23: Top nhóm thuốc (biểu đồ ngang + xếp hạng)
+            page.wait_for_function("() => !!(window.Chart && Chart.getChart('group-bars-canvas'))", timeout=10000)
+            grp_bars = page.evaluate("() => Chart.getChart('group-bars-canvas').data.datasets[0].data")
+            grp_axis = page.evaluate("() => Chart.getChart('group-bars-canvas').options.indexAxis")
+            grp_rows = page.locator("#group-rank .prediction-row").count()
+            grp_pill = page.inner_text("#group-stats-pill").strip()
+            rec("US23: pill '3 nhóm'", grp_pill.startswith("3"), grp_pill)
+            rec("US23: biểu đồ thanh NGANG (indexAxis=y)", grp_axis == "y", str(grp_axis))
+            rec("US23: chart top nhóm tổng=4", sum(grp_bars) == 4, str(grp_bars))
+            rec("US23: bảng xếp hạng có 3 dòng", grp_rows == 3, f"{grp_rows} dòng")
+            page.screenshot(path=str(ROOT / "screenshots" / "us23_group_dashboard.png"))
+
             # Lọc theo ngày: chỉ hôm nay -> 1 ca
             d0 = datetime.now(timezone.utc).date().isoformat()
             page.fill("#dashboard-from", d0)

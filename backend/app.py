@@ -3319,6 +3319,65 @@ def admin_feedback_stats():
     })
 
 
+# ── US23 (SCRUM-92): Top nhóm thuốc được dự đoán nhiều nhất ───────────────────
+@app.get("/api/admin/group-stats")
+def admin_group_stats():
+    """US23 (SCRUM-93): đếm số lần mỗi nhóm thuốc xuất hiện trong lịch sử dự đoán.
+
+    Admin-only. ?limit=N (mặc định 10), lọc ?from=&to=. Mỗi nhóm kèm count + percent.
+    Chạy DB (ket_qua_du_doan) hoặc JSONL (graceful).
+    """
+    store = load_user_store()
+    _admin, error = current_admin_from_request(store)
+    if error:
+        return error
+    date_from = _valid_date_param(request.args.get("from"))
+    date_to = _valid_date_param(request.args.get("to"))
+    try:
+        limit = max(1, min(50, int(request.args.get("limit", 10))))
+    except (TypeError, ValueError):
+        limit = 10
+
+    if DB_ENABLED:
+        from sqlalchemy import Date, cast, func
+        KQ = db_models.KetQuaDuDoan
+
+        def drange():
+            conds = [KQ.nhom_thuoc_du_doan.isnot(None)]
+            if date_from:
+                conds.append(cast(KQ.created_at, Date) >= date_from)
+            if date_to:
+                conds.append(cast(KQ.created_at, Date) <= date_to)
+            return conds
+
+        pairs = (
+            db.session.query(KQ.nhom_thuoc_du_doan, func.count())
+            .filter(*drange()).group_by(KQ.nhom_thuoc_du_doan).order_by(func.count().desc())
+        ).all()
+        source = "postgres"
+    else:
+        counter: Counter = Counter()
+        for r in stats_source.read_predictions(date_from, date_to):
+            g = r.get("predicted_group")
+            if isinstance(g, str) and g.strip():
+                counter[g.strip()] += 1
+        pairs = counter.most_common()
+        source = "jsonl"
+
+    total = sum(c for _, c in pairs)
+    groups = [
+        {"group": g, "count": c, "percent": round(c / total * 100, 1) if total else 0.0}
+        for g, c in pairs[:limit]
+    ]
+    return jsonify({
+        "range": {"from": date_from, "to": date_to},
+        "total_with_group": total,
+        "distinct_groups": len(pairs),
+        "groups": groups,
+        "source": source,
+    })
+
+
 # ── DB-BACKED: đọc danh mục đã seed từ Postgres (admin) ───────────────────────
 # Tích hợp SQLAlchemy vào Flask app: các endpoint sau ĐỌC trực tiếp từ Postgres
 # (nhom_thuoc/thuoc_tham_khao/trieu_chung) — phục vụ QuanLyNhomThuoc() của Admin.
