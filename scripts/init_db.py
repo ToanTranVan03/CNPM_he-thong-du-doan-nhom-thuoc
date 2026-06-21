@@ -46,6 +46,17 @@ def main():
 
     with app.app_context():
         db.create_all()
+        # Đảm bảo cột HẠ TẦNG cho auth (nếu DB đã tạo từ trước, create_all không tự thêm cột).
+        for stmt in (
+            "ALTER TABLE nguoi_dung ADD COLUMN IF NOT EXISTS created_at TIMESTAMP",
+            "ALTER TABLE tai_khoan ADD COLUMN IF NOT EXISTS session_token VARCHAR(255)",
+            "ALTER TABLE tai_khoan ADD COLUMN IF NOT EXISTS session_expires_at TIMESTAMP",
+            "ALTER TABLE tai_khoan ADD COLUMN IF NOT EXISTS reset_code_hash VARCHAR(255)",
+            "ALTER TABLE tai_khoan ADD COLUMN IF NOT EXISTS reset_code_expires_at TIMESTAMP",
+            "CREATE INDEX IF NOT EXISTS ix_tai_khoan_session_token ON tai_khoan(session_token)",
+        ):
+            db.session.execute(sa.text(stmt))
+        db.session.commit()
         tables = set(sa.inspect(db.engine).get_table_names())
 
     created = sorted(EXPECTED_TABLES & tables)

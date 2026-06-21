@@ -175,7 +175,71 @@ def parse_iso_datetime(value: str | None) -> datetime | None:
         return None
 
 
+def _iso_dt(dt) -> str | None:
+    """datetime (DB, naive=UTC) -> chuỗi ISO tz-aware để khớp luồng dùng iso_utc/parse_iso_datetime."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
+def _user_dict_from_db(nd) -> dict:
+    """Map bản ghi NguoiDung(+TaiKhoan) -> dict ĐÚNG shape mà các route auth đang dùng."""
+    tk = nd.tai_khoan
+    return {
+        "id": nd.ma_nguoi_dung,
+        "name": nd.ho_ten or "",
+        "email": nd.email or "",
+        "password_hash": (tk.mat_khau_hash if tk else "") or "",
+        "created_at": _iso_dt(nd.created_at),
+        "role": nd.vai_tro or "user",
+        "session_token": tk.session_token if tk else None,
+        "session_expires_at": _iso_dt(tk.session_expires_at) if tk else None,
+        "reset_code_hash": tk.reset_code_hash if tk else None,
+        "reset_code_expires_at": _iso_dt(tk.reset_code_expires_at) if tk else None,
+        "_ma_nguoi_dung": nd.ma_nguoi_dung,
+    }
+
+
+def _upsert_user_db(u: dict) -> None:
+    """Ghi 1 user dict trở lại DB (tạo mới nếu chưa có; cập nhật field hay đổi)."""
+    email = normalize_email(u.get("email", ""))
+    nd = None
+    if u.get("_ma_nguoi_dung"):
+        nd = db.session.get(db_models.NguoiDung, u["_ma_nguoi_dung"])
+    if nd is None:
+        nd = db.session.query(db_models.NguoiDung).filter_by(email=email).first()
+    if nd is None:
+        nd = db_models.NguoiDung(email=email)
+        nd.tai_khoan = db_models.TaiKhoan(ten_dang_nhap=email, mat_khau_hash="")
+        db.session.add(nd)
+    nd.ho_ten = u.get("name", "")
+    nd.email = email
+    nd.vai_tro = u.get("role") or "user"
+    if u.get("created_at"):
+        nd.created_at = parse_iso_datetime(u["created_at"]) or nd.created_at
+    tk = nd.tai_khoan
+    if tk is None:
+        tk = db_models.TaiKhoan(ten_dang_nhap=email, mat_khau_hash="")
+        nd.tai_khoan = tk
+    tk.ten_dang_nhap = email
+    if u.get("password_hash"):
+        tk.mat_khau_hash = u["password_hash"]
+    tk.session_token = u.get("session_token")
+    tk.session_expires_at = parse_iso_datetime(u.get("session_expires_at"))
+    tk.reset_code_hash = u.get("reset_code_hash")
+    tk.reset_code_expires_at = parse_iso_datetime(u.get("reset_code_expires_at"))
+
+
 def load_user_store() -> dict:
+    # DB-backed khi bật; ngược lại đọc users.json (graceful fallback).
+    if DB_ENABLED:
+        try:
+            rows = db.session.query(db_models.NguoiDung).order_by(db_models.NguoiDung.ma_nguoi_dung).all()
+            return {"users": [_user_dict_from_db(nd) for nd in rows]}
+        except Exception:
+            app.logger.exception("load_user_store: lỗi DB -> fallback JSON")
     if not USERS_PATH.exists():
         return {"users": []}
     try:
@@ -188,6 +252,16 @@ def load_user_store() -> dict:
 
 
 def save_user_store(store: dict) -> None:
+    if DB_ENABLED:
+        try:
+            for u in store.get("users", []):
+                _upsert_user_db(u)
+            db.session.commit()
+            return
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("save_user_store: lỗi DB")
+            return
     USERS_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = USERS_PATH.with_suffix(".tmp")
     tmp_path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")

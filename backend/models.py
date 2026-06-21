@@ -71,6 +71,7 @@ class NguoiDung(db.Model):
     sdt = db.Column(db.String(20))
     vai_tro = db.Column(db.String(30), nullable=False, default="user")  # user/admin/bac_si...
     trang_thai = db.Column(db.String(30), nullable=False, default="active")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)  # [hạ tầng] không có trên diagram
 
     tai_khoan = db.relationship("TaiKhoan", back_populates="nguoi_dung", uselist=False, cascade="all, delete-orphan")
     quan_tri_vien = db.relationship("QuanTriVien", back_populates="nguoi_dung", uselist=False, cascade="all, delete-orphan")
@@ -85,6 +86,12 @@ class TaiKhoan(db.Model):
     ten_dang_nhap = db.Column(db.String(100), unique=True, nullable=False)
     mat_khau_hash = db.Column(db.String(255), nullable=False)
     ma_nguoi_dung = db.Column(db.ForeignKey("nguoi_dung.ma_nguoi_dung", ondelete="CASCADE"), unique=True, nullable=False)
+    # [hạ tầng] phiên đăng nhập + mã đặt lại mật khẩu — KHÔNG có trên class diagram,
+    # thêm để giữ nguyên luồng auth Bearer-session/forgot-password hiện có.
+    session_token = db.Column(db.String(255), index=True)
+    session_expires_at = db.Column(db.DateTime)
+    reset_code_hash = db.Column(db.String(255))
+    reset_code_expires_at = db.Column(db.DateTime)
 
     nguoi_dung = db.relationship("NguoiDung", back_populates="tai_khoan")
 

@@ -35,7 +35,7 @@ def rec(name, ok, detail=""):
 def start_server(tmp: Path):
     env = os.environ.copy()
     env.update({
-        "PORT": str(PORT), "LLM_CONTEXT_ENABLED": "0",
+        "PORT": str(PORT), "LLM_CONTEXT_ENABLED": "0", "DB_DISABLED": "1",
         "USERS_PATH": str(tmp / "users.json"),
         "PREDICTION_LOG_PATH": str(tmp / "prediction_log.jsonl"),
         "FEEDBACK_LOG_PATH": str(tmp / "feedback.jsonl"),

@@ -7,7 +7,7 @@ Chạy:  python scripts/test_db_integration.py
 import json
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,17 +29,37 @@ def check(name, cond, detail=""):
         print(f"  FAIL  {name}{(' — ' + detail) if detail else ''}")
 
 
+ADMIN_EMAIL = "dbint_admin@cnpm.vn"
+USER_EMAIL = "dbint_user@cnpm.vn"
+
+
+def _del(email):
+    nd = A.db.session.query(A.db_models.NguoiDung).filter_by(email=email).first()
+    if nd:
+        A.db.session.delete(nd)
+        A.db.session.commit()
+
+
 def setup_admin():
-    tmp = Path(tempfile.mkdtemp(prefix="dbint_"))
-    expires = A.iso_utc(datetime.now(timezone.utc) + A.timedelta(days=1))
-    store = {"users": [
-        {"id": "a1", "name": "Admin", "email": "admin@cnpm.vn", "password_hash": "x",
-         "role": "admin", "session_token": "ADMIN", "session_expires_at": expires},
-        {"id": "u1", "name": "User", "email": "user@cnpm.vn", "password_hash": "x",
-         "session_token": "USER", "session_expires_at": expires},
-    ]}
-    (tmp / "users.json").write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
-    A.USERS_PATH = tmp / "users.json"
+    """Auth giờ DB-backed -> tạo admin + user trong Postgres với session_token cố định."""
+    expires = datetime.now(timezone.utc) + timedelta(days=1)
+    with A.app.app_context():
+        _del(ADMIN_EMAIL)
+        _del(USER_EMAIL)
+        for email, role, token in [(ADMIN_EMAIL, "admin", "ADMIN"), (USER_EMAIL, "user", "USER")]:
+            nd = A.db_models.NguoiDung(ho_ten=role, email=email, vai_tro=role)
+            nd.tai_khoan = A.db_models.TaiKhoan(
+                ten_dang_nhap=email, mat_khau_hash="x",
+                session_token=token, session_expires_at=expires,
+            )
+            A.db.session.add(nd)
+        A.db.session.commit()
+
+
+def teardown_admin():
+    with A.app.app_context():
+        _del(ADMIN_EMAIL)
+        _del(USER_EMAIL)
 
 
 def main():
@@ -81,11 +101,20 @@ def main():
     check("mỗi item có ma+ten", all("ma" in t and "ten" in t for t in js.get("trieu_chung", [])))
 
     print("== GRACEFUL (DB tắt -> 503) ==")
-    saved = A.DB_ENABLED
+    # Khi DB tắt, auth cũng về JSON -> cấp admin qua users.json tạm để kiểm đúng nhánh 503.
+    saved_db, saved_path = A.DB_ENABLED, A.USERS_PATH
+    tmp = Path(tempfile.mkdtemp(prefix="dbint_off_"))
+    expires = A.iso_utc(datetime.now(timezone.utc) + timedelta(days=1))
+    (tmp / "users.json").write_text(json.dumps({"users": [
+        {"id": "a", "name": "A", "email": ADMIN_EMAIL, "password_hash": "x",
+         "role": "admin", "session_token": "ADMIN", "session_expires_at": expires}]},
+        ensure_ascii=False), encoding="utf-8")
+    A.USERS_PATH = tmp / "users.json"
     A.DB_ENABLED = False
-    check("DB tắt -> health 503", get("/api/admin/db/health").status_code == 503)
-    A.DB_ENABLED = saved
+    check("DB tắt (auth JSON) -> health 503", get("/api/admin/db/health").status_code == 503)
+    A.DB_ENABLED, A.USERS_PATH = saved_db, saved_path
 
+    teardown_admin()
     print("=" * 50)
     print(f"TỔNG: {PASS} PASS / {FAIL} FAIL")
     return 0 if FAIL == 0 else 1

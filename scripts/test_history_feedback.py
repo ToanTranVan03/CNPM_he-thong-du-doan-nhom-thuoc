@@ -10,6 +10,9 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+import os
+os.environ["DB_DISABLED"] = "1"  # test JSON-mode (auth users.json + stats JSONL), không đụng Postgres
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "backend"))
 

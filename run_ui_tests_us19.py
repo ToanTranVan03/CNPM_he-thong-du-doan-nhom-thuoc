@@ -62,6 +62,7 @@ def start_server(tmp: Path):
         {
             "PORT": str(PORT),
             "LLM_CONTEXT_ENABLED": "0",
+            "DB_DISABLED": "1",  # UI test JSON-mode, không đụng Postgres
             "USERS_PATH": str(tmp / "users.json"),
             "PREDICTION_LOG_PATH": str(tmp / "prediction_log.jsonl"),
             "FEEDBACK_LOG_PATH": str(tmp / "feedback.jsonl"),
