@@ -204,12 +204,12 @@ def mark_feedback_reviewed(feedback_id):
                 "message": "Không tìm thấy phản hồi."
             }), 404
 
-        feedback.trang_thai = "REVIEWED"
+        feedback.xu_ly = "DA_XU_LY"
         db.session.commit()
 
         return jsonify({
             "success": True,
-            "message": "Đã đánh dấu phản hồi là đã xem xét.",
+            "message": "Đã đánh dấu phản hồi là đã xử lý.",
             "data": feedback.to_dict()
         }), 200
 

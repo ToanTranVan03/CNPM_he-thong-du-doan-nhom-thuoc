@@ -124,17 +124,19 @@ class DanhGiaDuDoan(db.Model):
     __tablename__ = 'danh_gia_du_doan'
 
     id = db.Column(db.Integer, primary_key=True)
-    trieu_chung_nhap = db.Column(db.String(255), nullable=False) # Triệu chứng bác sĩ đã nhập
-    trang_thai = db.Column(db.String(50), nullable=False)        # 'APPROVE' (Đồng ý) hoặc 'REJECT' (Không đồng ý)
-    ghi_chu = db.Column(db.Text, nullable=True)                  # Lý do nếu không đồng ý
+    trieu_chung_nhap = db.Column(db.String(255), nullable=False)
+    trang_thai = db.Column(db.String(50), nullable=False)  # APPROVE / REJECT / REVIEWED
+    ghi_chu = db.Column(db.Text, nullable=True)
+    xu_ly = db.Column(db.String(20), default="CHUA_XU_LY")  # CHUA_XU_LY / DA_XU_LY
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
         return {
-            'id': self.id,  
+            'id': self.id,
             'trieu_chung_nhap': self.trieu_chung_nhap,
             'trang_thai': self.trang_thai,
             'ghi_chu': self.ghi_chu,
+            'xu_ly': self.xu_ly or "CHUA_XU_LY",
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
