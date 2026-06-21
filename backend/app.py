@@ -3473,6 +3473,68 @@ def admin_db_trieu_chung():
     })
 
 
+# ── US28 (SCRUM-112): ánh xạ chi tiết TRIỆU CHỨNG ↔ NHÓM THUỐC ────────────────
+# Nguồn ánh xạ = dữ liệu TRAIN (kiểm tra dữ liệu): đếm đồng xuất hiện symptom↔nhom_thuoc
+# trong train_ready_mapped_drug_groups.csv. Lazy-cache trong biến module.
+_SYMPTOM_GROUP_INDEX = None
+
+
+def _symptom_group_index() -> dict:
+    """{symptom_lower: {nhom_thuoc: số_ca_đồng_xuất_hiện}} — dựng 1 lần từ CSV train."""
+    global _SYMPTOM_GROUP_INDEX
+    if _SYMPTOM_GROUP_INDEX is not None:
+        return _SYMPTOM_GROUP_INDEX
+    index: dict[str, Counter] = {}
+    try:
+        with DATA_SOURCE.open("r", encoding="utf-8-sig") as fh:
+            for row in csv.DictReader(fh):
+                group = (row.get("nhom_thuoc") or "").strip()
+                if not group:
+                    continue
+                for sym in (row.get("trieu_chung") or "").split(";"):
+                    sym = sym.strip().lower()
+                    if sym:
+                        index.setdefault(sym, Counter())[group] += 1
+    except OSError:
+        app.logger.exception("US28: không đọc được CSV train cho ánh xạ")
+    _SYMPTOM_GROUP_INDEX = index
+    return index
+
+
+@app.get("/api/admin/symptom-mapping")
+def admin_symptom_mapping():
+    """US28 (SCRUM-113/115): trả các NHÓM THUỐC liên quan tới một triệu chứng (theo dữ
+    liệu train), kèm số ca đồng xuất hiện + %. Admin-only. ?ma=<id> hoặc ?ten=<tên>.
+    """
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+
+    ten = (request.args.get("ten") or "").strip()
+    ma = request.args.get("ma")
+    if not ten and ma:
+        try:
+            row = db.session.get(db_models.TrieuChung, int(ma))
+            ten = row.ten_trieu_chung if row else ""
+        except (TypeError, ValueError):
+            ten = ""
+    if not ten:
+        return jsonify({"error": "Thiếu tham số ?ma hoặc ?ten."}), 400
+
+    counts = _symptom_group_index().get(ten.lower(), Counter())
+    total = sum(counts.values())
+    groups = [
+        {"group": g, "count": c, "percent": round(c / total * 100, 1) if total else 0.0}
+        for g, c in counts.most_common()
+    ]
+    return jsonify({
+        "ten": ten,
+        "total_cases": total,
+        "distinct_groups": len(groups),
+        "groups": groups,
+    })
+
+
 # ── US15 (port): tự động lưu lịch sử mỗi lần dự đoán ──────────────────────────
 # Ghi vào prediction_log.jsonl — đúng nguồn mà US19 (stats_source) đọc. Port theo hook
 # @app.after_request của nhánh toan/tu, nhưng dùng kiến trúc file-JSON + Bearer của nhánh này.

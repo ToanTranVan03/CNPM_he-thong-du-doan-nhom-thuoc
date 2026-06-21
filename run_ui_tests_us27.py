@@ -118,6 +118,21 @@ def run():
             rec("Kết quả chứa 'fever'", has_fever)
             page.screenshot(path=str(ROOT / "screenshots" / "us27_dictionary.png"))
 
+            # US28: bấm 1 triệu chứng -> Modal hiện nhóm thuốc liên quan
+            page.click("#dictionary-rows tr:first-child")
+            page.wait_for_selector("#mapping-modal:not(.is-hidden)", timeout=8000)
+            page.wait_for_function(
+                "() => document.querySelectorAll('#mapping-modal-groups li').length > 0", timeout=8000)
+            modal_groups = page.locator("#mapping-modal-groups li").count()
+            modal_title = page.inner_text("#mapping-modal-title").strip()
+            rec("US28: Modal mở khi bấm triệu chứng", page.locator("#mapping-modal").is_visible())
+            rec("US28: Modal có danh sách nhóm thuốc (>=1)", modal_groups >= 1, str(modal_groups))
+            rec("US28: tiêu đề Modal có tên triệu chứng", len(modal_title) > 0, modal_title)
+            page.screenshot(path=str(ROOT / "screenshots" / "us28_mapping_modal.png"))
+            page.click("#mapping-modal-close")
+            page.wait_for_selector("#mapping-modal", state="hidden", timeout=5000)
+            rec("US28: đóng Modal được", page.locator("#mapping-modal").is_hidden())
+
             browser.close()
     finally:
         proc.terminate()

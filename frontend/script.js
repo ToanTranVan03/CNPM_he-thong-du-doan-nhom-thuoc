@@ -984,6 +984,8 @@ function renderDictionary(data) {
   const startIdx = (dictPage - 1) * DICT_PER_PAGE;
   items.forEach((it, i) => {
     const tr = document.createElement("tr");
+    tr.className = "dict-row-clickable";
+    tr.title = "Bấm để xem nhóm thuốc liên quan";
     const td0 = document.createElement("td");
     td0.textContent = startIdx + i + 1;
     const td1 = document.createElement("td");
@@ -992,6 +994,7 @@ function renderDictionary(data) {
     td2.className = "muted-text";
     td2.textContent = it.tu_khoa || "—";
     tr.append(td0, td1, td2);
+    tr.addEventListener("click", () => openMappingModal(it.ma, it.ten)); // US28
     dictionaryRows.appendChild(tr);
   });
   if (dictPageInfo) dictPageInfo.textContent = dictTotalPages ? `Trang ${dictPage} / ${dictTotalPages}` : "Trang 0";
@@ -1031,6 +1034,70 @@ if (dictionarySearch) {
 }
 if (dictPrev) dictPrev.addEventListener("click", () => { if (dictPage > 1) loadDictionary(dictPage - 1); });
 if (dictNext) dictNext.addEventListener("click", () => { if (dictPage < dictTotalPages) loadDictionary(dictPage + 1); });
+
+// ── US28: Modal ánh xạ chi tiết triệu chứng ↔ nhóm thuốc ─────────────────────
+const mappingModal = document.getElementById("mapping-modal");
+const mappingModalTitle = document.getElementById("mapping-modal-title");
+const mappingModalSub = document.getElementById("mapping-modal-sub");
+const mappingModalMessage = document.getElementById("mapping-modal-message");
+const mappingModalGroups = document.getElementById("mapping-modal-groups");
+const mappingModalClose = document.getElementById("mapping-modal-close");
+
+function closeMappingModal() {
+  if (mappingModal) mappingModal.classList.add("is-hidden");
+}
+
+async function openMappingModal(ma, ten) {
+  if (!mappingModal) return;
+  mappingModalTitle.textContent = ten || "Chi tiết triệu chứng";
+  mappingModalGroups.innerHTML = "";
+  mappingModalMessage.textContent = "Đang tải ánh xạ...";
+  mappingModalMessage.classList.remove("is-error");
+  mappingModal.classList.remove("is-hidden");
+  try {
+    const response = await fetch(`/api/admin/symptom-mapping?ma=${encodeURIComponent(ma)}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Không tải được ánh xạ.");
+    const groups = data.groups || [];
+    mappingModalSub.textContent =
+      `${data.distinct_groups || 0} nhóm thuốc liên quan · ${(data.total_cases || 0).toLocaleString("vi-VN")} ca trong dữ liệu huấn luyện.`;
+    mappingModalMessage.textContent = groups.length ? "" : "Triệu chứng này chưa có ánh xạ nhóm thuốc trong dữ liệu.";
+    const max = groups.reduce((m, g) => Math.max(m, g.count || 0), 0) || 1;
+    groups.forEach((g, i) => {
+      const li = document.createElement("li");
+      li.className = "prediction-row";
+      const name = document.createElement("span");
+      name.className = "prediction-name";
+      name.textContent = `${i + 1}. ${g.group}`;
+      const value = document.createElement("span");
+      value.className = "prediction-value";
+      value.textContent = `${g.count.toLocaleString("vi-VN")} (${g.percent}%)`;
+      const track = document.createElement("span");
+      track.className = "prediction-track";
+      const fill = document.createElement("span");
+      fill.className = "prediction-fill";
+      fill.style.width = `${Math.round(((g.count || 0) / max) * 100)}%`;
+      track.appendChild(fill);
+      li.append(name, value, track);
+      mappingModalGroups.appendChild(li);
+    });
+  } catch (error) {
+    mappingModalMessage.textContent = formatError(error);
+    mappingModalMessage.classList.add("is-error");
+  }
+}
+
+if (mappingModalClose) mappingModalClose.addEventListener("click", closeMappingModal);
+if (mappingModal) {
+  mappingModal.addEventListener("click", (e) => {
+    if (e.target === mappingModal) closeMappingModal(); // bấm nền ngoài -> đóng
+  });
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeMappingModal();
+});
 
 if (dashboardRefresh) {
   dashboardRefresh.addEventListener("click", () => {

@@ -650,6 +650,24 @@
       </button>
     </nav>
 
+    <!-- US28 (SCRUM-114): Modal ánh xạ chi tiết triệu chứng ↔ nhóm thuốc -->
+    <div class="modal-overlay is-hidden" id="mapping-modal" role="dialog" aria-modal="true" aria-labelledby="mapping-modal-title">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Ánh xạ dữ liệu</p>
+            <h2 id="mapping-modal-title">Chi tiết triệu chứng</h2>
+          </div>
+          <button class="icon-button" type="button" id="mapping-modal-close" aria-label="Đóng">
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <p class="muted-text" id="mapping-modal-sub">Các nhóm thuốc liên quan tới triệu chứng (theo dữ liệu huấn luyện).</p>
+        <p class="form-message" id="mapping-modal-message" role="status"></p>
+        <ul class="top-predictions" id="mapping-modal-groups"></ul>
+      </div>
+    </div>
+
     <script src="vendor/chart.umd.min.js"></script>
     <script src="script.js"></script>
   </body>
