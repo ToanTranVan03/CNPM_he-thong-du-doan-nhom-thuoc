@@ -13,6 +13,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from itertools import permutations
 from pathlib import Path
+from difflib import SequenceMatcher
 
 import joblib
 from models import db, User, NhomThuoc, Thuoc, TrieuChung, Feedback
@@ -4434,6 +4435,158 @@ def get_feedback_statistics():
         return jsonify({
             'success': False,
             'message': 'Không thể lấy dữ liệu thống kê.',
+            'error': str(e)
+        }), 500
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# API HỖ TRỢ CHỨC NĂNG AUTOCOMPLETE TRIỆU CHỨNG
+# ════════════════════════════════════════════════════════════════════════════════
+
+def fuzzy_match(query: str, target: str, threshold: float = 0.6) -> float:
+    """
+    Tính similarity score giữa query và target sử dụng SequenceMatcher.
+    Returns: float từ 0 đến 1, trong đó 1 là match hoàn hảo.
+    """
+    if not query or not target:
+        return 0.0
+    
+    # Normalize cả query và target
+    norm_query = normalize(query).lower()
+    norm_target = normalize(target).lower()
+    
+    # Check exact match (normalized)
+    if norm_query == norm_target:
+        return 1.0
+    
+    # Check if query starts with target (prefix match - cao hơn contain match)
+    if norm_target.startswith(norm_query):
+        return 0.95
+    
+    # Check if target contains query
+    if norm_query in norm_target:
+        return 0.85
+    
+    # Use SequenceMatcher for fuzzy matching
+    ratio = SequenceMatcher(None, norm_query, norm_target).ratio()
+    
+    return ratio if ratio >= threshold else 0.0
+
+
+@app.route('/api/symptoms/autocomplete', methods=['GET'])
+def autocomplete_symptoms():
+    """
+    Autocomplete API cho triệu chứng với hỗ trợ fuzzy search.
+    
+    Query Parameters:
+    - q: string (optional) - từ khóa tìm kiếm
+    - limit: int (default: 15) - số lượng kết quả trả về
+    - threshold: float (default: 0.6) - ngưỡng tối thiểu cho fuzzy match (0.0 - 1.0)
+    
+    Response:
+    {
+        "success": true,
+        "query": "keyword",
+        "data": [
+            {
+                "id": symptom_id,
+                "label_vi": "Tên triệu chứng Tiếng Việt",
+                "label_en": "Symptom Name English",
+                "score": 0.95
+            },
+            ...
+        ],
+        "total": int
+    }
+    """
+    try:
+        query = request.args.get('q', '').strip()
+        limit = request.args.get('limit', 15, type=int)
+        threshold = request.args.get('threshold', 0.6, type=float)
+        
+        # Validate inputs
+        limit = min(max(limit, 1), 50)  # Từ 1 tới 50
+        threshold = min(max(threshold, 0.0), 1.0)  # Từ 0.0 tới 1.0
+        
+        results = []
+        
+        # Nếu không có query, trả về danh sách phổ biến
+        if not query:
+            common_symptoms = readable_symptoms[:limit] if readable_symptoms else []
+            
+            # Bổ sung từ database nếu cần
+            if len(common_symptoms) < limit:
+                additional = TrieuChung.query.limit(limit - len(common_symptoms)).all()
+                for symptom in additional:
+                    symptom_dict = {
+                        'id': symptom.id,
+                        'label_vi': symptom.ten or '',
+                        'label_en': symptom.ten_en or symptom.ten or '',
+                        'score': 1.0  # Không có query = không có score
+                    }
+                    # Tránh trùng lặp
+                    if not any(s.get('label_vi') == symptom_dict['label_vi'] for s in common_symptoms):
+                        common_symptoms.append(symptom_dict)
+            
+            results = common_symptoms[:limit]
+        else:
+            # Tìm kiếm với fuzzy match trong readable_symptoms
+            for symptom in readable_symptoms:
+                label_vi = symptom.get('label_vi', '')
+                label_en = symptom.get('label_en', '')
+                
+                # Tính score cho cả label_vi và label_en, lấy max
+                score_vi = fuzzy_match(query, label_vi, threshold)
+                score_en = fuzzy_match(query, label_en, threshold)
+                score = max(score_vi, score_en)
+                
+                if score > 0.0:
+                    results.append({
+                        'id': symptom.get('id'),
+                        'label_vi': label_vi,
+                        'label_en': label_en,
+                        'score': round(score, 3)
+                    })
+            
+            # Nếu không đủ kết quả từ readable_symptoms, tìm trong database
+            if len(results) < limit:
+                db_symptoms = TrieuChung.query.filter(
+                    (TrieuChung.ten.ilike(f'%{query}%')) |
+                    (TrieuChung.ten_en.ilike(f'%{query}%'))
+                ).limit(limit - len(results)).all()
+                
+                for symptom in db_symptoms:
+                    # Tính score
+                    score_vi = fuzzy_match(query, symptom.ten or '', threshold)
+                    score_en = fuzzy_match(query, symptom.ten_en or '', threshold)
+                    score = max(score_vi, score_en)
+                    
+                    if score > 0.0:
+                        symptom_dict = {
+                            'id': symptom.id,
+                            'label_vi': symptom.ten or '',
+                            'label_en': symptom.ten_en or symptom.ten or '',
+                            'score': round(score, 3)
+                        }
+                        
+                        # Tránh trùng lặp
+                        if not any(r.get('label_vi') == symptom_dict['label_vi'] for r in results):
+                            results.append(symptom_dict)
+            
+            # Sắp xếp theo score (descending)
+            results.sort(key=lambda x: x.get('score', 0), reverse=True)
+            results = results[:limit]
+        
+        return jsonify({
+            'success': True,
+            'query': query,
+            'data': results,
+            'total': len(results)
+        }), 200
+    except Exception as e:
+        print(f"Error in autocomplete_symptoms: {str(e)}")
+        return jsonify({
+            'success': False,
             'error': str(e)
         }), 500
 

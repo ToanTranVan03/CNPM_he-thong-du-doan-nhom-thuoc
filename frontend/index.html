@@ -223,8 +223,48 @@
               </div>
               <label class="search-box compact-search" for="symptom-search">
                 <span class="material-symbols-outlined" aria-hidden="true">search</span>
-                <input id="symptom-search" type="search" placeholder="Tìm triệu chứng bằng tiếng Việt hoặc Anh..." autocomplete="off" />
+                <input 
+                  id="symptom-search" 
+                  type="search" 
+                  placeholder="Tìm triệu chứng bằng tiếng Việt hoặc Anh..." 
+                  autocomplete="off"
+                  aria-expanded="false"
+                  aria-controls="autocomplete-dropdown"
+                  aria-label="Tìm kiếm triệu chứng"
+                />
               </label>
+
+              <!-- Autocomplete Dropdown (NEW) -->
+              <div 
+                class="autocomplete-dropdown" 
+                id="autocomplete-dropdown" 
+                role="region"
+                aria-label="Danh sách gợi ý autocomplete">
+                <!-- Loading State -->
+                <div class="autocomplete-state loading-state" id="autocomplete-loading-state" style="display: none;" role="status" aria-live="polite">
+                  <div class="spinner-small"></div>
+                  <p class="muted-text">Đang tìm kiếm...</p>
+                </div>
+
+                <!-- Empty State -->
+                <div class="autocomplete-state empty-state" id="autocomplete-empty-state" style="display: none;" role="status" aria-live="polite">
+                  <span class="material-symbols-outlined" aria-hidden="true">search_off</span>
+                  <p class="muted-text">Không tìm thấy triệu chứng phù hợp</p>
+                </div>
+
+                <!-- Error State -->
+                <div class="autocomplete-state error-state" id="autocomplete-error-state" style="display: none;" role="alert" aria-live="assertive">
+                  <span class="material-symbols-outlined" aria-hidden="true">error_outline</span>
+                  <p class="muted-text error-text" id="autocomplete-error-message">Lỗi tải dữ liệu</p>
+                </div>
+
+                <!-- Suggestions List -->
+                <ul class="autocomplete-list" id="autocomplete-list" role="listbox" aria-label="Triệu chứng gợi ý">
+                  <!-- Items sẽ được thêm động ở đây -->
+                </ul>
+              </div>
+              <!-- End Autocomplete Dropdown -->
+
               <div class="symptom-list-container" id="symptom-list-container" aria-live="polite" aria-label="Danh sách triệu chứng">
                 <!-- State: Loading -->
                 <div class="symptom-state loading-state" id="symptom-loading-state" style="display: flex;">

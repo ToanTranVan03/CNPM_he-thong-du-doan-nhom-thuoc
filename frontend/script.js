@@ -55,6 +55,14 @@ const profileSpecialty = document.getElementById("profile-specialty");
 const profileMessage = document.getElementById("profile-message");
 const profileCancelButton = document.getElementById("profile-cancel");
 
+// Autocomplete Dropdown Elements (NEW)
+const autocompleteDropdown = document.getElementById("autocomplete-dropdown");
+const autocompleteList = document.getElementById("autocomplete-list");
+const autocompleteLoadingState = document.getElementById("autocomplete-loading-state");
+const autocompleteEmptyState = document.getElementById("autocomplete-empty-state");
+const autocompleteErrorState = document.getElementById("autocomplete-error-state");
+const autocompleteErrorMessage = document.getElementById("autocomplete-error-message");
+
 const AUTH_TOKEN_KEY = "pharmaPredictAuthToken";
 const AUTH_USER_KEY = "pharmaPredictUser";
 
@@ -63,6 +71,8 @@ const sampleCase =
 
 let symptoms = [];
 const selectedSymptoms = new Set();
+const selectedSymptomLabels = new Map(); // Map để tracking label của triệu chứng đã chọn
+const recentlyUsedSymptoms = []; // Mảng tracking triệu chứng vừa dùng
 let currentResult = null;
 let savedResults = [];
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
@@ -150,6 +160,10 @@ function showAuthenticatedApp() {
   if (!symptomsLoaded) {
     loadSymptoms();
   }
+  // Initialize autocomplete keyboard navigation
+  setupAutocompleteKeyboardNavigation();
+  // Load recently used symptoms
+  loadRecentlyUsedSymptoms();
 }
 
 function showAuthScreen(viewName = "login") {
@@ -318,6 +332,16 @@ const SYMPTOM_STATES = {
   LOADED: 'loaded'
 };
 
+// Autocomplete Constants (NEW)
+const AUTOCOMPLETE_CONFIG = {
+  DEBOUNCE_DELAY: 300,
+  MIN_QUERY_LENGTH: 1,
+  MAX_RESULTS: 15,
+  THRESHOLD: 0.6
+};
+
+let autocompleteDebounceTimer = null;
+
 // ════════════════════════════════════════════════════════════════════════════════
 // SYMPTOM SUGGESTER - Helper Functions
 // ════════════════════════════════════════════════════════════════════════════════
@@ -374,6 +398,348 @@ function getSelectedSymptomLabels() {
     }
   });
   return selectedLabels;
+}
+
+/**
+ * Tự động thêm triệu chứng vào textarea khi người dùng chọn từ autocomplete
+ * Tránh trùng lặp bằng cách kiểm tra text trong textarea trước khi thêm
+ */
+function appendSymptomToTextarea(symptomLabel) {
+  if (!symptomLabel || !textarea) return false;
+
+  const currentText = textarea.value.trim();
+  const textToAdd = symptomLabel.trim();
+  
+  // Kiểm tra xem triệu chứng đã tồn tại trong textarea chưa
+  // Sử dụng regex word boundary để tránh false positive (ví dụ: "Đau" không match "Đau đầu")
+  const symptomRegex = new RegExp(`\\b${textToAdd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+  
+  if (symptomRegex.test(currentText)) {
+    console.log(`Triệu chứng "${textToAdd}" đã tồn tại trong textarea`);
+    return false;
+  }
+
+  // Thêm triệu chứng vào textarea
+  const newText = currentText ? `${currentText}, ${textToAdd}` : textToAdd;
+  textarea.value = newText;
+  
+  // Cập nhật character count
+  if (charCount) {
+    charCount.textContent = `${textarea.value.length} / 2000 ký tự`;
+  }
+
+  // Dispatch input event để trigger validation
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  
+  // Add to recently used
+  addToRecentlyUsed(symptomLabel);
+  
+  return true;
+}
+
+/**
+ * Thêm triệu chứng vào danh sách vừa dùng
+ */
+function addToRecentlyUsed(symptomLabel) {
+  // Remove if already exists to move to top
+  const index = recentlyUsedSymptoms.indexOf(symptomLabel);
+  if (index > -1) {
+    recentlyUsedSymptoms.splice(index, 1);
+  }
+  
+  // Add to front
+  recentlyUsedSymptoms.unshift(symptomLabel);
+  
+  // Keep only last 10
+  if (recentlyUsedSymptoms.length > 10) {
+    recentlyUsedSymptoms.pop();
+  }
+  
+  // Save to localStorage
+  try {
+    localStorage.setItem('recentlyUsedSymptoms', JSON.stringify(recentlyUsedSymptoms));
+  } catch (e) {
+    console.warn('Could not save recently used symptoms', e);
+  }
+}
+
+/**
+ * Load recently used symptoms from localStorage
+ */
+function loadRecentlyUsedSymptoms() {
+  try {
+    const saved = localStorage.getItem('recentlyUsedSymptoms');
+    if (saved) {
+      const loaded = JSON.parse(saved);
+      if (Array.isArray(loaded)) {
+        recentlyUsedSymptoms.push(...loaded.slice(0, 10));
+      }
+    }
+  } catch (e) {
+    console.warn('Could not load recently used symptoms', e);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// AUTOCOMPLETE DROPDOWN - Helper Functions (NEW)
+// ════════════════════════════════════════════════════════════════════════════════
+
+function showAutocompleteState(state, errorMessage = "") {
+  // Hide all states
+  if (autocompleteLoadingState) autocompleteLoadingState.classList.remove('visible');
+  if (autocompleteEmptyState) autocompleteEmptyState.classList.remove('visible');
+  if (autocompleteErrorState) autocompleteErrorState.classList.remove('visible');
+  if (autocompleteList) autocompleteList.classList.remove('visible');
+
+  // Update aria-expanded on search input
+  const isVisible = state === 'list' || state === 'loading';
+  if (symptomSearch) {
+    symptomSearch.setAttribute('aria-expanded', isVisible ? 'true' : 'false');
+  }
+
+  // Show requested state
+  if (state === 'loading') {
+    if (autocompleteLoadingState) autocompleteLoadingState.classList.add('visible');
+  } else if (state === 'empty') {
+    if (autocompleteEmptyState) autocompleteEmptyState.classList.add('visible');
+  } else if (state === 'error') {
+    if (autocompleteErrorState) {
+      autocompleteErrorState.classList.add('visible');
+      if (autocompleteErrorMessage) {
+        autocompleteErrorMessage.textContent = errorMessage || "Lỗi tải dữ liệu";
+      }
+    }
+  } else if (state === 'list') {
+    if (autocompleteList) autocompleteList.classList.add('visible');
+  }
+}
+
+function hideAutocompleteDropdown() {
+  if (autocompleteList) autocompleteList.classList.remove('visible');
+  if (autocompleteLoadingState) autocompleteLoadingState.classList.remove('visible');
+  if (autocompleteEmptyState) autocompleteEmptyState.classList.remove('visible');
+  if (autocompleteErrorState) autocompleteErrorState.classList.remove('visible');
+  
+  // Update aria-expanded on search input
+  if (symptomSearch) {
+    symptomSearch.setAttribute('aria-expanded', 'false');
+  }
+}
+
+/**
+ * Xử lý keyboard navigation cho autocomplete dropdown
+ */
+function setupAutocompleteKeyboardNavigation() {
+  let currentFocusIndex = -1;
+
+  symptomSearch.addEventListener('keydown', (e) => {
+    if (!autocompleteList || !autocompleteList.classList.contains('visible')) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const query = symptomSearch.value.trim();
+        if (query.length >= AUTOCOMPLETE_CONFIG.MIN_QUERY_LENGTH) {
+          fetchAutocomplete(query);
+        }
+      }
+      return;
+    }
+
+    const items = autocompleteList.querySelectorAll('.autocomplete-item');
+    if (items.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        currentFocusIndex = Math.min(currentFocusIndex + 1, items.length - 1);
+        items[currentFocusIndex].focus();
+        break;
+
+      case 'ArrowUp':
+        e.preventDefault();
+        if (currentFocusIndex === 0) {
+          currentFocusIndex = -1;
+          symptomSearch.focus();
+        } else if (currentFocusIndex > 0) {
+          currentFocusIndex--;
+          items[currentFocusIndex].focus();
+        }
+        break;
+
+      case 'Enter':
+        e.preventDefault();
+        if (currentFocusIndex >= 0 && items[currentFocusIndex]) {
+          items[currentFocusIndex].click();
+        }
+        break;
+
+      case 'Escape':
+        e.preventDefault();
+        hideAutocompleteDropdown();
+        currentFocusIndex = -1;
+        break;
+
+      default:
+        currentFocusIndex = -1;
+    }
+  });
+
+  // Reset focus index when input changes
+  symptomSearch.addEventListener('input', () => {
+    currentFocusIndex = -1;
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// AUTOCOMPLETE DROPDOWN - Main Functions (NEW)
+// ════════════════════════════════════════════════════════════════════════════════
+
+async function fetchAutocomplete(query) {
+  try {
+    if (!query || query.trim().length < AUTOCOMPLETE_CONFIG.MIN_QUERY_LENGTH) {
+      hideAutocompleteDropdown();
+      return [];
+    }
+
+    showAutocompleteState('loading');
+    const params = new URLSearchParams({
+      q: query.trim(),
+      limit: AUTOCOMPLETE_CONFIG.MAX_RESULTS,
+      threshold: AUTOCOMPLETE_CONFIG.THRESHOLD
+    });
+
+    const response = await fetch(`/api/symptoms/autocomplete?${params}`);
+    if (!response.ok) {
+      throw new Error("Lỗi tìm kiếm triệu chứng");
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || "Lỗi tìm kiếm triệu chứng");
+    }
+
+    const results = data.data || [];
+    if (results.length === 0) {
+      showAutocompleteState('empty');
+      return [];
+    }
+
+    renderAutocompleteList(results);
+    return results;
+  } catch (error) {
+    console.error("Autocomplete error:", error);
+    showAutocompleteState('error', error.message);
+    return [];
+  }
+}
+
+function renderAutocompleteList(items) {
+  if (!autocompleteList) return;
+
+  // Clear existing items
+  autocompleteList.innerHTML = '';
+
+  // Render each item
+  items.forEach((item, index) => {
+    const li = document.createElement('li');
+    li.className = 'autocomplete-item';
+    li.setAttribute('role', 'option');
+    li.setAttribute('data-symptom-id', item.id);
+    li.setAttribute('tabindex', '0');
+
+    // Check if already selected
+    const isSelected = selectedSymptoms.has(item.id);
+    
+    // Add aria-selected
+    li.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+
+    const labelVi = item.label_vi || '';
+    const labelEn = item.label_en || '';
+    const score = item.score ? (item.score * 100).toFixed(0) : '';
+
+    // Build accessible label
+    let ariaLabel = labelVi;
+    if (labelEn && labelEn !== labelVi) {
+      ariaLabel += `, ${labelEn}`;
+    }
+    if (score) {
+      ariaLabel += `, Độ phù hợp ${score} phần trăm`;
+    }
+    if (isSelected) {
+      ariaLabel += ', đã chọn';
+    }
+    li.setAttribute('aria-label', ariaLabel);
+
+    let html = `<div class="autocomplete-item-label">${escapeHtml(labelVi)}</div>`;
+    if (labelEn && labelEn !== labelVi) {
+      html += `<div class="autocomplete-item-en">${escapeHtml(labelEn)}</div>`;
+    }
+    if (score) {
+      html += `<div class="autocomplete-item-score">Độ phù hợp: ${score}%</div>`;
+    }
+
+    li.innerHTML = html;
+
+    // Add visual indicator for selected items
+    if (isSelected) {
+      li.style.background = 'var(--primary-soft)';
+      li.style.opacity = '0.8';
+    }
+
+    // Event listeners
+    li.addEventListener('click', (e) => {
+      e.preventDefault();
+      handleAutocompleteItemSelect(item);
+    });
+
+    li.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAutocompleteItemSelect(item);
+      }
+    });
+
+    autocompleteList.appendChild(li);
+  });
+
+  showAutocompleteState('list');
+}
+
+function handleAutocompleteItemSelect(item) {
+  // Check if already selected
+  if (selectedSymptoms.has(item.id)) {
+    // Deselect
+    selectedSymptoms.delete(item.id);
+    selectedSymptomLabels.delete(item.id);
+  } else {
+    // Check if can select more
+    if (!canSelectMore()) {
+      alert(`Đã chọn tối đa ${MAX_SELECTED_SYMPTOMS} triệu chứng`);
+      return;
+    }
+    // Select
+    selectedSymptoms.add(item.id);
+    selectedSymptomLabels.set(item.id, item.label_vi);
+    
+    // Tự động thêm vào textarea
+    appendSymptomToTextarea(item.label_vi);
+  }
+
+  updateSelectedCount();
+  
+  // Re-render current autocomplete list to reflect selection
+  const currentQuery = symptomSearch.value;
+  if (currentQuery.trim().length >= AUTOCOMPLETE_CONFIG.MIN_QUERY_LENGTH) {
+    fetchAutocomplete(currentQuery);
+  }
+
+  // Keep focus on input
+  symptomSearch.focus();
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -462,10 +828,15 @@ function renderSymptomChips(symptomsData) {
       if (selectedSymptoms.has(symptom.id)) {
         // Bỏ chọn
         selectedSymptoms.delete(symptom.id);
+        selectedSymptomLabels.delete(symptom.id);
       } else {
         // Chọn (nếu chưa đạt giới hạn)
         if (canSelectMore()) {
           selectedSymptoms.add(symptom.id);
+          selectedSymptomLabels.set(symptom.id, symptom.label_vi);
+          
+          // Tự động thêm vào textarea
+          appendSymptomToTextarea(symptom.label_vi);
         }
       }
       updateSelectedCount();
@@ -1173,9 +1544,43 @@ symptomSearch.addEventListener("input", (event) => {
   }
   
   // Set new timeout to debounce search
+  // Use autocomplete for instant feedback
   symptomSearchTimeout = setTimeout(() => {
-    renderSymptoms(event.target.value);
-  }, SYMPTOM_SEARCH_DELAY);
+    const query = event.target.value.trim();
+    
+    if (query.length < AUTOCOMPLETE_CONFIG.MIN_QUERY_LENGTH) {
+      // If query is empty or too short, hide autocomplete and show common symptoms
+      hideAutocompleteDropdown();
+      renderSymptoms("");
+    } else {
+      // Fetch autocomplete suggestions
+      fetchAutocomplete(query);
+    }
+  }, AUTOCOMPLETE_CONFIG.DEBOUNCE_DELAY);
+});
+
+// Show autocomplete when input gets focus
+symptomSearch.addEventListener("focus", () => {
+  const query = symptomSearch.value.trim();
+  if (query.length >= AUTOCOMPLETE_CONFIG.MIN_QUERY_LENGTH) {
+    fetchAutocomplete(query);
+  }
+});
+
+// Hide autocomplete when input loses focus (with delay to allow clicking items)
+symptomSearch.addEventListener("blur", () => {
+  setTimeout(() => {
+    hideAutocompleteDropdown();
+  }, 200);
+});
+
+// Click outside to close autocomplete
+document.addEventListener('click', (e) => {
+  if (symptomSearch && autocompleteDropdown) {
+    if (!symptomSearch.contains(e.target) && !autocompleteDropdown.contains(e.target)) {
+      hideAutocompleteDropdown();
+    }
+  }
 });
 
 let historyCurrentPage = 1;
