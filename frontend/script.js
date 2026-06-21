@@ -1526,7 +1526,7 @@ async function logoutCurrentUser() {
   localStorage.removeItem(AUTH_USER_KEY);     
   document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
   showAuthScreen("login"); 
-  alert("Bạn đã đăng xuất an toàn khỏi hệ thống!");
+  showToast?.("Bạn đã đăng xuất an toàn khỏi hệ thống.", "success");
 }
 
 logoutButton.addEventListener("click", logoutCurrentUser);
