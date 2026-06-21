@@ -219,14 +219,35 @@
                   <p class="eyebrow">Tùy chọn</p>
                   <h2>Chọn thêm triệu chứng</h2>
                 </div>
-                <span id="selected-count">0 đã chọn</span>
+                <span id="selected-count" class="selected-badge">0 đã chọn</span>
               </div>
               <label class="search-box compact-search" for="symptom-search">
                 <span class="material-symbols-outlined" aria-hidden="true">search</span>
-                <input id="symptom-search" type="search" placeholder="Tìm triệu chứng bằng tiếng Việt..." />
+                <input id="symptom-search" type="search" placeholder="Tìm triệu chứng bằng tiếng Việt hoặc Anh..." autocomplete="off" />
               </label>
-              <div class="symptom-list" id="symptom-list" aria-live="polite">
-                <p class="muted-text">Đang tải danh sách triệu chứng từ dữ liệu huấn luyện...</p>
+              <div class="symptom-list-container" id="symptom-list-container" aria-live="polite" aria-label="Danh sách triệu chứng">
+                <!-- State: Loading -->
+                <div class="symptom-state loading-state" id="symptom-loading-state" style="display: flex;">
+                  <div class="spinner"></div>
+                  <p class="muted-text">Đang tải danh sách triệu chứng...</p>
+                </div>
+                
+                <!-- State: Empty Search Result -->
+                <div class="symptom-state empty-state" id="symptom-empty-state" style="display: none;">
+                  <span class="material-symbols-outlined" aria-hidden="true">search_off</span>
+                  <p class="muted-text">Không tìm thấy triệu chứng phù hợp</p>
+                </div>
+                
+                <!-- State: Error -->
+                <div class="symptom-state error-state" id="symptom-error-state" style="display: none;">
+                  <span class="material-symbols-outlined" aria-hidden="true">error_outline</span>
+                  <p class="muted-text error-text" id="symptom-error-message">Lỗi tải dữ liệu, vui lòng thử lại</p>
+                </div>
+                
+                <!-- State: Symptoms List -->
+                <div class="symptom-chips" id="symptom-list">
+                  <!-- Chips sẽ được thêm động ở đây -->
+                </div>
               </div>
             </div>
             <p class="form-message" id="form-message" role="status"></p>

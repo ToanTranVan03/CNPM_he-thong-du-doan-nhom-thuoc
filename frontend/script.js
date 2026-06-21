@@ -307,44 +307,172 @@ function formatError(error) {
   return message;
 }
 
-function updateSelectedCount() {
-  selectedCount.textContent = `${selectedSymptoms.size} đã chọn`;
+// ════════════════════════════════════════════════════════════════════════════════
+// SYMPTOM SUGGESTER - Constants and States
+// ════════════════════════════════════════════════════════════════════════════════
+const MAX_SELECTED_SYMPTOMS = 15;
+const SYMPTOM_STATES = {
+  LOADING: 'loading',
+  EMPTY: 'empty',
+  ERROR: 'error',
+  LOADED: 'loaded'
+};
+
+// ════════════════════════════════════════════════════════════════════════════════
+// SYMPTOM SUGGESTER - Helper Functions
+// ════════════════════════════════════════════════════════════════════════════════
+
+function showSymptomState(state, errorMessage = "") {
+  const states = {
+    loading: document.getElementById("symptom-loading-state"),
+    empty: document.getElementById("symptom-empty-state"),
+    error: document.getElementById("symptom-error-state"),
+    list: document.getElementById("symptom-list")
+  };
+
+  // Hide all states
+  Object.values(states).forEach(el => {
+    if (el) el.style.display = "none";
+  });
+
+  // Show requested state
+  if (state === SYMPTOM_STATES.LOADING) {
+    if (states.loading) states.loading.style.display = "flex";
+  } else if (state === SYMPTOM_STATES.EMPTY) {
+    if (states.empty) states.empty.style.display = "flex";
+  } else if (state === SYMPTOM_STATES.ERROR) {
+    if (states.error) {
+      states.error.style.display = "flex";
+      const errorMsg = document.getElementById("symptom-error-message");
+      if (errorMsg) errorMsg.textContent = errorMessage || "Lỗi tải dữ liệu, vui lòng thử lại";
+    }
+  } else if (state === SYMPTOM_STATES.LOADED) {
+    if (states.list) states.list.style.display = "flex";
+  }
 }
 
-function renderSymptoms(filter = "") {
-  const query = filter.trim().toLowerCase();
-  const visibleSymptoms = symptoms
-    .filter((symptom) => {
-      const viLabel = (symptom.label_vi || symptom.label || "").toLowerCase();
-      const enLabel = (symptom.label_en || "").toLowerCase();
-      return viLabel.includes(query) || enLabel.includes(query);
-    })
-    .slice(0, 80);
-
-  symptomList.innerHTML = "";
-
-  if (visibleSymptoms.length === 0) {
-    symptomList.innerHTML = '<p class="muted-text">Không tìm thấy triệu chứng phù hợp.</p>';
-    return;
+function updateSelectedCount() {
+  const badgeEl = document.getElementById("selected-count");
+  if (badgeEl) {
+    const count = selectedSymptoms.size;
+    badgeEl.textContent = count === 0 ? "0 đã chọn" : `${count} đã chọn`;
+    badgeEl.setAttribute("data-count", count);
   }
+}
 
-  visibleSymptoms.forEach((symptom) => {
+function canSelectMore() {
+  return selectedSymptoms.size < MAX_SELECTED_SYMPTOMS;
+}
+
+function getSelectedSymptomLabels() {
+  // Trả về mảng tên của các triệu chứng đã chọn để cập nhật textarea
+  const selectedLabels = [];
+  selectedSymptoms.forEach(symptomId => {
+    const symptom = symptoms.find(s => s.id === symptomId);
+    if (symptom) {
+      selectedLabels.push(symptom.label_vi || symptom.label);
+    }
+  });
+  return selectedLabels;
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// SYMPTOM SUGGESTER - Main Functions
+// ════════════════════════════════════════════════════════════════════════════════
+
+async function loadSymptoms() {
+  try {
+    showSymptomState(SYMPTOM_STATES.LOADING);
+    const response = await fetch("/api/symptoms/common?limit=30");
+    if (!response.ok) {
+      throw new Error("Không tải được danh sách triệu chứng.");
+    }
+    const data = await response.json();
+    symptoms = data.data || data.symptoms || [];
+    symptomsLoaded = true;
+    renderSymptoms("");
+  } catch (error) {
+    showSymptomState(SYMPTOM_STATES.ERROR, error.message);
+    console.error("Error loading symptoms:", error);
+  }
+}
+
+async function renderSymptoms(filter = "") {
+  try {
+    const query = filter.trim();
+
+    if (!query) {
+      // Nếu không có filter, hiển thị danh sách common symptoms từ cache
+      if (symptoms.length === 0) {
+        showSymptomState(SYMPTOM_STATES.EMPTY);
+        return;
+      }
+      renderSymptomChips(symptoms);
+    } else {
+      // Nếu có filter, gọi API search
+      showSymptomState(SYMPTOM_STATES.LOADING);
+      const response = await fetch(`/api/symptoms/search?q=${encodeURIComponent(query)}&limit=30`);
+      if (!response.ok) {
+        throw new Error("Lỗi tìm kiếm triệu chứng");
+      }
+      const data = await response.json();
+      const results = data.data || [];
+      
+      if (results.length === 0) {
+        showSymptomState(SYMPTOM_STATES.EMPTY);
+      } else {
+        renderSymptomChips(results);
+      }
+    }
+  } catch (error) {
+    showSymptomState(SYMPTOM_STATES.ERROR, error.message);
+    console.error("Error rendering symptoms:", error);
+  }
+}
+
+function renderSymptomChips(symptomsData) {
+  const chipsContainer = document.getElementById("symptom-list");
+  if (!chipsContainer) return;
+
+  chipsContainer.innerHTML = "";
+  showSymptomState(SYMPTOM_STATES.LOADED);
+
+  symptomsData.forEach((symptom) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "symptom-chip";
+    
+    const isSelected = selectedSymptoms.has(symptom.id);
+    if (isSelected) {
+      button.classList.add("selected");
+    }
+
+    // Disable button nếu đạt giới hạn và chưa được chọn
+    const isDisabled = !isSelected && !canSelectMore();
+    if (isDisabled) {
+      button.classList.add("disabled");
+      button.disabled = true;
+      button.title = `Đã chọn tối đa ${MAX_SELECTED_SYMPTOMS} triệu chứng`;
+    }
+
     button.dataset.symptom = symptom.id;
-    button.textContent = symptom.label;
-    button.classList.toggle("is-selected", selectedSymptoms.has(symptom.id));
+    button.textContent = symptom.label_vi || symptom.label || symptom.label_en;
+    
     button.addEventListener("click", () => {
       if (selectedSymptoms.has(symptom.id)) {
+        // Bỏ chọn
         selectedSymptoms.delete(symptom.id);
       } else {
-        selectedSymptoms.add(symptom.id);
+        // Chọn (nếu chưa đạt giới hạn)
+        if (canSelectMore()) {
+          selectedSymptoms.add(symptom.id);
+        }
       }
       updateSelectedCount();
       renderSymptoms(symptomSearch.value);
     });
-    symptomList.appendChild(button);
+
+    chipsContainer.appendChild(button);
   });
 }
 
@@ -1031,8 +1159,23 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════════════════════
+// SYMPTOM SEARCH - Debounced Input Handler
+// ════════════════════════════════════════════════════════════════════════════════
+
+let symptomSearchTimeout;
+const SYMPTOM_SEARCH_DELAY = 300; // ms
+
 symptomSearch.addEventListener("input", (event) => {
-  renderSymptoms(event.target.value);
+  // Clear previous timeout
+  if (symptomSearchTimeout) {
+    clearTimeout(symptomSearchTimeout);
+  }
+  
+  // Set new timeout to debounce search
+  symptomSearchTimeout = setTimeout(() => {
+    renderSymptoms(event.target.value);
+  }, SYMPTOM_SEARCH_DELAY);
 });
 
 let historyCurrentPage = 1;

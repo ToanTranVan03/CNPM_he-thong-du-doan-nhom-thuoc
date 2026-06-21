@@ -4438,6 +4438,163 @@ def get_feedback_statistics():
         }), 500
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# API HỖ TRỢ CHỨC NĂNG GỢI Ý VÀ CHỌN NHANH TRIỆU CHỨNG
+# ════════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/symptoms/common', methods=['GET'])
+def get_common_symptoms():
+    """
+    Lấy danh sách triệu chứng phổ biến nhất (top 30).
+    
+    Query Parameters:
+    - limit: int (default: 30) - số lượng triệu chứng trả về
+    
+    Response:
+    {
+        "success": true,
+        "data": [
+            {
+                "id": "symptom_id",
+                "label_vi": "Tên triệu chứng Tiếng Việt",
+                "label_en": "Symptom Name English"
+            },
+            ...
+        ],
+        "total": int
+    }
+    """
+    try:
+        limit = request.args.get('limit', 30, type=int)
+        limit = min(limit, 100)  # Giới hạn tối đa 100
+        
+        # Lấy danh sách triệu chứng từ readable_symptoms
+        # Những triệu chứng phổ biến nhất được đặt ở đầu danh sách
+        common_symptoms = readable_symptoms[:limit] if readable_symptoms else []
+        
+        # Nếu không đủ từ readable_symptoms, lấy từ TrieuChung model
+        if len(common_symptoms) < limit:
+            additional_from_db = TrieuChung.query.limit(limit - len(common_symptoms)).all()
+            for symptom in additional_from_db:
+                symptom_dict = {
+                    'id': symptom.id,
+                    'label_vi': symptom.ten or '',
+                    'label_en': symptom.ten_en or symptom.ten or ''
+                }
+                # Tránh trùng lặp
+                if not any(s.get('label_vi') == symptom_dict['label_vi'] for s in common_symptoms):
+                    common_symptoms.append(symptom_dict)
+        
+        return jsonify({
+            'success': True,
+            'data': common_symptoms,
+            'total': len(common_symptoms)
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/symptoms/search', methods=['GET'])
+def search_symptoms():
+    """
+    Tìm kiếm triệu chứng theo từ khóa.
+    
+    Query Parameters:
+    - q: string (required) - từ khóa tìm kiếm (ít nhất 1 ký tự)
+    - limit: int (default: 30) - số lượng kết quả trả về
+    
+    Response:
+    {
+        "success": true,
+        "query": "keyword",
+        "data": [
+            {
+                "id": "symptom_id",
+                "label_vi": "Tên triệu chứng Tiếng Việt",
+                "label_en": "Symptom Name English"
+            },
+            ...
+        ],
+        "total": int
+    }
+    """
+    try:
+        query = request.args.get('q', '').strip()
+        limit = request.args.get('limit', 30, type=int)
+        limit = min(limit, 100)
+        
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Vui lòng cung cấp từ khóa tìm kiếm (q parameter)'
+            }), 400
+        
+        # Chuẩn hóa từ khóa tìm kiếm
+        normalized_query = normalize(query).lower()
+        
+        results = []
+        
+        # Tìm kiếm trong readable_symptoms
+        for symptom in readable_symptoms:
+            label_vi = symptom.get('label_vi', '')
+            label_en = symptom.get('label_en', '')
+            
+            normalized_label_vi = normalize(label_vi).lower()
+            normalized_label_en = normalize(label_en).lower()
+            
+            # Kiểm tra khớp trong label_vi hoặc label_en
+            if (normalized_query in normalized_label_vi or 
+                normalized_query in normalized_label_en or
+                normalized_label_vi.startswith(normalized_query) or
+                normalized_label_en.startswith(normalized_query)):
+                results.append(symptom)
+        
+        # Nếu không tìm thấy, tìm kiếm trong TrieuChung model
+        if not results:
+            db_symptoms = TrieuChung.query.filter(
+                (TrieuChung.ten.ilike(f'%{query}%')) |
+                (TrieuChung.ten_en.ilike(f'%{query}%'))
+            ).limit(limit).all()
+            
+            for symptom in db_symptoms:
+                symptom_dict = {
+                    'id': symptom.id,
+                    'label_vi': symptom.ten or '',
+                    'label_en': symptom.ten_en or symptom.ten or ''
+                }
+                results.append(symptom_dict)
+        
+        # Sắp xếp kết quả: những kết quả khớp chính xác trước, sau đó khớp bắt đầu, cuối cùng khớp chứa
+        def sort_key(item):
+            label = item.get('label_vi', '').lower()
+            normalized_label = normalize(label).lower()
+            if normalized_label == normalized_query:
+                return 0
+            elif normalized_label.startswith(normalized_query):
+                return 1
+            else:
+                return 2
+        
+        results.sort(key=sort_key)
+        
+        # Giới hạn kết quả
+        results = results[:limit]
+        
+        return jsonify({
+            'success': True,
+            'query': query,
+            'data': results,
+            'total': len(results)
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
     
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))

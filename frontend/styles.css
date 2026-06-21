@@ -3107,3 +3107,196 @@ input:focus {
     font-size: 13px;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════════
+   SYMPTOM SUGGESTER COMPONENT STYLING
+   ════════════════════════════════════════════════════════════════════════════════ */
+
+.symptom-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.symptom-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 120px;
+  padding: var(--space-4);
+  border-radius: var(--radius);
+  background: var(--surface-low);
+  color: var(--text-muted);
+}
+
+.symptom-state span[class*="material-symbols"] {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+.symptom-state.error-state {
+  background: rgba(192, 57, 43, 0.08);
+  color: var(--error);
+}
+
+.symptom-state.error-state span[class*="material-symbols"] {
+  color: var(--error);
+}
+
+/* Loading Spinner */
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--outline);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Symptom Chips Container */
+.symptom-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+/* Individual Symptom Chip */
+.symptom-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1.5px solid var(--outline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-lowest);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.symptom-chip:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+  box-shadow: 0 2px 8px rgba(11, 95, 181, 0.1);
+}
+
+.symptom-chip:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: 0 0 0 3px rgba(11, 95, 181, 0.15);
+}
+
+.symptom-chip:active {
+  transform: scale(0.98);
+}
+
+/* Selected State */
+.symptom-chip.selected {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  border-color: var(--primary);
+  font-weight: 600;
+}
+
+.symptom-chip.selected::after {
+  content: '✓';
+  margin-left: var(--space-1);
+  font-weight: bold;
+}
+
+.symptom-chip.selected:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  box-shadow: 0 4px 12px rgba(11, 95, 181, 0.25);
+}
+
+/* Dark Mode Adjustments */
+[data-theme="dark"] .symptom-chip {
+  background: var(--surface-low);
+}
+
+[data-theme="dark"] .symptom-chip:hover {
+  background: var(--surface-high);
+}
+
+[data-theme="dark"] .symptom-chip.selected {
+  background: var(--primary);
+}
+
+/* Symptom Chip with Badge (disabled state - max reached) */
+.symptom-chip.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Selected Count Badge */
+.selected-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.selected-badge::before {
+  content: attr(data-count);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-contrast);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+[data-theme="dark"] .selected-badge {
+  background: var(--surface-high);
+  color: var(--primary);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .symptom-chip {
+    font-size: 13px;
+    padding: var(--space-2) var(--space-2);
+    max-width: 150px;
+  }
+
+  .symptom-chips {
+    gap: var(--space-1);
+  }
+
+  .symptom-state {
+    min-height: 100px;
+    padding: var(--space-3);
+  }
+
+  .symptom-state span[class*="material-symbols"] {
+    font-size: 40px;
+  }
+}
