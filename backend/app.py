@@ -15,7 +15,7 @@ from itertools import permutations
 from pathlib import Path
 
 import joblib
-from models import db, User, NhomThuoc, Thuoc, TrieuChung
+from models import db, User, NhomThuoc, Thuoc, TrieuChung, Feedback
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -4339,6 +4339,103 @@ def delete_evaluation(id):
             'message': f'Lỗi hệ thống khi xóa: {str(e)}'
         }), 500
     
+    
+
+# ────────────────────────────────────────────────────────────────────────────
+# API QUẢN LÝ PHẢN HỒI ĐÁNH GIÁ NHÓM THUỐC
+# ────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/feedback', methods=['POST'])
+def submit_feedback():
+    """
+    Ghi lại phản hồi Đồng ý/Không đồng ý từ người dùng.
+    
+    Body:
+    {
+        "prediction_id": <optional int>,
+        "user_id": <optional int>,
+        "feedback_type": "agree" hoặc "disagree",
+        "comment": <optional string>
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        feedback_type = (data.get('feedback_type') or '').strip().lower()
+        
+        if feedback_type not in ['agree', 'disagree']:
+            return jsonify({
+                'success': False,
+                'message': 'feedback_type phải là "agree" hoặc "disagree".'
+            }), 400
+        
+        new_feedback = Feedback(
+            prediction_id=data.get('prediction_id'),
+            user_id=data.get('user_id'),
+            feedback_type=feedback_type,
+            comment=data.get('comment', '').strip() or None
+        )
+        
+        db.session.add(new_feedback)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Phản hồi đã được ghi nhận thành công.',
+            'feedback': new_feedback.to_dict()
+        }), 201
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': 'Không thể ghi nhận phản hồi.',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/feedback/statistics', methods=['GET'])
+def get_feedback_statistics():
+    """
+    Lấy thống kê số lượng phản hồi Đồng ý / Không đồng ý.
+    
+    Response:
+    {
+        "success": true,
+        "total": <int>,
+        "agree_count": <int>,
+        "disagree_count": <int>,
+        "agree_percentage": <float>,
+        "disagree_percentage": <float>
+    }
+    """
+    try:
+        total = Feedback.query.count()
+        agree_count = Feedback.query.filter_by(feedback_type='agree').count()
+        disagree_count = Feedback.query.filter_by(feedback_type='disagree').count()
+        
+        # Tính tỷ lệ phần trăm, xử lý trường hợp total = 0
+        if total == 0:
+            agree_percentage = 0.0
+            disagree_percentage = 0.0
+        else:
+            agree_percentage = round((agree_count / total) * 100, 2)
+            disagree_percentage = round((disagree_count / total) * 100, 2)
+        
+        return jsonify({
+            'success': True,
+            'total': total,
+            'agree_count': agree_count,
+            'disagree_count': disagree_count,
+            'agree_percentage': agree_percentage,
+            'disagree_percentage': disagree_percentage
+        }), 200
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': 'Không thể lấy dữ liệu thống kê.',
+            'error': str(e)
+        }), 500
 
 
     

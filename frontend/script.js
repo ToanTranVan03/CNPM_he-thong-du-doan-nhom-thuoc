@@ -2817,3 +2817,133 @@ function submitRejectFeedback() {
     })
     .catch(err => console.error("Lỗi gửi phản hồi:", err));
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// FEEDBACK STATISTICS (DASHBOARD)
+// ────────────────────────────────────────────────────────────────────────────
+
+let feedbackChartInstance = null;
+
+async function loadFeedbackStatistics() {
+    const loading = document.getElementById('feedback-stats-loading');
+    const content = document.getElementById('feedback-stats-content');
+    const errorDiv = document.getElementById('feedback-stats-error');
+    
+    // Show loading state
+    if (loading) loading.style.display = 'block';
+    if (content) content.style.display = 'none';
+    if (errorDiv) errorDiv.style.display = 'none';
+    
+    try {
+        const response = await fetch('/api/feedback/statistics');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.message || 'API returned error');
+        }
+        
+        // Update stat cards
+        const agreeCount = document.getElementById('stat-agree-count');
+        const agreePercent = document.getElementById('stat-agree-percent');
+        const disagreeCount = document.getElementById('stat-disagree-count');
+        const disagreePercent = document.getElementById('stat-disagree-percent');
+        const totalCount = document.getElementById('stat-total-count');
+        
+        if (agreeCount) agreeCount.textContent = data.agree_count;
+        if (agreePercent) agreePercent.textContent = data.agree_percentage.toFixed(1) + '%';
+        if (disagreeCount) disagreeCount.textContent = data.disagree_count;
+        if (disagreePercent) disagreePercent.textContent = data.disagree_percentage.toFixed(1) + '%';
+        if (totalCount) totalCount.textContent = data.total;
+        
+        // Render chart
+        renderFeedbackChart(data);
+        
+        // Show content, hide loading/error
+        if (loading) loading.style.display = 'none';
+        if (content) content.style.display = 'block';
+        if (errorDiv) errorDiv.style.display = 'none';
+        
+    } catch (error) {
+        console.error('Error loading feedback statistics:', error);
+        
+        // Show error state
+        if (loading) loading.style.display = 'none';
+        if (content) content.style.display = 'none';
+        if (errorDiv) errorDiv.style.display = 'block';
+    }
+}
+
+function renderFeedbackChart(data) {
+    const canvas = document.getElementById('feedbackChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Destroy previous chart instance if it exists
+    if (feedbackChartInstance) {
+        feedbackChartInstance.destroy();
+    }
+    
+    // Create new chart
+    feedbackChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['👍 Đồng ý', '👎 Không đồng ý'],
+            datasets: [{
+                data: [data.agree_count, data.disagree_count],
+                backgroundColor: ['#22c55e', '#ef4444'],
+                borderColor: ['rgba(34, 197, 94, 0.2)', 'rgba(239, 68, 68, 0.2)'],
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#000000',
+                        padding: 16,
+                        font: {
+                            size: 14,
+                            weight: '500'
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${label}: ${value} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Hook into page switching
+const originalPageSwitch = document.querySelector('[data-page="dashboard"]');
+if (originalPageSwitch) {
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('[data-page="dashboard"]')) {
+            setTimeout(loadFeedbackStatistics, 100);
+        }
+    });
+}
+
+// Retry button handler
+const retryBtn = document.getElementById('btn-retry-stats');
+if (retryBtn) {
+    retryBtn.addEventListener('click', loadFeedbackStatistics);
+}

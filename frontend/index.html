@@ -163,6 +163,10 @@
             <span class="material-symbols-outlined" aria-hidden="true">rate_review</span>
             <span>Phản Hồi</span>
           </button>
+          <button class="nav-link" type="button" data-page="dashboard">
+            <span class="material-symbols-outlined" aria-hidden="true">analytics</span>
+            <span>Thống Kê</span>
+          </button>
           <button class="nav-link" type="button" data-page="about">
             <span class="material-symbols-outlined" aria-hidden="true">person</span>
             <span>Hồ Sơ Của Tôi</span>
@@ -505,6 +509,82 @@
               <span class="material-symbols-outlined" aria-hidden="true">add</span>
               Tạo dự đoán
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-dashboard" aria-labelledby="dashboard-title">
+        <div class="container">
+          <div class="profile-form-section">
+            <div class="profile-form-head">
+              <div>
+                <p class="eyebrow">Thống kê</p>
+                <h2 id="dashboard-title">Thống kê phản hồi đánh giá</h2>
+              </div>
+            </div>
+            
+            <!-- Loading State -->
+            <div id="feedback-stats-loading" class="loading-skeleton">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <div style="padding: 16px; background: var(--surface-low); border-radius: 12px; animation: pulse 1.5s ease-in-out infinite;">
+                  <div style="height: 20px; background: var(--outline); border-radius: 4px; margin-bottom: 8px;"></div>
+                  <div style="height: 32px; background: var(--outline); border-radius: 4px;"></div>
+                </div>
+                <div style="padding: 16px; background: var(--surface-low); border-radius: 12px; animation: pulse 1.5s ease-in-out infinite;">
+                  <div style="height: 20px; background: var(--outline); border-radius: 4px; margin-bottom: 8px;"></div>
+                  <div style="height: 32px; background: var(--outline); border-radius: 4px;"></div>
+                </div>
+                <div style="padding: 16px; background: var(--surface-low); border-radius: 12px; animation: pulse 1.5s ease-in-out infinite;">
+                  <div style="height: 20px; background: var(--outline); border-radius: 4px; margin-bottom: 8px;"></div>
+                  <div style="height: 32px; background: var(--outline); border-radius: 4px;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stats Content -->
+            <div id="feedback-stats-content" style="display: none;">
+              <!-- Stats Cards -->
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <!-- Agree Card -->
+                <div class="stat-card" style="padding: 20px; background: var(--surface-low); border-radius: 12px; border-left: 4px solid #22c55e;">
+                  <p style="margin: 0 0 8px 0; color: var(--text-muted); font-size: 13px; font-weight: 500;">👍 Đồng ý</p>
+                  <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <h3 id="stat-agree-count" style="margin: 0; font-size: 32px; font-weight: 700; color: #22c55e;">0</h3>
+                    <span id="stat-agree-percent" style="color: var(--text-muted); font-size: 14px;">0%</span>
+                  </div>
+                </div>
+
+                <!-- Disagree Card -->
+                <div class="stat-card" style="padding: 20px; background: var(--surface-low); border-radius: 12px; border-left: 4px solid #ef4444;">
+                  <p style="margin: 0 0 8px 0; color: var(--text-muted); font-size: 13px; font-weight: 500;">👎 Không đồng ý</p>
+                  <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <h3 id="stat-disagree-count" style="margin: 0; font-size: 32px; font-weight: 700; color: #ef4444;">0</h3>
+                    <span id="stat-disagree-percent" style="color: var(--text-muted); font-size: 14px;">0%</span>
+                  </div>
+                </div>
+
+                <!-- Total Card -->
+                <div class="stat-card" style="padding: 20px; background: var(--surface-low); border-radius: 12px; border-left: 4px solid var(--primary);">
+                  <p style="margin: 0 0 8px 0; color: var(--text-muted); font-size: 13px; font-weight: 500;">📊 Tổng đánh giá</p>
+                  <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <h3 id="stat-total-count" style="margin: 0; font-size: 32px; font-weight: 700; color: var(--primary);">0</h3>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Chart Section -->
+              <div style="background: var(--surface-low); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+                <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">Biểu đồ phản hồi</h3>
+                <div style="display: flex; justify-content: center; align-items: center; height: 300px;">
+                  <canvas id="feedbackChart" style="max-width: 300px; max-height: 300px;"></canvas>
+                </div>
+              </div>
+
+              <!-- Error State -->
+              <div id="feedback-stats-error" style="display: none; padding: 20px; background: #fee2e2; border-radius: 12px; border: 1px solid #fecaca;">
+                <p style="margin: 0; color: #991b1b;">Không thể tải dữ liệu thống kê. <button type="button" id="btn-retry-stats" class="text-button" style="padding: 0; text-decoration: underline;">Thử lại</button></p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -931,6 +1011,7 @@
     </nav>
 
     <script src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
 
 
 
