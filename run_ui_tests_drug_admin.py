@@ -125,6 +125,18 @@ def run():
             gone = page.evaluate("() => !Array.from(document.querySelectorAll('#th-list .admin-list-item strong')).some(s => s.textContent.includes('ZZ Thuốc UI Test'))")
             rec("Xóa thuốc test thành công", gone)
 
+            # Feature 3: khu vực import CSV hiển thị trên trang Quản Lý Thuốc
+            rec("Feature 3: có khu vực import CSV", page.locator("#import-dg-file").count() == 1 and page.locator("#import-th-btn").is_visible())
+
+            # Feature 4: trang Duyệt Phản Hồi render được
+            fbnav = page.locator('.nav-link[data-page="feedback-admin"]')
+            rec("Feature 4: nav 'Duyệt Phản Hồi' hiển thị", fbnav.is_visible())
+            fbnav.click()
+            page.wait_for_selector("#page-feedback-admin.is-active", timeout=10000)
+            page.wait_for_timeout(800)
+            rec("Feature 4: trang duyệt phản hồi mở + có tabs", page.locator("#fb-tab-pending").is_visible() and page.locator("#fb-pending-pill").is_visible())
+            page.screenshot(path=str(ROOT / "screenshots" / "port_feedback_admin.png"))
+
             browser.close()
     finally:
         proc.terminate()
