@@ -54,6 +54,16 @@ def main():
             "ALTER TABLE tai_khoan ADD COLUMN IF NOT EXISTS reset_code_hash VARCHAR(255)",
             "ALTER TABLE tai_khoan ADD COLUMN IF NOT EXISTS reset_code_expires_at TIMESTAMP",
             "CREATE INDEX IF NOT EXISTS ix_tai_khoan_session_token ON tai_khoan(session_token)",
+            # US15/US18: cột hạ tầng cho lịch sử dự đoán + feedback
+            "ALTER TABLE ket_qua_du_doan ADD COLUMN IF NOT EXISTS trang_thai VARCHAR(30)",
+            "ALTER TABLE ket_qua_du_doan ADD COLUMN IF NOT EXISTS user_email VARCHAR(150)",
+            "ALTER TABLE ket_qua_du_doan ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()",
+            "CREATE INDEX IF NOT EXISTS ix_kq_trang_thai ON ket_qua_du_doan(trang_thai)",
+            "CREATE INDEX IF NOT EXISTS ix_kq_created_at ON ket_qua_du_doan(created_at)",
+            "ALTER TABLE phan_hoi ADD COLUMN IF NOT EXISTS trang_thai VARCHAR(30)",
+            "ALTER TABLE phan_hoi ADD COLUMN IF NOT EXISTS nhom_thuoc_du_doan VARCHAR(255)",
+            "ALTER TABLE phan_hoi ALTER COLUMN ma_ket_qua DROP NOT NULL",
+            "CREATE INDEX IF NOT EXISTS ix_ph_trang_thai ON phan_hoi(trang_thai)",
         ):
             db.session.execute(sa.text(stmt))
         db.session.commit()

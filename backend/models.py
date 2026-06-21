@@ -12,7 +12,7 @@ Quy ước & diễn giải (để đối chiếu với class diagram):
   MoHinhDuDoan có Ma + metadata nên GIỮ làm bảng (đăng ký mô hình).
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -205,6 +205,10 @@ class KetQuaDuDoan(db.Model):
     chan_doan_du_kien = db.Column(db.String(255))   # nhãn rút gọn (denormalized theo diagram)
     nhom_thuoc_du_doan = db.Column(db.String(255))  # nhãn rút gọn
     do_tin_cay = db.Column(db.Float)
+    # [hạ tầng] phục vụ US15 (lưu lịch sử) + US19 (dashboard) — không có trên diagram
+    trang_thai = db.Column(db.String(30), index=True)  # suggest | emergency | safety_block
+    user_email = db.Column(db.String(150), index=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
     ma_mo_ta = db.Column(db.ForeignKey("mo_ta_benh_an.ma_mo_ta", ondelete="SET NULL"))
     ma_chan_doan = db.Column(db.ForeignKey("chan_doan_du_kien.ma_chan_doan", ondelete="SET NULL"))
@@ -241,10 +245,13 @@ class PhanHoi(db.Model):
     __tablename__ = "phan_hoi"
     ma_phan_hoi = db.Column(db.Integer, primary_key=True)
     noi_dung = db.Column(db.Text)
-    muc_do_hai_long = db.Column(db.Integer)  # vd 1..5; hoặc 0/1 cho Đồng ý/Không đồng ý
-    thoi_gian_gui = db.Column(db.DateTime, default=datetime.utcnow)
+    muc_do_hai_long = db.Column(db.Integer)  # 1 = Đồng ý (APPROVE), 0 = Không đồng ý (REJECT)
+    trang_thai = db.Column(db.String(30), index=True)  # [hạ tầng US18] 'APPROVE' | 'REJECT'
+    nhom_thuoc_du_doan = db.Column(db.String(255))      # [hạ tầng] nhóm thuốc được đánh giá
+    thoi_gian_gui = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
     ma_nguoi_dung = db.Column(db.ForeignKey("nguoi_dung.ma_nguoi_dung", ondelete="SET NULL"))
-    ma_ket_qua = db.Column(db.ForeignKey("ket_qua_du_doan.ma_ket_qua", ondelete="CASCADE"), nullable=False)
+    # [hạ tầng] nullable: feedback hiện gắn theo nhóm thuốc, không bắt buộc 1 ca cụ thể (như JSONL)
+    ma_ket_qua = db.Column(db.ForeignKey("ket_qua_du_doan.ma_ket_qua", ondelete="CASCADE"), nullable=True)
 
     nguoi_dung = db.relationship("NguoiDung", back_populates="phan_hoi_list")
     ket_qua = db.relationship("KetQuaDuDoan", back_populates="phan_hoi_list")

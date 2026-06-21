@@ -3086,6 +3086,64 @@ def _valid_date_param(value: str | None) -> str | None:
     return value
 
 
+def _admin_stats_from_db(date_from, date_to):
+    """US19 (DB): gộp số liệu Dashboard từ Postgres — cùng shape JSON với bản JSONL."""
+    from sqlalchemy import Date, cast, func
+
+    KQ = db_models.KetQuaDuDoan
+    PH = db_models.PhanHoi
+
+    def drange(col):
+        conds = []
+        if date_from:
+            conds.append(cast(col, Date) >= date_from)
+        if date_to:
+            conds.append(cast(col, Date) <= date_to)
+        return conds
+
+    total = db.session.query(func.count(KQ.ma_ket_qua)).filter(*drange(KQ.created_at)).scalar() or 0
+
+    by_status = {s: 0 for s in stats_source.PREDICTION_STATUSES}
+    for st, cnt in (db.session.query(KQ.trang_thai, func.count()).filter(*drange(KQ.created_at)).group_by(KQ.trang_thai)):
+        if st in by_status:
+            by_status[st] = cnt
+
+    over_time = [
+        {"date": d.isoformat(), "count": cnt}
+        for d, cnt in (
+            db.session.query(cast(KQ.created_at, Date).label("d"), func.count())
+            .filter(*drange(KQ.created_at)).group_by("d").order_by("d")
+        )
+    ]
+
+    top_groups = [
+        {"group": g, "count": cnt}
+        for g, cnt in (
+            db.session.query(KQ.nhom_thuoc_du_doan, func.count())
+            .filter(KQ.nhom_thuoc_du_doan.isnot(None), *drange(KQ.created_at))
+            .group_by(KQ.nhom_thuoc_du_doan).order_by(func.count().desc()).limit(5)
+        )
+    ]
+
+    agree = db.session.query(func.count()).filter(PH.trang_thai == "APPROVE", *drange(PH.thoi_gian_gui)).scalar() or 0
+    disagree = db.session.query(func.count()).filter(PH.trang_thai == "REJECT", *drange(PH.thoi_gian_gui)).scalar() or 0
+    feedback_total = agree + disagree
+    agree_rate = round(agree / feedback_total * 100, 1) if feedback_total else None
+
+    return jsonify({
+        "range": {"from": date_from, "to": date_to},
+        "total_predictions": total,
+        "by_status": by_status,
+        "predictions_over_time": over_time,
+        "top_groups": top_groups,
+        "feedback_total": feedback_total,
+        "agree_count": agree,
+        "disagree_count": disagree,
+        "agree_rate": agree_rate,
+        "source": "postgres",
+    })
+
+
 @app.get("/api/admin/stats")
 def admin_stats():
     """US19: Dashboard tổng quan cho Admin — số ca dự đoán + tỷ lệ 'Đồng ý'.
@@ -3099,6 +3157,9 @@ def admin_stats():
 
     date_from = _valid_date_param(request.args.get("from"))
     date_to = _valid_date_param(request.args.get("to"))
+
+    if DB_ENABLED:
+        return _admin_stats_from_db(date_from, date_to)
 
     predictions = stats_source.read_predictions(date_from, date_to)
     feedback = stats_source.read_feedback(date_from, date_to)
@@ -3234,6 +3295,19 @@ def _group_from_body(body: dict) -> str | None:
     return group.strip()
 
 
+def _db_log_prediction(status: str, group: str | None, email: str, confidence) -> None:
+    """US15 DB: tạo KetQuaDuDoan (+LichSuDuDoan) cho mỗi lần dự đoán."""
+    kq = db_models.KetQuaDuDoan(
+        trang_thai=status,
+        nhom_thuoc_du_doan=group,
+        user_email=email,
+        do_tin_cay=confidence,
+    )
+    kq.lich_su = db_models.LichSuDuDoan(ket_qua_tom_tat=f"{status}: {group or '—'}")
+    db.session.add(kq)
+    db.session.commit()
+
+
 @app.after_request
 def log_prediction_after_request(response):
     try:
@@ -3243,17 +3317,24 @@ def log_prediction_after_request(response):
             return response
         body = response.get_json(silent=True) or {}
         user = current_user_from_request(load_user_store())
+        status = _prediction_status_from(response, body)
+        group = _group_from_body(body)
+        email = (user or {}).get("email") or "guest"
+        conf = body.get("confidence")
+        conf = float(conf) if isinstance(conf, (int, float)) else None
+        if DB_ENABLED:
+            try:
+                _db_log_prediction(status, group, email, conf)
+                return response
+            except Exception:
+                db.session.rollback()
+                app.logger.exception("US15: lỗi ghi DB -> fallback JSONL")
         _append_jsonl(
             stats_source.PREDICTION_LOG_PATH,
-            {
-                "ts": iso_utc(now_utc()),
-                "status": _prediction_status_from(response, body),
-                "predicted_group": _group_from_body(body),
-                "user_email": (user or {}).get("email") or "guest",
-            },
+            {"ts": iso_utc(now_utc()), "status": status, "predicted_group": group, "user_email": email},
         )
     except Exception:
-        app.logger.exception("US15: không ghi được prediction_log")
+        app.logger.exception("US15: không ghi được lịch sử dự đoán")
     return response
 
 
@@ -3271,14 +3352,31 @@ def submit_feedback():
         return jsonify({"error": "verdict phải là APPROVE (Đồng ý) hoặc REJECT (Không đồng ý)."}), 400
 
     group = payload.get("predicted_group")
+    group = group.strip() if isinstance(group, str) and group.strip() else None
     note = str(payload.get("note") or payload.get("ghi_chu") or "")[:1000]
     user = current_user_from_request(load_user_store())
+
+    if DB_ENABLED:
+        try:
+            db.session.add(db_models.PhanHoi(
+                trang_thai=verdict,
+                muc_do_hai_long=1 if verdict == "APPROVE" else 0,
+                nhom_thuoc_du_doan=group,
+                noi_dung=note or None,
+                ma_nguoi_dung=(user or {}).get("_ma_nguoi_dung"),
+            ))
+            db.session.commit()
+            return jsonify({"ok": True, "message": "Đã ghi nhận phản hồi. Cảm ơn bạn!"}), 201
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("US18: lỗi ghi DB -> fallback JSONL")
+
     _append_jsonl(
         stats_source.FEEDBACK_LOG_PATH,
         {
             "ts": iso_utc(now_utc()),
             "verdict": verdict,
-            "predicted_group": group.strip() if isinstance(group, str) and group.strip() else None,
+            "predicted_group": group,
             "user_email": (user or {}).get("email") or "guest",
             "note": note,
         },
