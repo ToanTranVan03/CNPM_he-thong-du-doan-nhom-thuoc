@@ -419,40 +419,46 @@
                 <span class="material-symbols-outlined" aria-hidden="true">download</span>
                 Xuất
               </button>
-              <div id="history-export-options" class="export-options is-hidden" aria-hidden="true" style="position: absolute; z-index: 60; background: var(--surface-lowest); border:1px solid var(--outline); padding:12px; border-radius:8px; min-width:260px; box-shadow: var(--shadow);">
-                <div style="margin-bottom:8px; font-weight:700;">Tùy chọn xuất</div>
-                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-                  <label style="font-weight:600; width:80px;">Định dạng</label>
-                  <select id="export-format" style="padding:6px;">
-                    <option value="csv">CSV</option>
-                    <option value="json">JSON</option>
-                  </select>
-                  <label style="font-weight:600; margin-left:8px; width:90px;">Phân cách</label>
-                  <select id="export-sep" style="padding:6px;">
-                    <option value=",">Dấu phẩy (,)</option>
-                    <option value=";">Chấm phẩy (;)</option>
-                  </select>
+              <div id="history-export-options" class="export-options is-hidden" aria-hidden="true"
+                style="position:absolute; z-index:60; right:0; top:52px; background:var(--surface); border:1px solid var(--border); padding:16px; border-radius:12px; width:320px; box-shadow:var(--shadow);">
+
+                <div style="margin-bottom:12px; font-weight:800;">Tùy chọn xuất</div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px;">
+                  <label>
+                    Định dạng
+                    <select id="export-format" style="width:100%; padding:6px;">
+                      <option value="csv">CSV</option>
+                      <option value="json">JSON</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Phân cách
+                    <select id="export-sep" style="width:100%; padding:6px;">
+                      <option value=",">Dấu phẩy (,)</option>
+                      <option value=";">Chấm phẩy (;)</option>
+                    </select>
+                  </label>
                 </div>
-                <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
-                  <label><input type="checkbox" id="col-date" checked> Ngày</label>
-                  <label><input type="checkbox" id="col-disease" checked> Bệnh/Nhóm thuốc</label>
-                  <label><input type="checkbox" id="col-symptoms" checked> Triệu chứng</label>
-                  <label><input type="checkbox" id="col-notes" checked> Ghi chú</label>
-                  <label><input type="checkbox" id="col-user" checked> Người dùng</label>
-                  <label><input type="checkbox" id="col-score" checked> Score (confidence)</label>
-                  <label><input type="checkbox" id="col-score-type" checked> Score type</label>
+
+                <div style="display:grid; gap:8px; margin-bottom:12px;">
+                  <label><input type="checkbox" id="col-date" checked style="width:16px;height:16px;"> Ngày</label>
+                  <label><input type="checkbox" id="col-disease" checked style="width:16px;height:16px;"> Bệnh/Nhóm thuốc</label>
+                  <label><input type="checkbox" id="col-symptoms" checked style="width:16px;height:16px;"> Triệu chứng</label>
+                  <label><input type="checkbox" id="col-notes" checked style="width:16px;height:16px;"> Ghi chú</label>
+                  <label><input type="checkbox" id="col-user" checked style="width:16px;height:16px;"> Người dùng</label>
+                  <label><input type="checkbox" id="col-score" checked style="width:16px;height:16px;"> Score</label>
+                  <label><input type="checkbox" id="col-score-type" checked style="width:16px;height:16px;"> Score type</label>
+                  <label><input type="checkbox" id="export-all" style="width:16px;height:16px;"> Xuất toàn bộ</label>
                 </div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                  <label><input type="checkbox" id="export-all"> Xuất toàn bộ (bỏ filter)</label>
-                </div>
+
                 <div style="display:flex; gap:8px; justify-content:flex-end;">
                   <button id="history-export-cancel" class="secondary-button compact" type="button">Hủy</button>
                   <button id="history-export-confirm" class="primary-button" type="button">Xuất</button>
                 </div>
               </div>
             </div>
-          </div>
-
           <label class="search-box" for="history-search">
             <span class="material-symbols-outlined" aria-hidden="true">search</span>
             <input id="history-search" type="search" placeholder="Tìm theo nhóm thuốc, mô tả hoặc ngày..." />
@@ -714,6 +720,102 @@
           </div>
         </div>
       </section>
+          <!-- PAGE: Quản lý Từ điển (Admin) -->
+    <section class="page" id="page-admin-dictionary" aria-labelledby="admin-dict-title">
+      <div class="container" style="margin-top: 30px; margin-bottom: 50px;">
+        <div class="profile-form-section" style="padding: 20px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
+          <div class="profile-form-head" style="margin-bottom: 20px;">
+            <div>
+              <p class="eyebrow">Từ điển triệu chứng</p>
+              <h2 id="admin-dict-title">Quản lý từ điển (Vi → En)</h2>
+            </div>
+            <p style="color: var(--text-muted); margin: 8px 0 0 0;">Quản lý ánh xạ triệu chứng tiếng Việt sang mã/nhãn tiếng Anh dùng cho preprocessing.</p>
+          </div>
+
+          <div class="admin-dict-toolbar" style="display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="dict-search" class="search-box" placeholder="Tìm kiếm (Tiếng Việt / Tiếng Anh)..." style="flex:1; min-width:200px; padding:8px 12px; border:1px solid var(--outline); border-radius:6px;" />
+            <button class="primary-button" type="button" id="btn-add-dict" style="height:34px; padding:0 16px;"><span class="material-symbols-outlined" style="font-size:18px;">add</span> Thêm</button>
+            <button class="secondary-button" type="button" id="btn-import-dict" style="height:34px; padding:0 16px;"><span class="material-symbols-outlined" style="font-size:18px;">upload_file</span> Nhập CSV</button>
+            <input type="file" id="dict-file-input" accept=".csv" style="display:none" />
+            <button class="secondary-button" type="button" id="btn-export-dict" style="height:34px; padding:0 16px;"><span class="material-symbols-outlined" style="font-size:18px;">download</span> Xuất CSV</button>
+          </div>
+
+          <div class="summary-table-wrap" style="margin-top: 8px; overflow-x: auto;">
+            <table class="admin-dict-table" style="width:100%; border-collapse: collapse;">
+              <thead>
+                <tr style="background: var(--surface-low); border-bottom: 2px solid var(--outline);">
+                  <th style="text-align:left; padding:12px; width:40px;">ID</th>
+                  <th style="text-align:left; padding:12px;">Triệu chứng (VI)</th>
+                  <th style="text-align:left; padding:12px;">Label (EN)</th>
+                  <th style="text-align:left; padding:12px;">Ghi chú</th>
+                  <th style="text-align:center; padding:12px; width:120px;">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="dict-tbody"></tbody>
+            </table>
+            <div id="dict-empty" style="text-align:center; padding: 30px 10px; color:var(--text-muted);">
+              <span class="material-symbols-outlined" style="font-size:42px; display:block; margin-bottom:8px; opacity:0.5;">menu_book</span>
+              <p style="margin:0;">Chưa có mục nào trong từ điển</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="page" id="page-admin-feedback" aria-labelledby="admin-feedback-title" style="padding-top: 0; margin-top: 0;">
+  <div class="container" style="margin-top: 0; margin-bottom: 50px;">
+    <div class="profile-form-section" style="padding: 20px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
+      <div class="profile-form-head" style="margin-bottom: 20px;">
+        <div>
+          <p class="eyebrow">Phản hồi chuyên gia</p>
+          <h2 id="admin-feedback-title">Danh sách phản hồi Không đồng ý</h2>
+        </div>
+        <p style="color: var(--text-muted); margin: 8px 0 0 0;">
+          Admin xem các phản hồi không đồng ý của bác sĩ để có cơ sở cập nhật lại từ điển triệu chứng thủ công.
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+        <input
+          type="text"
+          id="feedback-search"
+          class="search-box"
+          placeholder="Tìm theo triệu chứng, ghi chú..."
+          style="flex:1; min-width:200px; padding:8px 12px; border:1px solid var(--outline); border-radius:6px;"
+        />
+        <button class="secondary-button" type="button" id="btn-reload-feedback" style="height:34px; padding:0 16px;">
+          <span class="material-symbols-outlined" style="font-size:18px;">refresh</span>
+          Tải lại
+        </button>
+      </div>
+
+              <div class="summary-table-wrap" style="margin-top: 8px; overflow-x: auto;">
+                <table style="width:100%; border-collapse: collapse;">
+                  <thead>
+                    <tr style="border-bottom: 1px solid var(--border);">
+                      <th style="text-align:left; padding:12px;">ID</th>
+                      <th style="text-align:left; padding:12px;">Triệu chứng nhập</th>
+                      <th style="text-align:left; padding:12px;">Ghi chú</th>
+                      <th style="text-align:left; padding:12px;">Ngày tạo</th>
+                      <th style="text-align:left; padding:12px;">Trạng thái xử lý</th>
+                      <th style="text-align:center; padding:12px;">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody id="feedback-tbody">
+                    <tr>
+                      <td colspan="6" style="padding:20px; text-align:center; color:var(--text-muted);">
+                        Đang tải danh sách phản hồi...
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <p id="feedback-empty" class="muted-text is-hidden" style="margin-top:16px;">
+                Không có phản hồi Không đồng ý nào cần xem xét.
+              </p>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
 
@@ -811,101 +913,7 @@
     </div>
     <!-- END MODAL THUOC -->
 
-    <!-- PAGE: Quản lý Từ điển (Admin) -->
-    <section class="page" id="page-admin-dictionary" aria-labelledby="admin-dict-title">
-      <div class="container" style="margin-top: 30px; margin-bottom: 50px;">
-        <div class="profile-form-section" style="padding: 20px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
-          <div class="profile-form-head" style="margin-bottom: 20px;">
-            <div>
-              <p class="eyebrow">Từ điển triệu chứng</p>
-              <h2 id="admin-dict-title">Quản lý từ điển (Vi → En)</h2>
-            </div>
-            <p style="color: var(--text-muted); margin: 8px 0 0 0;">Quản lý ánh xạ triệu chứng tiếng Việt sang mã/nhãn tiếng Anh dùng cho preprocessing.</p>
-          </div>
 
-          <div class="admin-dict-toolbar" style="display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
-            <input type="text" id="dict-search" class="search-box" placeholder="Tìm kiếm (Tiếng Việt / Tiếng Anh)..." style="flex:1; min-width:200px; padding:8px 12px; border:1px solid var(--outline); border-radius:6px;" />
-            <button class="primary-button" type="button" id="btn-add-dict" style="height:34px; padding:0 16px;"><span class="material-symbols-outlined" style="font-size:18px;">add</span> Thêm</button>
-            <button class="secondary-button" type="button" id="btn-import-dict" style="height:34px; padding:0 16px;"><span class="material-symbols-outlined" style="font-size:18px;">upload_file</span> Nhập CSV</button>
-            <input type="file" id="dict-file-input" accept=".csv" style="display:none" />
-            <button class="secondary-button" type="button" id="btn-export-dict" style="height:34px; padding:0 16px;"><span class="material-symbols-outlined" style="font-size:18px;">download</span> Xuất CSV</button>
-          </div>
-
-          <div class="summary-table-wrap" style="margin-top: 8px; overflow-x: auto;">
-            <table class="admin-dict-table" style="width:100%; border-collapse: collapse;">
-              <thead>
-                <tr style="background: var(--surface-low); border-bottom: 2px solid var(--outline);">
-                  <th style="text-align:left; padding:12px; width:40px;">ID</th>
-                  <th style="text-align:left; padding:12px;">Triệu chứng (VI)</th>
-                  <th style="text-align:left; padding:12px;">Label (EN)</th>
-                  <th style="text-align:left; padding:12px;">Ghi chú</th>
-                  <th style="text-align:center; padding:12px; width:120px;">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody id="dict-tbody"></tbody>
-            </table>
-            <div id="dict-empty" style="text-align:center; padding: 30px 10px; color:var(--text-muted);">
-              <span class="material-symbols-outlined" style="font-size:42px; display:block; margin-bottom:8px; opacity:0.5;">menu_book</span>
-              <p style="margin:0;">Chưa có mục nào trong từ điển</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-    <section class="page" id="page-admin-feedback" aria-labelledby="admin-feedback-title">
-  <div class="container" style="margin-top: 30px; margin-bottom: 50px;">
-    <div class="profile-form-section" style="padding: 20px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
-      <div class="profile-form-head" style="margin-bottom: 20px;">
-        <div>
-          <p class="eyebrow">Phản hồi chuyên gia</p>
-          <h2 id="admin-feedback-title">Danh sách phản hồi Không đồng ý</h2>
-        </div>
-        <p style="color: var(--text-muted); margin: 8px 0 0 0;">
-          Admin xem các phản hồi không đồng ý của bác sĩ để có cơ sở cập nhật lại từ điển triệu chứng thủ công.
-        </p>
-      </div>
-
-      <div style="display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
-        <input
-          type="text"
-          id="feedback-search"
-          class="search-box"
-          placeholder="Tìm theo triệu chứng, ghi chú..."
-          style="flex:1; min-width:200px; padding:8px 12px; border:1px solid var(--outline); border-radius:6px;"
-        />
-        <button class="secondary-button" type="button" id="btn-reload-feedback" style="height:34px; padding:0 16px;">
-          <span class="material-symbols-outlined" style="font-size:18px;">refresh</span>
-          Tải lại
-        </button>
-      </div>
-
-      <div class="summary-table-wrap" style="margin-top: 8px; overflow-x: auto;">
-        <table style="width:100%; border-collapse: collapse;">
-          <thead>
-            <tr style="border-bottom: 1px solid var(--border);">
-              <th style="text-align:left; padding:12px;">ID</th>
-              <th style="text-align:left; padding:12px;">Triệu chứng nhập</th>
-              <th style="text-align:left; padding:12px;">Ghi chú</th>
-              <th style="text-align:left; padding:12px;">Ngày tạo</th>
-              <th style="text-align:center; padding:12px;">Thao tác</th>
-            </tr>
-          </thead>
-          <tbody id="feedback-tbody">
-            <tr>
-              <td colspan="5" style="padding:20px; text-align:center; color:var(--text-muted);">
-                Đang tải danh sách phản hồi...
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <p id="feedback-empty" class="muted-text is-hidden" style="margin-top:16px;">
-        Không có phản hồi Không đồng ý nào cần xem xét.
-      </p>
-    </div>
-  </div>
-</section>
 
     <nav class="bottom-nav" aria-label="Dieu huong mobile">
       <button class="bottom-link is-active" type="button" data-page="home">
@@ -919,6 +927,10 @@
       <button class="bottom-link" type="button" data-page="admin-dictionary">
         <span class="material-symbols-outlined" aria-hidden="true">menu_book</span>
         <span>Từ điển</span>
+      </button>
+      <button class="bottom-link" type="button" data-page="admin-feedback">
+        <span class="material-symbols-outlined" aria-hidden="true">rate_review</span>
+        <span>Phản hồi</span>
       </button>
       <button class="bottom-link" type="button" data-page="history">
         <span class="material-symbols-outlined" aria-hidden="true">history</span>
