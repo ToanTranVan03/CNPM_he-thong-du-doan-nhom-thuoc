@@ -163,6 +163,10 @@
             <span class="material-symbols-outlined" aria-hidden="true">rate_review</span>
             <span>Phản Hồi</span>
           </button>
+          <button class="nav-link" type="button" data-page="dashboard">
+            <span class="material-symbols-outlined" aria-hidden="true">analytics</span>
+            <span>Thống Kê</span>
+          </button>
           <button class="nav-link" type="button" data-page="about">
             <span class="material-symbols-outlined" aria-hidden="true">person</span>
             <span>Hồ Sơ Của Tôi</span>
@@ -215,14 +219,35 @@
                   <p class="eyebrow">Tùy chọn</p>
                   <h2>Chọn thêm triệu chứng</h2>
                 </div>
-                <span id="selected-count">0 đã chọn</span>
+                <span id="selected-count" class="selected-badge">0 đã chọn</span>
               </div>
               <label class="search-box compact-search" for="symptom-search">
                 <span class="material-symbols-outlined" aria-hidden="true">search</span>
-                <input id="symptom-search" type="search" placeholder="Tìm triệu chứng bằng tiếng Việt..." />
+                <input id="symptom-search" type="search" placeholder="Tìm triệu chứng bằng tiếng Việt hoặc Anh..." autocomplete="off" />
               </label>
-              <div class="symptom-list" id="symptom-list" aria-live="polite">
-                <p class="muted-text">Đang tải danh sách triệu chứng từ dữ liệu huấn luyện...</p>
+              <div class="symptom-list-container" id="symptom-list-container" aria-live="polite" aria-label="Danh sách triệu chứng">
+                <!-- State: Loading -->
+                <div class="symptom-state loading-state" id="symptom-loading-state" style="display: flex;">
+                  <div class="spinner"></div>
+                  <p class="muted-text">Đang tải danh sách triệu chứng...</p>
+                </div>
+                
+                <!-- State: Empty Search Result -->
+                <div class="symptom-state empty-state" id="symptom-empty-state" style="display: none;">
+                  <span class="material-symbols-outlined" aria-hidden="true">search_off</span>
+                  <p class="muted-text">Không tìm thấy triệu chứng phù hợp</p>
+                </div>
+                
+                <!-- State: Error -->
+                <div class="symptom-state error-state" id="symptom-error-state" style="display: none;">
+                  <span class="material-symbols-outlined" aria-hidden="true">error_outline</span>
+                  <p class="muted-text error-text" id="symptom-error-message">Lỗi tải dữ liệu, vui lòng thử lại</p>
+                </div>
+                
+                <!-- State: Symptoms List -->
+                <div class="symptom-chips" id="symptom-list">
+                  <!-- Chips sẽ được thêm động ở đây -->
+                </div>
               </div>
             </div>
             <p class="form-message" id="form-message" role="status"></p>
@@ -416,7 +441,7 @@
                 Lọc
               </button>
               <button id="history-export-button" class="secondary-button compact" type="button" title="Tùy chọn xuất CSV">
-                <span class="material-symbols-outlined" aria-hidden="true">download</span>
+                <span class="materhial-symbols-outlined" aria-hidden="true">download</span>
                 Xuất
               </button>
               <div id="history-export-options" class="export-options is-hidden" aria-hidden="true"
@@ -511,6 +536,163 @@
               <span class="material-symbols-outlined" aria-hidden="true">add</span>
               Tạo dự đoán
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-dashboard" aria-labelledby="dashboard-title">
+        <div class="container">
+          <div class="profile-form-section">
+            <div class="profile-form-head">
+              <div>
+                <p class="eyebrow">Thống kê</p>
+                <h2 id="dashboard-title">Thống kê phản hồi đánh giá</h2>
+              </div>
+            </div>
+            
+            <!-- Loading State -->
+            <div id="feedback-stats-loading" class="feedback-stats-section feedback-loading-state">
+              <div class="stats-grid">
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
+                </div>
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
+                </div>
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
+                </div>
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
+                </div>
+              </div>
+              <div class="chart-section-skeleton">
+                <div class="skeleton-chart-title"></div>
+                <div class="skeleton-chart"></div>
+              </div>
+            </div>
+
+            <!-- Stats Content -->
+            <div id="feedback-stats-content" class="feedback-stats-section is-hidden">
+              <!-- Stats Cards -->
+              <div class="stats-grid">
+                <!-- Total Evaluations Card -->
+                <div class="stat-card stat-card-total" data-stat="total">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">bar_chart_3</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Tổng đánh giá</p>
+                    <h3 id="stat-total-count" class="stat-value">0</h3>
+                    <p class="stat-description">Tổng số phản hồi từ chuyên gia</p>
+                  </div>
+                </div>
+
+                <!-- Agree Card -->
+                <div class="stat-card stat-card-agree" data-stat="agree">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">thumb_up</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Đồng ý</p>
+                    <div class="stat-value-row">
+                      <h3 id="stat-agree-count" class="stat-value">0</h3>
+                      <span id="stat-agree-percent" class="stat-percentage">0%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Disagree Card -->
+                <div class="stat-card stat-card-disagree" data-stat="disagree">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">thumb_down</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Không đồng ý</p>
+                    <div class="stat-value-row">
+                      <h3 id="stat-disagree-count" class="stat-value">0</h3>
+                      <span id="stat-disagree-percent" class="stat-percentage">0%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Consensus Rate Card -->
+                <div class="stat-card stat-card-consensus" data-stat="consensus">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">activity</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Độ đồng thuận</p>
+                    <h3 id="stat-consensus-rate" class="stat-value">0%</h3>
+                    <p class="stat-description">Tỷ lệ đánh giá Đồng ý</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Chart Section -->
+              <div class="chart-section">
+                <div class="chart-section-header">
+                  <h3 class="chart-title">Biểu đồ đánh giá của chuyên gia</h3>
+                </div>
+                <div class="chart-grid">
+                  <div class="chart-container">
+                    <canvas id="feedbackChart"></canvas>
+                  </div>
+                  <div class="chart-legend">
+                    <div class="legend-item legend-agree" data-legend="agree">
+                      <div class="legend-color"></div>
+                      <div class="legend-content">
+                        <div class="legend-title">Đồng ý</div>
+                        <div class="legend-stats"><span id="legend-agree-count">0</span> đánh giá · <span id="legend-agree-percent">0%</span></div>
+                      </div>
+                    </div>
+                    <div class="legend-item legend-disagree" data-legend="disagree">
+                      <div class="legend-color"></div>
+                      <div class="legend-content">
+                        <div class="legend-title">Không đồng ý</div>
+                        <div class="legend-stats"><span id="legend-disagree-count">0</span> đánh giá · <span id="legend-disagree-percent">0%</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Error State -->
+              <div id="feedback-stats-error" class="error-state is-hidden">
+                <div class="error-icon">
+                  <span class="material-symbols-outlined" aria-hidden="true">error_outline</span>
+                </div>
+                <h3 class="error-title">Không thể tải dữ liệu</h3>
+                <p class="error-message">Đã xảy ra lỗi khi tải thống kê đánh giá.</p>
+                <button type="button" id="btn-retry-stats" class="primary-button">
+                  <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                  Thử lại
+                </button>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="feedback-stats-empty" class="feedback-stats-section is-hidden">
+              <div class="empty-state">
+                <div class="empty-icon">
+                  <span class="material-symbols-outlined" aria-hidden="true">assessment</span>
+                </div>
+                <h3 class="empty-title">Chưa có đánh giá nào</h3>
+                <p class="empty-message">Khi chuyên gia bắt đầu đánh giá kết quả dự đoán, dữ liệu thống kê sẽ được hiển thị tại đây.</p>
+                <button type="button" id="btn-refresh-empty" class="primary-button">
+                  <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                  Làm mới dữ liệu
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -943,5 +1125,30 @@
     </nav>
 
     <script src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+
+
+
+    <div id="delete-confirm-modal" class="custom-modal is-hidden" role="dialog" aria-modal="true">
+  <div class="modal-overlay" onclick="closeDeleteModal()"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <span class="material-symbols-outlined icon-warning">warning</span>
+      <h2>Xác nhận xóa lịch sử</h2>
+    </div>
+    <div class="modal-body">
+      <p>Hành động này không thể hoàn tác. Bạn có chắc chắn muốn xóa bản ghi lịch sử dự đoán này khỏi hệ thống không?</p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="text-button compact" onclick="closeDeleteModal()">Hủy bỏ</button>
+      <button type="button" id="btn-confirm-delete-execute" class="secondary-button compact btn-danger-action">
+        <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+        Xác nhận xóa
+      </button>
+    </div>
+  </div>
+</div>
+
+
   </body>
 </html>

@@ -15,7 +15,7 @@ from itertools import permutations
 from pathlib import Path
 
 import joblib
-from models import db, User, NhomThuoc, Thuoc, TrieuChung
+from models import db, User, NhomThuoc, Thuoc, TrieuChung, Feedback
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -4308,6 +4308,294 @@ def delete_thuoc(id):
         return jsonify({"error": f"Lỗi khi xóa thuốc: {str(e)}"}), 500
 
 
+
+@app.route('/api/evaluation/<int:id>', methods=['DELETE'])
+def delete_evaluation(id):
+    try:
+        # 1. Tìm bản ghi lịch sử dự đoán theo ID trong Database
+        record = DanhGiaDuDoan.query.get(id)
+        
+        # 2. Nếu không tìm thấy, trả về lỗi 404
+        if not record:
+            return jsonify({
+                'success': False,
+                'message': f'Không tìm thấy bản ghi lịch sử với ID = {id}!'
+            }), 404
+
+        # 3. Tiến hành xóa và lưu (commit) vào Database
+        db.session.delete(record)
+        db.session.commit()
+
+        # 4. Trả về phản hồi thành công
+        return jsonify({
+            'success': True,
+            'message': f'Xóa bản ghi lịch sử dự đoán ID = {id} thành công!'
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()  # Thu hồi lệnh nếu xảy ra lỗi hệ thống
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi hệ thống khi xóa: {str(e)}'
+        }), 500
+    
+    
+
+# ────────────────────────────────────────────────────────────────────────────
+# API QUẢN LÝ PHẢN HỒI ĐÁNH GIÁ NHÓM THUỐC
+# ────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/feedback', methods=['POST'])
+def submit_feedback():
+    """
+    Ghi lại phản hồi Đồng ý/Không đồng ý từ người dùng.
+    
+    Body:
+    {
+        "prediction_id": <optional int>,
+        "user_id": <optional int>,
+        "feedback_type": "agree" hoặc "disagree",
+        "comment": <optional string>
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        feedback_type = (data.get('feedback_type') or '').strip().lower()
+        
+        if feedback_type not in ['agree', 'disagree']:
+            return jsonify({
+                'success': False,
+                'message': 'feedback_type phải là "agree" hoặc "disagree".'
+            }), 400
+        
+        new_feedback = Feedback(
+            prediction_id=data.get('prediction_id'),
+            user_id=data.get('user_id'),
+            feedback_type=feedback_type,
+            comment=data.get('comment', '').strip() or None
+        )
+        
+        db.session.add(new_feedback)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Phản hồi đã được ghi nhận thành công.',
+            'feedback': new_feedback.to_dict()
+        }), 201
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': 'Không thể ghi nhận phản hồi.',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/feedback/statistics', methods=['GET'])
+def get_feedback_statistics():
+    """
+    Lấy thống kê số lượng phản hồi Đồng ý / Không đồng ý.
+    
+    Response:
+    {
+        "success": true,
+        "total": <int>,
+        "agree_count": <int>,
+        "disagree_count": <int>,
+        "agree_percentage": <float>,
+        "disagree_percentage": <float>
+    }
+    """
+    try:
+        total = Feedback.query.count()
+        agree_count = Feedback.query.filter_by(feedback_type='agree').count()
+        disagree_count = Feedback.query.filter_by(feedback_type='disagree').count()
+        
+        # Tính tỷ lệ phần trăm, xử lý trường hợp total = 0
+        if total == 0:
+            agree_percentage = 0.0
+            disagree_percentage = 0.0
+        else:
+            agree_percentage = round((agree_count / total) * 100, 2)
+            disagree_percentage = round((disagree_count / total) * 100, 2)
+        
+        return jsonify({
+            'success': True,
+            'total': total,
+            'agree_count': agree_count,
+            'disagree_count': disagree_count,
+            'agree_percentage': agree_percentage,
+            'disagree_percentage': disagree_percentage
+        }), 200
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': 'Không thể lấy dữ liệu thống kê.',
+            'error': str(e)
+        }), 500
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# API HỖ TRỢ CHỨC NĂNG GỢI Ý VÀ CHỌN NHANH TRIỆU CHỨNG
+# ════════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/symptoms/common', methods=['GET'])
+def get_common_symptoms():
+    """
+    Lấy danh sách triệu chứng phổ biến nhất (top 30).
+    
+    Query Parameters:
+    - limit: int (default: 30) - số lượng triệu chứng trả về
+    
+    Response:
+    {
+        "success": true,
+        "data": [
+            {
+                "id": "symptom_id",
+                "label_vi": "Tên triệu chứng Tiếng Việt",
+                "label_en": "Symptom Name English"
+            },
+            ...
+        ],
+        "total": int
+    }
+    """
+    try:
+        limit = request.args.get('limit', 30, type=int)
+        limit = min(limit, 100)  # Giới hạn tối đa 100
+        
+        # Lấy danh sách triệu chứng từ readable_symptoms
+        # Những triệu chứng phổ biến nhất được đặt ở đầu danh sách
+        common_symptoms = readable_symptoms[:limit] if readable_symptoms else []
+        
+        # Nếu không đủ từ readable_symptoms, lấy từ TrieuChung model
+        if len(common_symptoms) < limit:
+            additional_from_db = TrieuChung.query.limit(limit - len(common_symptoms)).all()
+            for symptom in additional_from_db:
+                symptom_dict = {
+                    'id': symptom.id,
+                    'label_vi': symptom.ten or '',
+                    'label_en': symptom.ten_en or symptom.ten or ''
+                }
+                # Tránh trùng lặp
+                if not any(s.get('label_vi') == symptom_dict['label_vi'] for s in common_symptoms):
+                    common_symptoms.append(symptom_dict)
+        
+        return jsonify({
+            'success': True,
+            'data': common_symptoms,
+            'total': len(common_symptoms)
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/symptoms/search', methods=['GET'])
+def search_symptoms():
+    """
+    Tìm kiếm triệu chứng theo từ khóa.
+    
+    Query Parameters:
+    - q: string (required) - từ khóa tìm kiếm (ít nhất 1 ký tự)
+    - limit: int (default: 30) - số lượng kết quả trả về
+    
+    Response:
+    {
+        "success": true,
+        "query": "keyword",
+        "data": [
+            {
+                "id": "symptom_id",
+                "label_vi": "Tên triệu chứng Tiếng Việt",
+                "label_en": "Symptom Name English"
+            },
+            ...
+        ],
+        "total": int
+    }
+    """
+    try:
+        query = request.args.get('q', '').strip()
+        limit = request.args.get('limit', 30, type=int)
+        limit = min(limit, 100)
+        
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Vui lòng cung cấp từ khóa tìm kiếm (q parameter)'
+            }), 400
+        
+        # Chuẩn hóa từ khóa tìm kiếm
+        normalized_query = normalize(query).lower()
+        
+        results = []
+        
+        # Tìm kiếm trong readable_symptoms
+        for symptom in readable_symptoms:
+            label_vi = symptom.get('label_vi', '')
+            label_en = symptom.get('label_en', '')
+            
+            normalized_label_vi = normalize(label_vi).lower()
+            normalized_label_en = normalize(label_en).lower()
+            
+            # Kiểm tra khớp trong label_vi hoặc label_en
+            if (normalized_query in normalized_label_vi or 
+                normalized_query in normalized_label_en or
+                normalized_label_vi.startswith(normalized_query) or
+                normalized_label_en.startswith(normalized_query)):
+                results.append(symptom)
+        
+        # Nếu không tìm thấy, tìm kiếm trong TrieuChung model
+        if not results:
+            db_symptoms = TrieuChung.query.filter(
+                (TrieuChung.ten.ilike(f'%{query}%')) |
+                (TrieuChung.ten_en.ilike(f'%{query}%'))
+            ).limit(limit).all()
+            
+            for symptom in db_symptoms:
+                symptom_dict = {
+                    'id': symptom.id,
+                    'label_vi': symptom.ten or '',
+                    'label_en': symptom.ten_en or symptom.ten or ''
+                }
+                results.append(symptom_dict)
+        
+        # Sắp xếp kết quả: những kết quả khớp chính xác trước, sau đó khớp bắt đầu, cuối cùng khớp chứa
+        def sort_key(item):
+            label = item.get('label_vi', '').lower()
+            normalized_label = normalize(label).lower()
+            if normalized_label == normalized_query:
+                return 0
+            elif normalized_label.startswith(normalized_query):
+                return 1
+            else:
+                return 2
+        
+        results.sort(key=sort_key)
+        
+        # Giới hạn kết quả
+        results = results[:limit]
+        
+        return jsonify({
+            'success': True,
+            'query': query,
+            'data': results,
+            'total': len(results)
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+    
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="127.0.0.1", port=port, debug=False)

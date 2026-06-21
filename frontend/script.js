@@ -307,44 +307,172 @@ function formatError(error) {
   return message;
 }
 
-function updateSelectedCount() {
-  selectedCount.textContent = `${selectedSymptoms.size} đã chọn`;
+// ════════════════════════════════════════════════════════════════════════════════
+// SYMPTOM SUGGESTER - Constants and States
+// ════════════════════════════════════════════════════════════════════════════════
+const MAX_SELECTED_SYMPTOMS = 15;
+const SYMPTOM_STATES = {
+  LOADING: 'loading',
+  EMPTY: 'empty',
+  ERROR: 'error',
+  LOADED: 'loaded'
+};
+
+// ════════════════════════════════════════════════════════════════════════════════
+// SYMPTOM SUGGESTER - Helper Functions
+// ════════════════════════════════════════════════════════════════════════════════
+
+function showSymptomState(state, errorMessage = "") {
+  const states = {
+    loading: document.getElementById("symptom-loading-state"),
+    empty: document.getElementById("symptom-empty-state"),
+    error: document.getElementById("symptom-error-state"),
+    list: document.getElementById("symptom-list")
+  };
+
+  // Hide all states
+  Object.values(states).forEach(el => {
+    if (el) el.style.display = "none";
+  });
+
+  // Show requested state
+  if (state === SYMPTOM_STATES.LOADING) {
+    if (states.loading) states.loading.style.display = "flex";
+  } else if (state === SYMPTOM_STATES.EMPTY) {
+    if (states.empty) states.empty.style.display = "flex";
+  } else if (state === SYMPTOM_STATES.ERROR) {
+    if (states.error) {
+      states.error.style.display = "flex";
+      const errorMsg = document.getElementById("symptom-error-message");
+      if (errorMsg) errorMsg.textContent = errorMessage || "Lỗi tải dữ liệu, vui lòng thử lại";
+    }
+  } else if (state === SYMPTOM_STATES.LOADED) {
+    if (states.list) states.list.style.display = "flex";
+  }
 }
 
-function renderSymptoms(filter = "") {
-  const query = filter.trim().toLowerCase();
-  const visibleSymptoms = symptoms
-    .filter((symptom) => {
-      const viLabel = (symptom.label_vi || symptom.label || "").toLowerCase();
-      const enLabel = (symptom.label_en || "").toLowerCase();
-      return viLabel.includes(query) || enLabel.includes(query);
-    })
-    .slice(0, 80);
-
-  symptomList.innerHTML = "";
-
-  if (visibleSymptoms.length === 0) {
-    symptomList.innerHTML = '<p class="muted-text">Không tìm thấy triệu chứng phù hợp.</p>';
-    return;
+function updateSelectedCount() {
+  const badgeEl = document.getElementById("selected-count");
+  if (badgeEl) {
+    const count = selectedSymptoms.size;
+    badgeEl.textContent = count === 0 ? "0 đã chọn" : `${count} đã chọn`;
+    badgeEl.setAttribute("data-count", count);
   }
+}
 
-  visibleSymptoms.forEach((symptom) => {
+function canSelectMore() {
+  return selectedSymptoms.size < MAX_SELECTED_SYMPTOMS;
+}
+
+function getSelectedSymptomLabels() {
+  // Trả về mảng tên của các triệu chứng đã chọn để cập nhật textarea
+  const selectedLabels = [];
+  selectedSymptoms.forEach(symptomId => {
+    const symptom = symptoms.find(s => s.id === symptomId);
+    if (symptom) {
+      selectedLabels.push(symptom.label_vi || symptom.label);
+    }
+  });
+  return selectedLabels;
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// SYMPTOM SUGGESTER - Main Functions
+// ════════════════════════════════════════════════════════════════════════════════
+
+async function loadSymptoms() {
+  try {
+    showSymptomState(SYMPTOM_STATES.LOADING);
+    const response = await fetch("/api/symptoms/common?limit=30");
+    if (!response.ok) {
+      throw new Error("Không tải được danh sách triệu chứng.");
+    }
+    const data = await response.json();
+    symptoms = data.data || data.symptoms || [];
+    symptomsLoaded = true;
+    renderSymptoms("");
+  } catch (error) {
+    showSymptomState(SYMPTOM_STATES.ERROR, error.message);
+    console.error("Error loading symptoms:", error);
+  }
+}
+
+async function renderSymptoms(filter = "") {
+  try {
+    const query = filter.trim();
+
+    if (!query) {
+      // Nếu không có filter, hiển thị danh sách common symptoms từ cache
+      if (symptoms.length === 0) {
+        showSymptomState(SYMPTOM_STATES.EMPTY);
+        return;
+      }
+      renderSymptomChips(symptoms);
+    } else {
+      // Nếu có filter, gọi API search
+      showSymptomState(SYMPTOM_STATES.LOADING);
+      const response = await fetch(`/api/symptoms/search?q=${encodeURIComponent(query)}&limit=30`);
+      if (!response.ok) {
+        throw new Error("Lỗi tìm kiếm triệu chứng");
+      }
+      const data = await response.json();
+      const results = data.data || [];
+      
+      if (results.length === 0) {
+        showSymptomState(SYMPTOM_STATES.EMPTY);
+      } else {
+        renderSymptomChips(results);
+      }
+    }
+  } catch (error) {
+    showSymptomState(SYMPTOM_STATES.ERROR, error.message);
+    console.error("Error rendering symptoms:", error);
+  }
+}
+
+function renderSymptomChips(symptomsData) {
+  const chipsContainer = document.getElementById("symptom-list");
+  if (!chipsContainer) return;
+
+  chipsContainer.innerHTML = "";
+  showSymptomState(SYMPTOM_STATES.LOADED);
+
+  symptomsData.forEach((symptom) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "symptom-chip";
+    
+    const isSelected = selectedSymptoms.has(symptom.id);
+    if (isSelected) {
+      button.classList.add("selected");
+    }
+
+    // Disable button nếu đạt giới hạn và chưa được chọn
+    const isDisabled = !isSelected && !canSelectMore();
+    if (isDisabled) {
+      button.classList.add("disabled");
+      button.disabled = true;
+      button.title = `Đã chọn tối đa ${MAX_SELECTED_SYMPTOMS} triệu chứng`;
+    }
+
     button.dataset.symptom = symptom.id;
-    button.textContent = symptom.label;
-    button.classList.toggle("is-selected", selectedSymptoms.has(symptom.id));
+    button.textContent = symptom.label_vi || symptom.label || symptom.label_en;
+    
     button.addEventListener("click", () => {
       if (selectedSymptoms.has(symptom.id)) {
+        // Bỏ chọn
         selectedSymptoms.delete(symptom.id);
       } else {
-        selectedSymptoms.add(symptom.id);
+        // Chọn (nếu chưa đạt giới hạn)
+        if (canSelectMore()) {
+          selectedSymptoms.add(symptom.id);
+        }
       }
       updateSelectedCount();
       renderSymptoms(symptomSearch.value);
     });
-    symptomList.appendChild(button);
+
+    chipsContainer.appendChild(button);
   });
 }
 
@@ -1047,8 +1175,23 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════════════════════
+// SYMPTOM SEARCH - Debounced Input Handler
+// ════════════════════════════════════════════════════════════════════════════════
+
+let symptomSearchTimeout;
+const SYMPTOM_SEARCH_DELAY = 300; // ms
+
 symptomSearch.addEventListener("input", (event) => {
-  renderSymptoms(event.target.value);
+  // Clear previous timeout
+  if (symptomSearchTimeout) {
+    clearTimeout(symptomSearchTimeout);
+  }
+  
+  // Set new timeout to debounce search
+  symptomSearchTimeout = setTimeout(() => {
+    renderSymptoms(event.target.value);
+  }, SYMPTOM_SEARCH_DELAY);
 });
 
 let historyCurrentPage = 1;
@@ -1919,6 +2062,61 @@ const API = "http://127.0.0.1:5000/api";
     if (act === 'delete') confirmDeleteDict(id);
   });
 
+
+// =========================================================
+// TASK 65 & 66: XỬ LÝ XÓA LỊCH SỬ DỰ ĐOÁN VỚI MODAL HIỆN ĐẠI
+// =========================================================
+let currentDeleteId = null;
+
+// 1. Hàm này gắn vào nút "Xóa" ngoài giao diện lịch sử để mở Modal
+function confirmDelete(id) {
+    currentDeleteId = id; 
+    const modal = document.getElementById('delete-confirm-modal');
+    if (modal) {
+        modal.classList.remove('is-hidden'); 
+    }
+}
+
+// 2. Hàm này dùng để đóng Modal khi bấm Hủy
+function closeDeleteModal() {
+    currentDeleteId = null;
+    const modal = document.getElementById('delete-confirm-modal');
+    if (modal) {
+        modal.classList.add('is-hidden'); 
+    }
+}
+
+// 3. Hàm thực thi xóa khi bấm nút "Xác nhận xóa" bên trong Modal (Viết theo đúng phong cách của nhóm bạn)
+async function executeDeleteHistory() {
+    if (!currentDeleteId) return;
+    try {
+        // Gọi tới API của Flask Backend (Cổng 5000)
+        const res = await fetch(`http://127.0.0.1:5000/api/evaluation/${currentDeleteId}`, { method: 'DELETE' });
+        
+        if (!res.ok) { 
+            const d = await res.json().catch(() => ({})); 
+            alert(d.message || 'Xóa thất bại'); 
+            closeDeleteModal();
+            return; 
+        }
+        
+        alert('Xóa bản ghi lịch sử thành công!');
+        
+        // Xóa dòng đó trên giao diện mà không cần reload
+        const element = document.getElementById(`record-${currentDeleteId}`);
+        if (element) {
+            element.remove();
+        } else {
+            window.location.reload(); // Dự phòng nếu không tìm thấy ID dòng
+        }
+    } catch (e) { 
+        alert('Không kết nối máy chủ Backend.'); 
+    } finally {
+        closeDeleteModal(); // Luôn luôn đóng modal sau khi chạy xong
+    }
+}
+
+
   async function confirmDeleteDict(id) {
     if (!confirm('Xóa mục này khỏi từ điển?')) return;
     try {
@@ -2778,3 +2976,299 @@ function submitRejectFeedback() {
     })
     .catch(err => console.error("Lỗi gửi phản hồi:", err));
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// FEEDBACK STATISTICS (DASHBOARD)
+// ────────────────────────────────────────────────────────────────────────────
+
+let feedbackChartInstance = null;
+
+// Register custom plugin for center label in doughnut chart
+const centerLabelPlugin = {
+    id: 'centerLabel',
+    afterDraw(chart) {
+        const {width, height} = chart;
+        const ctx = chart.ctx;
+        
+        // Calculate font size responsively
+        const fontSize = Math.min(width, height) / 8;
+        const smallFontSize = fontSize / 1.5;
+        
+        // Get chart data
+        const data = chart.data.datasets[0].data;
+        const total = data.reduce((a, b) => a + b, 0);
+        
+        // Draw text
+        ctx.save();
+        ctx.font = `bold ${fontSize}px Inter, system-ui`;
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#000000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Main text
+        ctx.fillText(total, width / 2, height / 2 - fontSize / 4);
+        
+        // Label text - "Tổng đánh giá"
+        ctx.font = `500 ${smallFontSize}px Inter, system-ui`;
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#666666';
+        ctx.fillText('Tổng đánh giá', width / 2, height / 2 + smallFontSize * 0.8);
+        
+        ctx.restore();
+    }
+};
+
+// Register the plugin
+if (window.Chart && window.Chart.register) {
+    Chart.register(centerLabelPlugin);
+}
+
+async function loadFeedbackStatistics() {
+    const loading = document.getElementById('feedback-stats-loading');
+    const content = document.getElementById('feedback-stats-content');
+    const empty = document.getElementById('feedback-stats-empty');
+    const errorDiv = document.getElementById('feedback-stats-error');
+    
+    // Show loading state
+    if (loading) loading.style.display = 'block';
+    if (content) content.classList.add('is-hidden');
+    if (empty) empty.classList.add('is-hidden');
+    
+    try {
+        const response = await fetch('/api/feedback/statistics');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.message || 'API returned error');
+        }
+        
+        // Hide loading
+        if (loading) loading.style.display = 'none';
+        
+        // Check for empty state
+        if (data.total === 0) {
+            if (content) content.classList.add('is-hidden');
+            if (empty) empty.classList.remove('is-hidden');
+            return;
+        }
+        
+        // Update stat cards
+        const agreeCount = document.getElementById('stat-agree-count');
+        const agreePercent = document.getElementById('stat-agree-percent');
+        const disagreeCount = document.getElementById('stat-disagree-count');
+        const disagreePercent = document.getElementById('stat-disagree-percent');
+        const totalCount = document.getElementById('stat-total-count');
+        const consensusRate = document.getElementById('stat-consensus-rate');
+        
+        // Calculate consensus rate
+        const consensus = data.agree_percentage;
+        
+        // Update values with animation
+        if (agreeCount) {
+            agreeCount.textContent = data.agree_count;
+            agreeCount.parentElement.parentElement.style.animation = 'none';
+            setTimeout(() => {
+                agreeCount.parentElement.parentElement.style.animation = '';
+            }, 10);
+        }
+        if (agreePercent) agreePercent.textContent = data.agree_percentage.toFixed(1) + '%';
+        if (disagreeCount) disagreeCount.textContent = data.disagree_count;
+        if (disagreePercent) disagreePercent.textContent = data.disagree_percentage.toFixed(1) + '%';
+        if (totalCount) totalCount.textContent = data.total;
+        if (consensusRate) consensusRate.textContent = data.agree_percentage.toFixed(1) + '%';
+        
+        // Update legend labels
+        const legendAgreeCount = document.getElementById('legend-agree-count');
+        const legendAgreePercent = document.getElementById('legend-agree-percent');
+        const legendDisagreeCount = document.getElementById('legend-disagree-count');
+        const legendDisagreePercent = document.getElementById('legend-disagree-percent');
+        
+        if (legendAgreeCount) legendAgreeCount.textContent = data.agree_count;
+        if (legendAgreePercent) legendAgreePercent.textContent = data.agree_percentage.toFixed(0);
+        if (legendDisagreeCount) legendDisagreeCount.textContent = data.disagree_count;
+        if (legendDisagreePercent) legendDisagreePercent.textContent = data.disagree_percentage.toFixed(0);
+        
+        // Render chart
+        renderFeedbackChart(data);
+        
+        // Show content, hide loading/error
+        if (content) {
+            content.classList.remove('is-hidden');
+            if (errorDiv) errorDiv.classList.add('is-hidden');
+        }
+        
+    } catch (error) {
+        console.error('Error loading feedback statistics:', error);
+        
+        // Show error state
+        if (loading) loading.style.display = 'none';
+        if (content) content.classList.add('is-hidden');
+        if (empty) empty.classList.add('is-hidden');
+        if (errorDiv) errorDiv.classList.remove('is-hidden');
+    }
+}
+
+function renderFeedbackChart(data) {
+    const canvas = document.getElementById('feedbackChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Destroy previous chart instance if it exists
+    if (feedbackChartInstance) {
+        feedbackChartInstance.destroy();
+    }
+    
+    // Prepare chart options
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#0e1b2b';
+    const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#5a6675';
+    
+    // Create new chart with enhanced styling
+    feedbackChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Đồng ý', 'Không đồng ý'],
+            datasets: [{
+                data: [data.agree_count, data.disagree_count],
+                backgroundColor: ['#22c55e', '#ef4444'],
+                borderColor: [
+                    getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#f5f7fb',
+                    getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#f5f7fb'
+                ],
+                borderWidth: 3,
+                hoverBorderWidth: 5,
+                hoverOffset: 8,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            animation: {
+                duration: 800,
+                easing: 'easeInOutQuart',
+                delay: (context) => {
+                    let delay = 0;
+                    if (context.type === 'data' && context.mode === 'default' && !context.dropped) {
+                        delay = context.dataIndex * 100 + context.datasetIndex * 50;
+                    }
+                    return delay;
+                },
+            },
+            plugins: {
+                centerLabel: {},
+                legend: {
+                    position: 'right',
+                    align: 'center',
+                    labels: {
+                        color: textColor,
+                        padding: 16,
+                        font: {
+                            size: 14,
+                            weight: '500',
+                            family: 'Inter, system-ui, -apple-system'
+                        },
+                        boxWidth: 12,
+                        boxHeight: 12,
+                        borderRadius: 3,
+                        generateLabels(chart) {
+                            const data = chart.data;
+                            const datasets = data.datasets;
+                            const total = datasets[0].data.reduce((a, b) => a + b, 0);
+                            
+                            return data.labels.map((label, i) => {
+                                const value = datasets[0].data[i];
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(0) : 0;
+                                const emoji = i === 0 ? '🟢' : '🔴';
+                                
+                                return {
+                                    text: `${emoji} ${label}\n${value} (${percentage}%)`,
+                                    fillStyle: datasets[0].backgroundColor[i],
+                                    hidden: false,
+                                    index: i,
+                                };
+                            });
+                        }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#ffffff',
+                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                    borderWidth: 1,
+                    padding: 12,
+                    displayColors: true,
+                    boxWidth: 10,
+                    boxHeight: 10,
+                    cornerRadius: 6,
+                    titleFont: {
+                        size: 13,
+                        weight: '600',
+                        family: 'Inter, system-ui'
+                    },
+                    bodyFont: {
+                        size: 12,
+                        family: 'Inter, system-ui'
+                    },
+                    callbacks: {
+                        title: function(context) {
+                            const index = context[0].dataIndex;
+                            const labels = ['Đồng ý', 'Không đồng ý'];
+                            return labels[index] || '';
+                        },
+                        label: function(context) {
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                            return [`${value} đánh giá`, `${percentage}%`];
+                        },
+                        afterLabel: function(context) {
+                            const index = context.dataIndex;
+                            return index === 0 ? '✓ Chính xác' : '✗ Không chính xác';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Hook into page switching
+const originalPageSwitch = document.querySelector('[data-page="dashboard"]');
+if (originalPageSwitch) {
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('[data-page="dashboard"]')) {
+            setTimeout(loadFeedbackStatistics, 100);
+        }
+    });
+}
+
+// Retry button handler
+const retryBtn = document.getElementById('btn-retry-stats');
+if (retryBtn) {
+    retryBtn.addEventListener('click', loadFeedbackStatistics);
+}
+
+// Refresh empty state button handler
+const refreshEmptyBtn = document.getElementById('btn-refresh-empty');
+if (refreshEmptyBtn) {
+    refreshEmptyBtn.addEventListener('click', loadFeedbackStatistics);
+}
+
+// Legend item hover effects
+document.addEventListener('DOMContentLoaded', function() {
+    const legendItems = document.querySelectorAll('.legend-item');
+    if (legendItems.length > 0 && feedbackChartInstance) {
+        legendItems.forEach((item, index) => {
+            item.addEventListener('click', function() {
+                if (feedbackChartInstance) {
+                    feedbackChartInstance.toggleDataVisibility(index, true);
+                }
+            });
+        });
+    }
+});
