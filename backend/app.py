@@ -66,8 +66,24 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # 3. Khởi tạo Database và tạo bảng
 db.init_app(app)
 
+def ensure_database_schema():
+    """Bổ sung cột còn thiếu cho SQLite cũ sau khi code thay đổi."""
+    from sqlalchemy import text
+
+    def table_columns(table_name):
+        rows = db.session.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+        return {row[1] for row in rows}
+
+    # Bảng phản hồi đánh giá: thêm trạng thái xử lý nếu DB cũ chưa có.
+    if 'danh_gia_du_doan' in {r[0] for r in db.session.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}:
+        cols = table_columns('danh_gia_du_doan')
+        if 'xu_ly' not in cols:
+            db.session.execute(text("ALTER TABLE danh_gia_du_doan ADD COLUMN xu_ly VARCHAR(20) DEFAULT 'CHUA_XU_LY'"))
+            db.session.commit()
+
 with app.app_context():
     db.create_all()
+    ensure_database_schema()
     print("Database đã sẵn sàng!")
 
 # Đăng ký blueprint cho bulk import
@@ -4209,10 +4225,37 @@ def delete_drug_group(id):
 
 @app.route('/api/thuoc', methods=['GET'])
 def get_all_thuoc():
-    """Lấy danh sách thuốc. Query: ?nhom_thuoc_id=<int> để lọc theo nhóm."""
+    """Lấy danh sách thuốc, ưu tiên hiển thị mỗi tên thuốc một lần để tránh trùng dữ liệu import."""
     nhom_id = request.args.get('nhom_thuoc_id', type=int)
     query = Thuoc.query.filter_by(nhom_thuoc_id=nhom_id) if nhom_id else Thuoc.query
-    return jsonify([t.to_dict() for t in query.all()]), 200
+    items = query.order_by(Thuoc.ten_thuoc.asc(), Thuoc.id.asc()).all()
+    seen = set()
+    unique_items = []
+    for item in items:
+        key = (item.ten_thuoc or '').strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique_items.append(item)
+    return jsonify([t.to_dict() for t in unique_items]), 200
+
+@app.route('/api/thuoc/dedupe', methods=['POST'])
+def dedupe_thuoc():
+    """Xóa bản ghi thuốc trùng tên, giữ bản ghi đầu tiên."""
+    items = Thuoc.query.order_by(Thuoc.ten_thuoc.asc(), Thuoc.id.asc()).all()
+    seen = set()
+    removed = 0
+    for item in items:
+        key = (item.ten_thuoc or '').strip().lower()
+        if not key:
+            continue
+        if key in seen:
+            db.session.delete(item)
+            removed += 1
+        else:
+            seen.add(key)
+    db.session.commit()
+    return jsonify({"success": True, "removed": removed, "message": f"Đã xóa {removed} thuốc trùng tên."}), 200
 
 
 @app.route('/api/thuoc/<int:id>', methods=['GET'])

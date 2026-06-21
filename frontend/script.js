@@ -943,16 +943,48 @@ function createHistoryCard(entry) {
   return card;
 }
 function showHistoryDetail(entry) {
-  alert(
-    `CHI TIẾT LỊCH SỬ DỰ ĐOÁN\n\n` +
-    `Ngày: ${entry.savedAt || "Không rõ"}\n` +
-    `Nhóm thuốc: ${entry.disease || "Không rõ"}\n` +
-    `Triệu chứng: ${(entry.symptoms || []).join(", ") || "Không rõ"}\n` +
-    `Ghi chú: ${entry.notes || "Không có"}\n` +
-    `Người dùng: ${entry.user || "Không rõ"}\n` +
-    `Độ tin cậy: ${entry.score != null ? entry.score : "Không có"}\n` +
-    `Loại điểm: ${entry.score_type || "Không có"}`
-  );
+  const oldModal = document.getElementById("history-detail-modal");
+  if (oldModal) oldModal.remove();
+
+  const symptoms = Array.isArray(entry.symptoms) && entry.symptoms.length
+    ? entry.symptoms.join(", ")
+    : "Không rõ";
+
+  const modal = document.createElement("div");
+  modal.id = "history-detail-modal";
+  modal.className = "pretty-modal-backdrop";
+  modal.innerHTML = `
+    <div class="pretty-modal-card" role="dialog" aria-modal="true" aria-labelledby="history-detail-title">
+      <div class="pretty-modal-header">
+        <div>
+          <p class="eyebrow">Chi tiết lịch sử dự đoán</p>
+          <h2 id="history-detail-title">${escapeHtml(entry.disease || "Kết quả dự đoán")}</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-history-detail aria-label="Đóng">
+          <span class="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </div>
+      <div class="pretty-detail-grid">
+        <div class="pretty-detail-item"><span>Ngày lưu</span><strong>${escapeHtml(entry.savedAt || "Không rõ")}</strong></div>
+        <div class="pretty-detail-item"><span>Người dùng</span><strong>${escapeHtml(entry.user || "Không rõ")}</strong></div>
+        <div class="pretty-detail-item wide"><span>Triệu chứng</span><strong>${escapeHtml(symptoms)}</strong></div>
+        <div class="pretty-detail-item wide"><span>Ghi chú bệnh án</span><strong>${escapeHtml(entry.notes || "Không có")}</strong></div>
+        <div class="pretty-detail-item"><span>Độ tin cậy</span><strong>${entry.score != null ? escapeHtml(String(entry.score)) : "Không có"}</strong></div>
+        <div class="pretty-detail-item"><span>Loại điểm</span><strong>${escapeHtml(entry.score_type || "Không có")}</strong></div>
+      </div>
+      <div class="pretty-modal-actions">
+        <button class="primary-button" type="button" data-close-history-detail>Đóng</button>
+      </div>
+    </div>
+  `;
+
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-close-history-detail]")) {
+      modal.remove();
+    }
+  });
+
+  document.body.appendChild(modal);
 }
 function renderSavedHistory() {
   document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
@@ -1758,13 +1790,17 @@ if (historyExportBtn) {
   const exportOptions = document.getElementById('history-export-options');
   historyExportBtn.addEventListener('click', (e) => {
     if (!exportOptions) return;
+    e.stopPropagation();
     exportOptions.classList.toggle('is-hidden');
-    // position near button
-    try {
-      const rect = historyExportBtn.getBoundingClientRect();
-      exportOptions.style.left = rect.right - 12 + 'px';
-      exportOptions.style.top = rect.bottom + window.scrollY + 8 + 'px';
-    } catch (err) {}
+    exportOptions.setAttribute('aria-hidden', exportOptions.classList.contains('is-hidden') ? 'true' : 'false');
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!exportOptions || exportOptions.classList.contains('is-hidden')) return;
+    if (!exportOptions.contains(event.target) && event.target !== historyExportBtn && !historyExportBtn.contains(event.target)) {
+      exportOptions.classList.add('is-hidden');
+      exportOptions.setAttribute('aria-hidden', 'true');
+    }
   });
 
   const exportConfirm = document.getElementById('history-export-confirm');
@@ -1945,7 +1981,7 @@ async function loadRejectedFeedbacks() {
 
   tbody.innerHTML = `
     <tr>
-      <td colspan="5" style="padding:20px; text-align:center; color:var(--text-muted);">
+      <td colspan="6" style="padding:20px; text-align:center; color:var(--text-muted);">
         Đang tải danh sách phản hồi...
       </td>
     </tr>
@@ -1968,7 +2004,7 @@ async function loadRejectedFeedbacks() {
   } catch (error) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="5" style="padding:20px; text-align:center; color:#ef4444;">
+        <td colspan="6" style="padding:20px; text-align:center; color:#ef4444;">
           ${escapeHtml(error.message || "Lỗi tải phản hồi.")}
         </td>
       </tr>
@@ -1992,9 +2028,7 @@ function renderRejectedFeedbacks() {
   if (filtered.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="5" style="padding:20px; text-align:center; color:var(--text-muted);">
-          Không có phản hồi phù hợp.
-        </td>
+        <td colspan="6" class="table-empty-cell">Không có phản hồi phù hợp.</td>
       </tr>
     `;
     return;
@@ -2004,24 +2038,26 @@ function renderRejectedFeedbacks() {
 
   filtered.forEach((item) => {
     const row = document.createElement("tr");
+    const createdAt = item.created_at ? new Date(item.created_at).toLocaleString("vi-VN") : "Không rõ";
+    const isDone = item.xu_ly === "DA_XU_LY";
 
     row.innerHTML = `
-        <td style="padding:12px; border-bottom:1px solid var(--border); color:var(--text-muted);">
-        ${item.created_at ? new Date(item.created_at).toLocaleString("vi-VN") : "Không rõ"}
-      </td>
-      <td style="padding:12px; border-bottom:1px solid var(--border);">
-        <span class="status-pill ${item.xu_ly === "DA_XU_LY" ? "status-secure" : ""}">
-          ${item.xu_ly === "DA_XU_LY" ? "Đã xử lý" : "Chưa xử lý"}
+      <td>${escapeHtml(String(item.id || ""))}</td>
+      <td>${escapeHtml(item.trieu_chung_nhap || "Không rõ")}</td>
+      <td>${escapeHtml(item.ghi_chu || "Không có ghi chú")}</td>
+      <td>${escapeHtml(createdAt)}</td>
+      <td>
+        <span class="status-pill ${isDone ? "status-secure" : "status-warning"}">
+          ${isDone ? "Đã xử lý" : "Chưa xử lý"}
         </span>
       </td>
-      <td style="padding:12px; border-bottom:1px solid var(--border); text-align:center;">
-        ${
-          item.xu_ly === "DA_XU_LY"
-            ? `<span style="color:var(--text-muted); font-weight:700;">Hoàn tất</span>`
-            : `<button class="text-button" type="button" onclick="markFeedbackReviewed(${item.id})" style="color:#22c55e; font-weight:700;">
-                <span class="material-symbols-outlined" style="font-size:18px;">done</span>
-                Đánh dấu đã xử lý
-              </button>`
+      <td class="table-actions-cell">
+        ${isDone
+          ? `<span class="done-label">Hoàn tất</span>`
+          : `<button class="text-button reviewed-action" type="button" onclick="markFeedbackReviewed(${item.id})">
+              <span class="material-symbols-outlined" aria-hidden="true">done</span>
+              Đánh dấu đã xử lý
+            </button>`
         }
       </td>
     `;
@@ -2030,8 +2066,60 @@ function renderRejectedFeedbacks() {
   });
 }
 
+function showConfirmModal({ title, message, confirmText = "Xác nhận", cancelText = "Hủy" }) {
+  return new Promise((resolve) => {
+    const oldModal = document.getElementById("confirm-modal");
+    if (oldModal) oldModal.remove();
+
+    const modal = document.createElement("div");
+    modal.id = "confirm-modal";
+    modal.className = "pretty-modal-backdrop";
+    modal.innerHTML = `
+      <div class="pretty-modal-card confirm-card" role="dialog" aria-modal="true">
+        <div class="pretty-modal-header">
+          <div>
+            <p class="eyebrow">Xác nhận thao tác</p>
+            <h2>${escapeHtml(title)}</h2>
+          </div>
+          <button class="icon-button" type="button" data-confirm-cancel aria-label="Đóng">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <p class="modal-message">${escapeHtml(message)}</p>
+
+        <div class="pretty-modal-actions">
+          <button class="secondary-button" type="button" data-confirm-cancel>${cancelText}</button>
+          <button class="primary-button" type="button" data-confirm-ok>${confirmText}</button>
+        </div>
+      </div>
+    `;
+
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal || event.target.closest("[data-confirm-cancel]")) {
+        modal.remove();
+        resolve(false);
+      }
+
+      if (event.target.closest("[data-confirm-ok]")) {
+        modal.remove();
+        resolve(true);
+      }
+    });
+
+    document.body.appendChild(modal);
+  });
+}
+
 async function markFeedbackReviewed(id) {
-  if (!confirm("Đánh dấu phản hồi này là đã xem xét?")) return;
+  const ok = await showConfirmModal({
+    title: "Đánh dấu đã xử lý?",
+    message: "Phản hồi này sẽ được chuyển sang trạng thái Đã xử lý và không cần xem lại nhiều lần.",
+    confirmText: "Đánh dấu",
+    cancelText: "Hủy"
+  });
+
+  if (!ok) return;
 
   try {
     const res = await fetch(`${API_BASE_URL}/api/admin/rejected-feedbacks/${id}/reviewed`, {
@@ -2045,8 +2133,9 @@ async function markFeedbackReviewed(id) {
     }
 
     await loadRejectedFeedbacks();
+    showToast?.("Đã đánh dấu phản hồi là đã xử lý.", "success");
   } catch (error) {
-    alert(error.message || "Lỗi cập nhật phản hồi.");
+    showToast?.(error.message || "Lỗi cập nhật phản hồi.", "error");
   }
 }
 
@@ -2098,10 +2187,10 @@ async function loadDrugGroups() {
     data.forEach((g) => {
       const row = document.createElement("tr");
       row.innerHTML = `
-        <td style="padding: 12px; border-bottom: 1px solid var(--border); color: var(--text-muted);">${g.id}</td>
-        <td style="padding: 12px; border-bottom: 1px solid var(--border); font-weight: 600;">${escapeHtml(g.ten_nhom)}</td>
-        <td style="padding: 12px; border-bottom: 1px solid var(--border); color: var(--text-muted);">${escapeHtml(g.mo_ta || "Không có mô tả.")}</td>
-        <td style="padding: 12px; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap;">
+        <td style="padding: 12px; border-bottom: 1px solid var(--outline); color: var(--text-muted);">${g.id}</td>
+        <td style="padding: 12px; border-bottom: 1px solid var(--outline); font-weight: 600;">${escapeHtml(g.ten_nhom)}</td>
+        <td style="padding: 12px; border-bottom: 1px solid var(--outline); color: var(--text-muted);">${escapeHtml(g.mo_ta || "Không có mô tả.")}</td>
+        <td style="padding: 12px; border-bottom: 1px solid var(--outline); text-align: center; white-space: nowrap;">
           <button type="button" class="text-button" data-action="edit" data-id="${g.id}" data-name="${escapeHtml(g.ten_nhom)}" data-desc="${escapeHtml(g.mo_ta || "")}" style="color: #2563eb; padding: 4px 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
             <span class="material-symbols-outlined" style="font-size: 18px;">edit</span> Sửa
           </button>

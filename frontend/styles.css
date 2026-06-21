@@ -1601,7 +1601,7 @@ input:focus {
   padding: 0 14px;
   border: 1px solid var(--outline);
   border-radius: var(--radius);
-  background: var(--background);
+  background: var(--surface-lowest);
   color: var(--text);
   font-size: .9375rem;
   font-family: inherit;
@@ -1722,7 +1722,7 @@ input:focus {
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 
 .modal-card {
-  background: var(--background);
+  background: var(--surface-lowest);
   border: 1px solid var(--outline);
   border-radius: calc(var(--radius) * 1.5);
   width: 100%;
@@ -1745,7 +1745,7 @@ input:focus {
   border-bottom: 1px solid var(--outline);
   position: sticky;
   top: 0;
-  background: var(--background);
+  background: var(--surface-lowest);
   z-index: 1;
 }
 .modal-header h2 {
@@ -1769,7 +1769,7 @@ input:focus {
   padding: 10px 14px;
   border: 1px solid var(--outline);
   border-radius: var(--radius);
-  background: var(--background);
+  background: var(--surface-lowest);
   color: var(--text);
   font-family: inherit;
   font-size: .9375rem;
@@ -1961,7 +1961,7 @@ input:focus {
 .evaluation-box {
   margin-top: 20px;
   padding: 18px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--outline);
   border-radius: 16px;
   background: var(--surface);
 }
@@ -1986,8 +1986,8 @@ input:focus {
   margin-top: 10px;
   padding: 12px;
   border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface-muted);
+  border: 1px solid var(--outline);
+  background: var(--surface-low);
   color: var(--text);
   resize: vertical;
 }
@@ -3555,4 +3555,309 @@ input:focus {
   .autocomplete-state span[class*="material-symbols"] {
     font-size: 24px;
   }
+}
+/* ============================================================
+   POLISH FIX 2026-06-21: History, feedback, modal, export, picker
+   ============================================================ */
+#page-history .container,
+#page-admin-feedback .container,
+#page-admin-thuoc .container,
+#page-result .container {
+  max-width: 1120px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#page-history .history-head {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 24px !important;
+  margin-bottom: 18px !important;
+}
+
+#page-history .history-head > div:first-child {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+#page-history .history-actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+  position: relative !important;
+  flex-wrap: wrap !important;
+}
+
+#page-history .history-actions .secondary-button,
+#page-history .history-actions .text-button,
+#page-history .history-actions .icon-button {
+  white-space: nowrap;
+}
+
+#page-history .search-box {
+  margin: 14px 0 18px !important;
+  width: 100%;
+}
+
+#page-history .history-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(245px, 1fr)) !important;
+  gap: 16px !important;
+  align-items: stretch;
+}
+
+#page-history .history-card {
+  min-height: 188px;
+}
+
+#history-export-options {
+  position: absolute !important;
+  top: calc(100% + 10px) !important;
+  right: 0 !important;
+  left: auto !important;
+  width: 300px !important;
+  max-height: 430px !important;
+  overflow-y: auto !important;
+  z-index: 500 !important;
+  background: var(--surface-lowest) !important;
+  border: 1px solid var(--outline) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+#history-export-options.is-hidden {
+  display: none !important;
+}
+
+#history-export-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#history-export-options input[type="checkbox"] {
+  width: 16px !important;
+  min-width: 16px !important;
+  height: 16px !important;
+  min-height: 16px !important;
+  margin: 0;
+}
+
+#history-export-options select {
+  min-height: 34px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: var(--surface-low);
+  color: var(--text);
+}
+
+.pretty-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(12, 20, 32, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.pretty-modal-card {
+  width: min(92vw, 620px);
+  max-height: 84vh;
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--outline);
+  border-radius: 18px;
+  background: var(--surface-lowest);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+.pretty-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--outline);
+}
+
+.pretty-modal-header h2 {
+  margin-bottom: 0;
+  color: var(--primary);
+}
+
+.pretty-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pretty-detail-item {
+  padding: 14px;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  background: var(--surface-low);
+}
+
+.pretty-detail-item.wide {
+  grid-column: 1 / -1;
+}
+
+.pretty-detail-item span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pretty-detail-item strong {
+  display: block;
+  color: var(--text);
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.pretty-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+#page-admin-feedback .profile-form-section,
+#page-admin-feedback .feedback-table-card {
+  border: 1px solid var(--outline);
+  border-radius: 18px;
+  background: var(--surface-lowest);
+  box-shadow: var(--shadow-md);
+}
+
+#page-admin-feedback table,
+#page-admin-thuoc table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#page-admin-feedback th,
+#page-admin-feedback td,
+#page-admin-thuoc th,
+#page-admin-thuoc td {
+  border-bottom: 1px solid var(--outline) !important;
+  padding: 14px 12px !important;
+  vertical-align: middle;
+}
+
+#page-admin-feedback th,
+#page-admin-thuoc th {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.table-empty-cell {
+  padding: 28px !important;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.table-actions-cell {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.reviewed-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--success) !important;
+  font-weight: 800;
+}
+
+.reviewed-action .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.done-label {
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+#evaluation-note-box {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  background: var(--surface-low);
+}
+
+#evaluation-note-box textarea {
+  min-height: 150px;
+  margin-top: 8px;
+}
+
+#evaluation-message {
+  margin-top: 10px;
+  font-weight: 800;
+}
+
+#symptom-list-container {
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  background: var(--surface-lowest);
+}
+
+.symptom-list-container .search-suggestions,
+#symptom-suggestions,
+.autocomplete-panel {
+  max-height: 260px !important;
+}
+
+.symptom-picker .search-box,
+.compact-search {
+  min-height: 46px !important;
+}
+
+.symptom-picker .search-box input,
+.compact-search input {
+  min-height: 44px !important;
+}
+
+.symptom-chip {
+  min-height: 32px;
+  padding: 0 11px;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  #page-history .history-head {
+    flex-direction: column;
+  }
+  #page-history .history-actions {
+    justify-content: flex-start !important;
+  }
+  .pretty-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.confirm-card {
+  max-width: 460px;
+}
+
+.modal-message {
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 10px 0 20px;
 }
