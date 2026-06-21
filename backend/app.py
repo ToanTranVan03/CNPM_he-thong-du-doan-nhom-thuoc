@@ -3433,18 +3433,43 @@ def admin_db_nhom_thuoc():
 
 @app.get("/api/admin/db/trieu-chung")
 def admin_db_trieu_chung():
+    """US27 (SCRUM-109/111): tìm kiếm triệu chứng trong từ điển theo TÊN hoặc TỪ KHÓA,
+    có phân trang. ?q=&page=1&per_page=10. Admin-only, đọc Postgres.
+    """
     _admin, error = _require_admin_db()
     if error:
         return error
     q = (request.args.get("q") or "").strip()
-    query = db.session.query(db_models.TrieuChung)
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = max(1, min(100, int(request.args.get("per_page", 10))))
+    except (TypeError, ValueError):
+        per_page = 10
+
+    TC = db_models.TrieuChung
+    query = db.session.query(TC)
     if q:
-        query = query.filter(db_models.TrieuChung.ten_trieu_chung.ilike(f"%{q}%"))
+        like = f"%{q}%"
+        query = query.filter(db.or_(TC.ten_trieu_chung.ilike(like), TC.tu_khoa.ilike(like)))
     total = query.count()
-    rows = query.order_by(db_models.TrieuChung.ten_trieu_chung).limit(50).all()
+    total_pages = (total + per_page - 1) // per_page if total else 0
+    rows = (
+        query.order_by(TC.ten_trieu_chung)
+        .offset((page - 1) * per_page).limit(per_page).all()
+    )
     return jsonify({
         "total": total,
-        "trieu_chung": [{"ma": t.ma_trieu_chung, "ten": t.ten_trieu_chung} for t in rows],
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "query": q,
+        "trieu_chung": [
+            {"ma": t.ma_trieu_chung, "ten": t.ten_trieu_chung, "tu_khoa": t.tu_khoa}
+            for t in rows
+        ],
     })
 
 

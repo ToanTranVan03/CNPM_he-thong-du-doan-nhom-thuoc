@@ -155,6 +155,10 @@
             <span class="material-symbols-outlined" aria-hidden="true">monitoring</span>
             <span>Dashboard</span>
           </button>
+          <button class="nav-link admin-only is-hidden" type="button" data-page="dictionary">
+            <span class="material-symbols-outlined" aria-hidden="true">menu_book</span>
+            <span>Từ Điển Triệu Chứng</span>
+          </button>
           <button class="nav-link" type="button" data-page="result">
             <span class="material-symbols-outlined" aria-hidden="true">medical_services</span>
             <span>Quản Lý Thuốc</span>
@@ -526,6 +530,49 @@
                 <li class="muted-text">Chưa có dữ liệu.</li>
               </ul>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- US27 (SCRUM-108): Từ điển triệu chứng — tìm kiếm nhanh + phân trang -->
+      <section class="page" id="page-dictionary" aria-labelledby="dictionary-title">
+        <div class="container">
+          <div class="history-head">
+            <div>
+              <p class="eyebrow">Quản trị từ điển</p>
+              <h1 id="dictionary-title">Từ điển triệu chứng</h1>
+              <p class="lead">Tìm kiếm nhanh triệu chứng theo tên hoặc từ khóa để tra cứu/quản trị.</p>
+            </div>
+            <span class="status-pill status-secure" id="dictionary-total">0 triệu chứng</span>
+          </div>
+
+          <label class="search-box" for="dictionary-search">
+            <span class="material-symbols-outlined" aria-hidden="true">search</span>
+            <input id="dictionary-search" type="search" placeholder="Gõ tên hoặc từ khóa triệu chứng (vd: fever, đau, cough)..." autocomplete="off" />
+          </label>
+
+          <p class="form-message" id="dictionary-message" role="status"></p>
+
+          <div class="dict-table-wrap">
+            <table class="dict-table">
+              <thead>
+                <tr><th style="width:64px">#</th><th>Tên triệu chứng</th><th>Từ khóa</th></tr>
+              </thead>
+              <tbody id="dictionary-rows"></tbody>
+            </table>
+          </div>
+          <p class="muted-text dashboard-empty is-hidden" id="dictionary-empty">Không tìm thấy triệu chứng phù hợp.</p>
+
+          <div class="dict-pagination">
+            <button class="secondary-button compact" type="button" id="dict-prev">
+              <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+              Trước
+            </button>
+            <span id="dict-page-info">Trang 1</span>
+            <button class="secondary-button compact" type="button" id="dict-next">
+              Sau
+              <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+            </button>
           </div>
         </div>
       </section>

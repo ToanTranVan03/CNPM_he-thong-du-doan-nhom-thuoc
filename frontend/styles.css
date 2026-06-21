@@ -1592,6 +1592,48 @@ input:focus {
 .dashboard-grid-2 {
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
 }
+
+/* US27: bảng từ điển triệu chứng + phân trang */
+.dict-table-wrap {
+  margin-top: 12px;
+  border: 1px solid var(--surface-container);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface-lowest);
+}
+.dict-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.dict-table th,
+.dict-table td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--surface-container);
+}
+.dict-table th {
+  background: var(--surface-low);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.dict-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.dict-table tbody tr:hover {
+  background: var(--surface-low);
+}
+.dict-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+.dict-pagination span {
+  color: var(--text-muted);
+  font-weight: 600;
+}
 .dashboard-empty {
   margin-top: 12px;
 }

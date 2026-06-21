@@ -195,9 +195,11 @@ function updateAdminUi() {
   });
 }
 
+const ADMIN_PAGES = new Set(["dashboard", "dictionary"]);
+
 function showPage(pageName) {
-  // US19: chặn truy cập Dashboard nếu không phải admin (kể cả khi gọi trực tiếp).
-  if (pageName === "dashboard" && !isAdminUser()) {
+  // US19/US27: chặn trang admin nếu không phải admin (kể cả khi gọi trực tiếp).
+  if (ADMIN_PAGES.has(pageName) && !isAdminUser()) {
     pageName = "home";
   }
 
@@ -211,6 +213,8 @@ function showPage(pageName) {
 
   if (pageName === "dashboard") {
     loadDashboard();
+  } else if (pageName === "dictionary") {
+    loadDictionary(1);
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -955,6 +959,78 @@ async function loadGroupStats(query) {
     setDashboardMessage(formatError(error), true);
   }
 }
+
+// ── US27: Từ điển triệu chứng — tìm kiếm nhanh + phân trang ───────────────────
+const dictionarySearch = document.getElementById("dictionary-search");
+const dictionaryRows = document.getElementById("dictionary-rows");
+const dictionaryEmpty = document.getElementById("dictionary-empty");
+const dictionaryTotal = document.getElementById("dictionary-total");
+const dictionaryMessage = document.getElementById("dictionary-message");
+const dictPageInfo = document.getElementById("dict-page-info");
+const dictPrev = document.getElementById("dict-prev");
+const dictNext = document.getElementById("dict-next");
+const DICT_PER_PAGE = 10;
+let dictPage = 1;
+let dictTotalPages = 0;
+let dictDebounce = null;
+
+function renderDictionary(data) {
+  const items = data.trieu_chung || [];
+  dictTotalPages = data.total_pages || 0;
+  dictPage = data.page || 1;
+  if (dictionaryTotal) dictionaryTotal.textContent = `${(data.total || 0).toLocaleString("vi-VN")} triệu chứng`;
+  dictionaryEmpty.classList.toggle("is-hidden", items.length > 0);
+  dictionaryRows.innerHTML = "";
+  const startIdx = (dictPage - 1) * DICT_PER_PAGE;
+  items.forEach((it, i) => {
+    const tr = document.createElement("tr");
+    const td0 = document.createElement("td");
+    td0.textContent = startIdx + i + 1;
+    const td1 = document.createElement("td");
+    td1.textContent = it.ten;
+    const td2 = document.createElement("td");
+    td2.className = "muted-text";
+    td2.textContent = it.tu_khoa || "—";
+    tr.append(td0, td1, td2);
+    dictionaryRows.appendChild(tr);
+  });
+  if (dictPageInfo) dictPageInfo.textContent = dictTotalPages ? `Trang ${dictPage} / ${dictTotalPages}` : "Trang 0";
+  if (dictPrev) dictPrev.disabled = dictPage <= 1;
+  if (dictNext) dictNext.disabled = dictPage >= dictTotalPages;
+}
+
+async function loadDictionary(page) {
+  if (!isAdminUser()) return;
+  dictPage = page || 1;
+  const q = dictionarySearch ? dictionarySearch.value.trim() : "";
+  if (dictionaryMessage) dictionaryMessage.textContent = "Đang tìm...";
+  const params = new URLSearchParams({ page: String(dictPage), per_page: String(DICT_PER_PAGE) });
+  if (q) params.set("q", q);
+  try {
+    const response = await fetch(`/api/admin/db/trieu-chung?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Không tìm được triệu chứng.");
+    renderDictionary(data);
+    if (dictionaryMessage) dictionaryMessage.textContent = "";
+  } catch (error) {
+    if (dictionaryMessage) {
+      dictionaryMessage.textContent = formatError(error);
+      dictionaryMessage.classList.add("is-error");
+    }
+  }
+}
+
+if (dictionarySearch) {
+  // Tìm THỜI GIAN THỰC (debounce 250ms), reset về trang 1 khi gõ.
+  dictionarySearch.addEventListener("input", () => {
+    clearTimeout(dictDebounce);
+    dictDebounce = setTimeout(() => loadDictionary(1), 250);
+  });
+}
+if (dictPrev) dictPrev.addEventListener("click", () => { if (dictPage > 1) loadDictionary(dictPage - 1); });
+if (dictNext) dictNext.addEventListener("click", () => { if (dictPage < dictTotalPages) loadDictionary(dictPage + 1); });
 
 if (dashboardRefresh) {
   dashboardRefresh.addEventListener("click", () => {
