@@ -934,13 +934,26 @@ function createHistoryCard(entry) {
   icon.className = "material-symbols-outlined";
   icon.setAttribute("aria-hidden", "true");
   icon.textContent = "chevron_right";
-
+  button.addEventListener("click", () => {
+    showHistoryDetail(entry);
+  });
   topLine.append(status, time);
   button.appendChild(icon);
   card.append(topLine, title, summary, button);
   return card;
 }
-
+function showHistoryDetail(entry) {
+  alert(
+    `CHI TIẾT LỊCH SỬ DỰ ĐOÁN\n\n` +
+    `Ngày: ${entry.savedAt || "Không rõ"}\n` +
+    `Nhóm thuốc: ${entry.disease || "Không rõ"}\n` +
+    `Triệu chứng: ${(entry.symptoms || []).join(", ") || "Không rõ"}\n` +
+    `Ghi chú: ${entry.notes || "Không có"}\n` +
+    `Người dùng: ${entry.user || "Không rõ"}\n` +
+    `Độ tin cậy: ${entry.score != null ? entry.score : "Không có"}\n` +
+    `Loại điểm: ${entry.score_type || "Không có"}`
+  );
+}
 function renderSavedHistory() {
   document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
   savedResults
@@ -998,7 +1011,7 @@ function renderHistoryTable() {
     viewBtn.type = 'button';
     viewBtn.textContent = 'Xem';
     viewBtn.addEventListener('click', () => {
-      alert(`Chi tiết:\n${entry.disease}\n${(entry.symptoms||[]).join(', ')}\n${entry.notes || ''}`);
+      showHistoryDetail(entry);
     });
     const delBtn = document.createElement('button');
     delBtn.className = 'text-button';
@@ -1014,6 +1027,9 @@ function renderHistoryTable() {
         renderRecentActivity();
       }
     });
+    tdActions.style.display = "flex";
+    tdActions.style.justifyContent = "center";
+    tdActions.style.gap = "10px";
     tdActions.append(viewBtn, delBtn);
 
     tr.append(tdDate, tdTitle, tdSymptoms, tdNotes, tdActions);
@@ -1990,23 +2006,23 @@ function renderRejectedFeedbacks() {
     const row = document.createElement("tr");
 
     row.innerHTML = `
-      <td style="padding:12px; border-bottom:1px solid var(--border); color:var(--text-muted);">
-        ${item.id}
-      </td>
-      <td style="padding:12px; border-bottom:1px solid var(--border); font-weight:600;">
-        ${escapeHtml(item.trieu_chung_nhap || "Không rõ")}
-      </td>
-      <td style="padding:12px; border-bottom:1px solid var(--border); color:var(--text-muted);">
-        ${escapeHtml(item.ghi_chu || "Không có ghi chú")}
-      </td>
-      <td style="padding:12px; border-bottom:1px solid var(--border); color:var(--text-muted);">
+        <td style="padding:12px; border-bottom:1px solid var(--border); color:var(--text-muted);">
         ${item.created_at ? new Date(item.created_at).toLocaleString("vi-VN") : "Không rõ"}
       </td>
+      <td style="padding:12px; border-bottom:1px solid var(--border);">
+        <span class="status-pill ${item.xu_ly === "DA_XU_LY" ? "status-secure" : ""}">
+          ${item.xu_ly === "DA_XU_LY" ? "Đã xử lý" : "Chưa xử lý"}
+        </span>
+      </td>
       <td style="padding:12px; border-bottom:1px solid var(--border); text-align:center;">
-        <button class="text-button" type="button" onclick="markFeedbackReviewed(${item.id})" style="color:#22c55e; font-weight:700;">
-          <span class="material-symbols-outlined" style="font-size:18px;">done</span>
-          Đã xem xét
-        </button>
+        ${
+          item.xu_ly === "DA_XU_LY"
+            ? `<span style="color:var(--text-muted); font-weight:700;">Hoàn tất</span>`
+            : `<button class="text-button" type="button" onclick="markFeedbackReviewed(${item.id})" style="color:#22c55e; font-weight:700;">
+                <span class="material-symbols-outlined" style="font-size:18px;">done</span>
+                Đánh dấu đã xử lý
+              </button>`
+        }
       </td>
     `;
 
