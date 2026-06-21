@@ -3568,6 +3568,96 @@ def delete_thuoc(ma):
     return jsonify({"ok": True}), 200
 
 
+# ── PORT toan/main: BULK IMPORT CSV (nhóm thuốc / thuốc) ──────────────────────
+def _read_csv_upload():
+    """Đọc file CSV upload (field 'file') -> list[dict]. Lỗi -> (None, message)."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return None, "Chưa chọn file CSV."
+    if not f.filename.lower().endswith(".csv"):
+        return None, "Chỉ chấp nhận file .csv."
+    try:
+        text = f.read().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return None, "File phải mã hóa UTF-8."
+    return list(csv.DictReader(io.StringIO(text))), None
+
+
+@app.post("/api/admin/bulk-import/nhom-thuoc")
+def bulk_import_nhom_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    rows, msg = _read_csv_upload()
+    if rows is None:
+        return jsonify({"error": msg}), 400
+    inserted, skipped, errors = 0, 0, []
+    for i, row in enumerate(rows, start=2):
+        ten = str(row.get("ten_nhom") or row.get("ten_nhom_thuoc") or row.get("tên_nhóm") or "").strip()
+        if not ten:
+            errors.append(f"Dòng {i}: thiếu tên nhóm")
+            continue
+        if db.session.query(db_models.NhomThuoc).filter_by(ten_nhom_thuoc=ten).first():
+            skipped += 1
+            continue
+        db.session.add(db_models.NhomThuoc(ten_nhom_thuoc=ten[:255], mo_ta=(str(row.get("mo_ta") or "").strip() or None)))
+        inserted += 1
+    db.session.commit()
+    return jsonify({"ok": True, "inserted": inserted, "skipped": skipped, "errors": errors[:20]})
+
+
+@app.post("/api/admin/bulk-import/thuoc")
+def bulk_import_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    rows, msg = _read_csv_upload()
+    if rows is None:
+        return jsonify({"error": msg}), 400
+    inserted, errors = 0, []
+    for i, row in enumerate(rows, start=2):
+        ten = str(row.get("ten_thuoc") or row.get("tên_thuốc") or "").strip()
+        if not ten:
+            errors.append(f"Dòng {i}: thiếu tên thuốc")
+            continue
+        t = db_models.ThuocThamKhao(
+            ten_thuoc=ten[:255],
+            hoat_chat=(str(row.get("hoat_chat") or "").strip() or None),
+            cong_dung=(str(row.get("cong_dung") or row.get("mo_ta") or "").strip() or None),
+        )
+        nhom_name = str(row.get("nhom_thuoc") or row.get("nhom_thuoc_id") or row.get("nhóm_thuốc") or "").strip()
+        if nhom_name:
+            n = db.session.query(db_models.NhomThuoc).filter_by(ten_nhom_thuoc=nhom_name).first()
+            if n:
+                t.nhom_thuoc_list.append(n)
+            else:
+                errors.append(f"Dòng {i}: nhóm '{nhom_name}' không tồn tại (thuốc vẫn được thêm)")
+        db.session.add(t)
+        inserted += 1
+    db.session.commit()
+    return jsonify({"ok": True, "inserted": inserted, "errors": errors[:20]})
+
+
+@app.get("/api/admin/bulk-import/template/nhom-thuoc")
+def template_nhom_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    csv_data = "ten_nhom,mo_ta\nthuốc giảm đau hạ sốt,Hạ sốt giảm đau thông thường\n"
+    return app.response_class(csv_data, mimetype="text/csv",
+                              headers={"Content-Disposition": "attachment; filename=nhom_thuoc_template.csv"})
+
+
+@app.get("/api/admin/bulk-import/template/thuoc")
+def template_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    csv_data = "ten_thuoc,hoat_chat,cong_dung,nhom_thuoc\nParacetamol,paracetamol,Hạ sốt giảm đau,thuốc giảm đau hạ sốt\n"
+    return app.response_class(csv_data, mimetype="text/csv",
+                              headers={"Content-Disposition": "attachment; filename=thuoc_template.csv"})
+
+
 @app.get("/api/admin/db/trieu-chung")
 def admin_db_trieu_chung():
     """US27 (SCRUM-109/111): tìm kiếm triệu chứng trong từ điển theo TÊN hoặc TỪ KHÓA,

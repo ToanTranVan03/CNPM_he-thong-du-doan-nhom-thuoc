@@ -685,6 +685,33 @@
               </div>
             </article>
           </div>
+
+          <!-- PORT toan/main: Bulk import CSV -->
+          <div class="section-heading">
+            <h2>Nhập hàng loạt từ CSV</h2>
+          </div>
+          <div class="dashboard-grid dashboard-grid-2">
+            <article class="detail-card">
+              <h2>Import nhóm thuốc</h2>
+              <p class="muted-text">File CSV cột <code>ten_nhom, mo_ta</code>.</p>
+              <input type="file" id="import-dg-file" accept=".csv" />
+              <div class="inline-form-actions">
+                <button class="primary-button compact" type="button" id="import-dg-btn">Tải lên</button>
+                <a class="text-button" id="tpl-dg" href="#">Tải template</a>
+              </div>
+              <p class="form-message" id="import-dg-msg" role="status"></p>
+            </article>
+            <article class="detail-card">
+              <h2>Import thuốc</h2>
+              <p class="muted-text">File CSV cột <code>ten_thuoc, hoat_chat, cong_dung, nhom_thuoc</code>.</p>
+              <input type="file" id="import-th-file" accept=".csv" />
+              <div class="inline-form-actions">
+                <button class="primary-button compact" type="button" id="import-th-btn">Tải lên</button>
+                <a class="text-button" id="tpl-th" href="#">Tải template</a>
+              </div>
+              <p class="form-message" id="import-th-msg" role="status"></p>
+            </article>
+          </div>
         </div>
       </section>
 

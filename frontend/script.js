@@ -1663,6 +1663,53 @@ if (thSearch) thSearch.addEventListener("input", () => { clearTimeout(thDebounce
 if (thPrev) thPrev.addEventListener("click", () => { if (thPage > 1) loadDrugs(thPage - 1); });
 if (thNext) thNext.addEventListener("click", () => { if (thPage < thTotalPages) loadDrugs(thPage + 1); });
 
+// PORT: bulk import CSV
+async function bulkUpload(fileInputId, url, msgEl, onDone) {
+  const f = document.getElementById(fileInputId).files[0];
+  if (!f) { msgEl.textContent = "Chưa chọn file."; msgEl.classList.add("is-error"); return; }
+  msgEl.classList.remove("is-error");
+  msgEl.textContent = "Đang tải lên...";
+  const fd = new FormData();
+  fd.append("file", f);
+  try {
+    const r = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${authToken}` }, body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Import lỗi.");
+    let txt = `Đã thêm ${data.inserted}`;
+    if (typeof data.skipped === "number") txt += `, bỏ qua ${data.skipped} (trùng)`;
+    if (data.errors && data.errors.length) txt += `. ${data.errors.length} cảnh báo: ${data.errors[0]}`;
+    msgEl.textContent = txt;
+    if (onDone) onDone();
+  } catch (error) {
+    msgEl.textContent = formatError(error);
+    msgEl.classList.add("is-error");
+  }
+}
+
+async function downloadTemplate(url, filename) {
+  try {
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${authToken}` } });
+    if (!r.ok) throw new Error("Không tải được template.");
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) { /* bỏ qua */ }
+}
+
+const importDgBtn = document.getElementById("import-dg-btn");
+const importThBtn = document.getElementById("import-th-btn");
+if (importDgBtn) importDgBtn.addEventListener("click", () =>
+  bulkUpload("import-dg-file", "/api/admin/bulk-import/nhom-thuoc", document.getElementById("import-dg-msg"), loadDrugAdmin));
+if (importThBtn) importThBtn.addEventListener("click", () =>
+  bulkUpload("import-th-file", "/api/admin/bulk-import/thuoc", document.getElementById("import-th-msg"), loadDrugAdmin));
+const tplDg = document.getElementById("tpl-dg");
+const tplTh = document.getElementById("tpl-th");
+if (tplDg) tplDg.addEventListener("click", (e) => { e.preventDefault(); downloadTemplate("/api/admin/bulk-import/template/nhom-thuoc", "nhom_thuoc_template.csv"); });
+if (tplTh) tplTh.addEventListener("click", (e) => { e.preventDefault(); downloadTemplate("/api/admin/bulk-import/template/thuoc", "thuoc_template.csv"); });
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const submitButton = form.querySelector('button[type="submit"]');
