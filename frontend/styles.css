@@ -1736,6 +1736,19 @@ input:focus {
   color: var(--danger);
 }
 
+/* PORT: tabs lọc duyệt phản hồi */
+.fb-filter {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+.fb-filter .secondary-button.is-active {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  border-color: var(--primary);
+}
+
 /* US28: Modal ánh xạ triệu chứng ↔ nhóm thuốc */
 .modal-overlay {
   position: fixed;

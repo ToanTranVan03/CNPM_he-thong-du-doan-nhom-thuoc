@@ -167,6 +167,10 @@
             <span class="material-symbols-outlined" aria-hidden="true">medication</span>
             <span>Quản Lý Thuốc</span>
           </button>
+          <button class="nav-link admin-only is-hidden" type="button" data-page="feedback-admin">
+            <span class="material-symbols-outlined" aria-hidden="true">rate_review</span>
+            <span>Duyệt Phản Hồi</span>
+          </button>
           <button class="nav-link" type="button" data-page="about">
             <span class="material-symbols-outlined" aria-hidden="true">person</span>
             <span>Hồ Sơ Của Tôi</span>
@@ -711,6 +715,39 @@
               </div>
               <p class="form-message" id="import-th-msg" role="status"></p>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- PORT toan/main: Duyệt phản hồi không đồng ý -->
+      <section class="page" id="page-feedback-admin" aria-labelledby="fb-admin-title">
+        <div class="container">
+          <div class="history-head">
+            <div>
+              <p class="eyebrow">Quản trị phản hồi</p>
+              <h1 id="fb-admin-title">Duyệt phản hồi không đồng ý</h1>
+              <p class="lead">Xem lý do bác sĩ không đồng ý và đánh dấu đã xử lý để cải thiện hệ thống.</p>
+            </div>
+            <span class="status-pill status-secondary" id="fb-pending-pill">0 chưa xử lý</span>
+          </div>
+
+          <div class="fb-filter">
+            <button class="secondary-button compact is-active" type="button" data-fb-filter="0" id="fb-tab-pending">Chưa xử lý</button>
+            <button class="secondary-button compact" type="button" data-fb-filter="1" id="fb-tab-done">Đã xử lý</button>
+            <button class="secondary-button compact" type="button" data-fb-filter="" id="fb-tab-all">Tất cả</button>
+          </div>
+
+          <p class="form-message" id="fb-message" role="status"></p>
+          <ul class="admin-list" id="fb-list"></ul>
+          <div class="empty-state is-hidden" id="fb-empty">
+            <span class="empty-icon material-symbols-outlined" aria-hidden="true">inbox</span>
+            <h2>Không có phản hồi</h2>
+            <p>Chưa có phản hồi "Không đồng ý" trong mục này.</p>
+          </div>
+          <div class="dict-pagination">
+            <button class="secondary-button compact" type="button" id="fb-prev">Trước</button>
+            <span id="fb-page-info">Trang 1</span>
+            <button class="secondary-button compact" type="button" id="fb-next">Sau</button>
           </div>
         </div>
       </section>

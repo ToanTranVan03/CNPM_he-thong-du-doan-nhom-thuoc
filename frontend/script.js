@@ -196,7 +196,7 @@ function updateAdminUi() {
   });
 }
 
-const ADMIN_PAGES = new Set(["dashboard", "dictionary", "samples", "drug-admin"]);
+const ADMIN_PAGES = new Set(["dashboard", "dictionary", "samples", "drug-admin", "feedback-admin"]);
 
 function showPage(pageName) {
   // US19/US27: chặn trang admin nếu không phải admin (kể cả khi gọi trực tiếp).
@@ -220,6 +220,8 @@ function showPage(pageName) {
     loadSamples();
   } else if (pageName === "drug-admin") {
     loadDrugAdmin();
+  } else if (pageName === "feedback-admin") {
+    loadFeedbackAdmin(1);
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1709,6 +1711,81 @@ const tplDg = document.getElementById("tpl-dg");
 const tplTh = document.getElementById("tpl-th");
 if (tplDg) tplDg.addEventListener("click", (e) => { e.preventDefault(); downloadTemplate("/api/admin/bulk-import/template/nhom-thuoc", "nhom_thuoc_template.csv"); });
 if (tplTh) tplTh.addEventListener("click", (e) => { e.preventDefault(); downloadTemplate("/api/admin/bulk-import/template/thuoc", "thuoc_template.csv"); });
+
+// ── PORT: duyệt phản hồi không đồng ý ────────────────────────────────────────
+const fbList = document.getElementById("fb-list");
+const fbEmpty = document.getElementById("fb-empty");
+const fbPendingPill = document.getElementById("fb-pending-pill");
+const fbMessage = document.getElementById("fb-message");
+const fbPageInfo = document.getElementById("fb-page-info");
+const fbPrev = document.getElementById("fb-prev");
+const fbNext = document.getElementById("fb-next");
+const fbTabs = document.querySelectorAll("[data-fb-filter]");
+let fbFilter = "0", fbPage = 1, fbTotalPages = 0;
+
+function fmtDate(iso) {
+  if (!iso) return "";
+  try { return new Date(iso).toLocaleString("vi-VN"); } catch { return iso; }
+}
+
+async function loadFeedbackAdmin(page) {
+  if (!isAdminUser()) return;
+  fbPage = page || 1;
+  const params = new URLSearchParams({ page: String(fbPage), per_page: "10" });
+  if (fbFilter === "0" || fbFilter === "1") params.set("reviewed", fbFilter);
+  try {
+    const r = await fetch(`/api/admin/rejected-feedbacks?${params}`, { headers: { Authorization: `Bearer ${authToken}` } });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Không tải được phản hồi.");
+    fbTotalPages = data.total_pages || 0;
+    if (fbPendingPill) fbPendingPill.textContent = `${data.chua_xu_ly || 0} chưa xử lý`;
+    const items = data.feedbacks || [];
+    fbEmpty.classList.toggle("is-hidden", items.length > 0);
+    fbList.innerHTML = "";
+    items.forEach((f) => {
+      const li = document.createElement("li");
+      li.className = "admin-list-item";
+      const info = document.createElement("div");
+      const t = document.createElement("strong");
+      t.textContent = f.noi_dung || "(không ghi lý do)";
+      const s = document.createElement("span");
+      s.className = "muted-text";
+      s.textContent = [f.nhom_thuoc, fmtDate(f.thoi_gian), f.da_xu_ly ? "✓ đã xử lý" : "• chưa xử lý"].filter(Boolean).join(" · ");
+      info.append(t, s);
+      const actions = document.createElement("div");
+      actions.className = "admin-row-actions";
+      const btn = document.createElement("button");
+      btn.className = f.da_xu_ly ? "text-button" : "primary-button compact";
+      btn.type = "button";
+      btn.textContent = f.da_xu_ly ? "Mở lại" : "Đánh dấu đã xử lý";
+      btn.addEventListener("click", async () => {
+        const rr = await fetch(`/api/admin/rejected-feedbacks/${f.ma}/reviewed`, {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ da_xu_ly: !f.da_xu_ly }),
+        });
+        if (rr.ok) loadFeedbackAdmin(fbPage);
+      });
+      actions.appendChild(btn);
+      li.append(info, actions);
+      fbList.appendChild(li);
+    });
+    if (fbPageInfo) fbPageInfo.textContent = fbTotalPages ? `Trang ${fbPage} / ${fbTotalPages}` : "Trang 0";
+    if (fbPrev) fbPrev.disabled = fbPage <= 1;
+    if (fbNext) fbNext.disabled = fbPage >= fbTotalPages;
+  } catch (error) {
+    if (fbMessage) { fbMessage.textContent = formatError(error); fbMessage.classList.add("is-error"); }
+  }
+}
+
+fbTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    fbFilter = tab.dataset.fbFilter;
+    fbTabs.forEach((t) => t.classList.toggle("is-active", t === tab));
+    loadFeedbackAdmin(1);
+  });
+});
+if (fbPrev) fbPrev.addEventListener("click", () => { if (fbPage > 1) loadFeedbackAdmin(fbPage - 1); });
+if (fbNext) fbNext.addEventListener("click", () => { if (fbPage < fbTotalPages) loadFeedbackAdmin(fbPage + 1); });
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

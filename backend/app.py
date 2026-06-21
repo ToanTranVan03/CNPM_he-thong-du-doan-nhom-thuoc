@@ -3658,6 +3658,60 @@ def template_thuoc():
                               headers={"Content-Disposition": "attachment; filename=thuoc_template.csv"})
 
 
+# ── PORT toan/main: DUYỆT PHẢN HỒI KHÔNG ĐỒNG Ý (review workflow) ─────────────
+@app.get("/api/admin/rejected-feedbacks")
+def list_rejected_feedbacks():
+    """Danh sách phản hồi 'Không đồng ý' để admin duyệt. ?reviewed=0|1 lọc theo trạng thái
+    duyệt; ?page=&per_page= phân trang. Admin-only, DB."""
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    PH = db_models.PhanHoi
+    query = db.session.query(PH).filter(PH.trang_thai == "REJECT")
+    reviewed = request.args.get("reviewed")
+    if reviewed in ("0", "1"):
+        query = query.filter(PH.da_xu_ly.is_(reviewed == "1"))
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        per_page = max(1, min(100, int(request.args.get("per_page", 10))))
+    except (TypeError, ValueError):
+        page, per_page = 1, 10
+    total = query.count()
+    chua_xu_ly = db.session.query(PH).filter(PH.trang_thai == "REJECT", PH.da_xu_ly.isnot(True)).count()
+    rows = query.order_by(PH.thoi_gian_gui.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    return jsonify({
+        "total": total,
+        "chua_xu_ly": chua_xu_ly,
+        "page": page, "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page if total else 0,
+        "feedbacks": [
+            {
+                "ma": r.ma_phan_hoi,
+                "noi_dung": r.noi_dung,
+                "nhom_thuoc": r.nhom_thuoc_du_doan,
+                "thoi_gian": _iso_dt(r.thoi_gian_gui),
+                "da_xu_ly": bool(r.da_xu_ly),
+            }
+            for r in rows
+        ],
+    })
+
+
+@app.post("/api/admin/rejected-feedbacks/<int:ma>/reviewed")
+def mark_feedback_reviewed(ma):
+    """Đánh dấu phản hồi đã/chưa duyệt. Body {da_xu_ly: true|false} (mặc định true)."""
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    r = db.session.get(db_models.PhanHoi, ma)
+    if not r:
+        return jsonify({"error": "Không tìm thấy phản hồi."}), 404
+    p = request.get_json(silent=True) or {}
+    r.da_xu_ly = bool(p.get("da_xu_ly", True))
+    db.session.commit()
+    return jsonify({"ok": True, "da_xu_ly": r.da_xu_ly}), 200
+
+
 @app.get("/api/admin/db/trieu-chung")
 def admin_db_trieu_chung():
     """US27 (SCRUM-109/111): tìm kiếm triệu chứng trong từ điển theo TÊN hoặc TỪ KHÓA,

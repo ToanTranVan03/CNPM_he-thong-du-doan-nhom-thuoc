@@ -248,6 +248,7 @@ class PhanHoi(db.Model):
     muc_do_hai_long = db.Column(db.Integer)  # 1 = Đồng ý (APPROVE), 0 = Không đồng ý (REJECT)
     trang_thai = db.Column(db.String(30), index=True)  # [hạ tầng US18] 'APPROVE' | 'REJECT'
     nhom_thuoc_du_doan = db.Column(db.String(255))      # [hạ tầng] nhóm thuốc được đánh giá
+    da_xu_ly = db.Column(db.Boolean, default=False, index=True)  # [hạ tầng] admin đã duyệt phản hồi
     thoi_gian_gui = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
     ma_nguoi_dung = db.Column(db.ForeignKey("nguoi_dung.ma_nguoi_dung", ondelete="SET NULL"))
     # [hạ tầng] nullable: feedback hiện gắn theo nhóm thuốc, không bắt buộc 1 ca cụ thể (như JSONL)

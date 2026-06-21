@@ -64,6 +64,8 @@ def main():
             "ALTER TABLE phan_hoi ADD COLUMN IF NOT EXISTS nhom_thuoc_du_doan VARCHAR(255)",
             "ALTER TABLE phan_hoi ALTER COLUMN ma_ket_qua DROP NOT NULL",
             "CREATE INDEX IF NOT EXISTS ix_ph_trang_thai ON phan_hoi(trang_thai)",
+            "ALTER TABLE phan_hoi ADD COLUMN IF NOT EXISTS da_xu_ly BOOLEAN DEFAULT FALSE",
+            "CREATE INDEX IF NOT EXISTS ix_ph_da_xu_ly ON phan_hoi(da_xu_ly)",
         ):
             db.session.execute(sa.text(stmt))
         db.session.commit()
