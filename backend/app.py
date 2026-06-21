@@ -16,7 +16,7 @@ from itertools import permutations
 from pathlib import Path
 
 import joblib
-from models import db, User, NhomThuoc, Thuoc, LichSuDuDoan
+from models import db, User, NhomThuoc, Thuoc, TrieuChung, Feedback, LichSuDuDoan
 from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from openpyxl import Workbook
@@ -37,7 +37,9 @@ from translations import (
     disease_name_vi,
     translate_items,
 )
-
+from route_bulk_import import bulk_import_bp
+from flask import request, jsonify
+from models import db, DanhGiaDuDoan
 
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
@@ -82,6 +84,213 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
     print("Database đã sẵn sàng!")
+
+# Đăng ký blueprint cho bulk import
+app.register_blueprint(bulk_import_bp)
+
+
+# ── API quản lý từ điển triệu chứng (Thêm / Sửa) — Yêu cầu Admin ───────────
+@app.route('/api/admin/symptoms', methods=['POST'])
+def create_symptom():
+    # Kiểm tra token Admin
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    data = request.get_json() or {}
+    ten = data.get('ten') or data.get('name') or data.get('ten_trieu_chung')
+    if not ten or not str(ten).strip():
+        return jsonify({'error': 'Tên triệu chứng (ten) là bắt buộc.'}), 400
+    ma = data.get('ma')
+    if ma:
+        existing = TrieuChung.query.filter_by(ma=ma).first()
+        if existing:
+            return jsonify({'error': 'Mã triệu chứng đã tồn tại.'}), 400
+    ten_en = data.get('ten_en')
+    synonyms = data.get('synonyms')
+    if isinstance(synonyms, list):
+        synonyms_text = json.dumps(synonyms, ensure_ascii=False)
+    elif isinstance(synonyms, str):
+        try:
+            # nếu là JSON string
+            json.loads(synonyms)
+            synonyms_text = synonyms
+        except Exception:
+            synonyms_text = json.dumps([s.strip() for s in synonyms.split(',') if s.strip()], ensure_ascii=False)
+    else:
+        synonyms_text = None
+    mo_ta = data.get('mo_ta')
+
+    obj = TrieuChung(ma=ma, ten=ten.strip(), ten_en=ten_en, synonyms=synonyms_text, mo_ta=mo_ta)
+    db.session.add(obj)
+    db.session.commit()
+    # làm mới cache từ điển
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict()), 201
+
+
+
+
+
+@app.route('/api/evaluation', methods=['POST'])
+def save_evaluation():
+    try:
+        data = request.get_json()
+        
+        # Lấy dữ liệu gửi lên từ frontend
+        trieu_chung = data.get('trieu_chung_nhap', 'Không rõ')
+        trang_thai = data.get('trang_thai')  # 'APPROVE' hoặc 'REJECT'
+        ghi_chu = data.get('ghi_chu', '')
+
+        if not trang_thai:
+            return jsonify({'success': False, 'message': 'Thiếu trạng thái đánh giá!'}), 400
+
+        # Khởi tạo đối tượng và lưu vào Database
+        new_feedback = DanhGiaDuDoan(
+            trieu_chung_nhap=trieu_chung,
+            trang_thai=trang_thai,
+            ghi_chu=ghi_chu
+        )
+        
+        db.session.add(new_feedback)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Cập nhật trạng thái phản hồi vào database thành công!',
+            'data': new_feedback.to_dict()
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Lỗi hệ thống: {str(e)}'}), 500
+
+
+
+# =========================================================
+# SCRUM-77 / Task 46
+# API lấy danh sách phản hồi "Không đồng ý"
+# =========================================================
+@app.get("/api/admin/rejected-feedbacks")
+def get_rejected_feedbacks():
+    try:
+        feedbacks = (
+            DanhGiaDuDoan.query
+            .filter(DanhGiaDuDoan.trang_thai == "REJECT")
+            .order_by(DanhGiaDuDoan.created_at.desc())
+            .all()
+        )
+
+        return jsonify({
+            "success": True,
+            "total": len(feedbacks),
+            "feedbacks": [item.to_dict() for item in feedbacks]
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Lỗi lấy danh sách phản hồi: {str(e)}",
+            "feedbacks": []
+        }), 500
+
+
+# =========================================================
+# SCRUM-78 / Task 47
+# API đánh dấu phản hồi đã xem xét
+# =========================================================
+@app.post("/api/admin/rejected-feedbacks/<int:feedback_id>/reviewed")
+def mark_feedback_reviewed(feedback_id):
+    try:
+        feedback = DanhGiaDuDoan.query.get(feedback_id)
+
+        if not feedback:
+            return jsonify({
+                "success": False,
+                "message": "Không tìm thấy phản hồi."
+            }), 404
+
+        feedback.xu_ly = "DA_XU_LY"
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Đã đánh dấu phản hồi là đã xử lý.",
+            "data": feedback.to_dict()
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "message": f"Lỗi cập nhật phản hồi: {str(e)}"
+        }), 500
+
+
+@app.route('/api/admin/symptoms/<int:item_id>', methods=['PUT', 'PATCH'])
+def update_symptom(item_id):
+    # Kiểm tra token Admin
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    obj = TrieuChung.query.get(item_id)
+    if not obj:
+        return jsonify({'error': 'Không tìm thấy triệu chứng.'}), 404
+    data = request.get_json() or {}
+    if 'ma' in data:
+        ma = data.get('ma')
+        if ma and ma != obj.ma and TrieuChung.query.filter_by(ma=ma).first():
+            return jsonify({'error': 'Mã triệu chứng đã tồn tại.'}), 400
+        obj.ma = ma
+    if 'ten' in data:
+        ten = data.get('ten')
+        if ten and str(ten).strip():
+            obj.ten = ten.strip()
+    if 'ten_en' in data:
+        obj.ten_en = data.get('ten_en')
+    if 'synonyms' in data:
+        s = data.get('synonyms')
+        if isinstance(s, list):
+            obj.synonyms = json.dumps(s, ensure_ascii=False)
+        elif isinstance(s, str):
+            try:
+                json.loads(s)
+                obj.synonyms = s
+            except Exception:
+                obj.synonyms = json.dumps([ss.strip() for ss in s.split(',') if ss.strip()], ensure_ascii=False)
+        else:
+            obj.synonyms = None
+    if 'mo_ta' in data:
+        obj.mo_ta = data.get('mo_ta')
+
+    obj.updated_at = datetime.utcnow()
+    db.session.commit()
+    # làm mới cache từ điển
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict())
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.after_request
 def add_no_cache_headers(response):
@@ -2874,16 +3083,292 @@ def prediction_reason(matched_labels: list[str], confidence, score_type: str, gr
     return f"Triệu chứng đã nhận diện ({syms}) phù hợp nhất với nhóm {group}."
 
 
+# Admin-managed extra symptoms (file-backed) and dynamic symptoms endpoint
+ADMIN_SYMPTOMS_PATH = PROJECT_ROOT / "data" / "admin_symptoms.json"
+
+
+def slugify(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"[^a-z0-9_\-]", "", s)
+    return s or secrets.token_urlsafe(6)
+
+
+def load_admin_symptoms() -> list:
+    try:
+        if ADMIN_SYMPTOMS_PATH.exists():
+            return json.loads(ADMIN_SYMPTOMS_PATH.read_text(encoding="utf-8")) or []
+    except Exception:
+        pass
+    return []
+
+
+def save_admin_symptoms(items: list) -> None:
+    global SYMPTOM_DICTIONARY_CACHE
+    ADMIN_SYMPTOMS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ADMIN_SYMPTOMS_PATH.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    SYMPTOM_DICTIONARY_CACHE = None
+
+
+@app.route('/api/admin/symptoms', methods=['POST'])
+def admin_add_symptom():
+    # Admin-only create -> use DB TrieuChung
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    # accept both label_vi/label_en (old API) and ten/ten_en (new API)
+    label_vi = (data.get('label_vi') or data.get('label') or data.get('ten') or data.get('name') or '').strip()
+    label_en = (data.get('label_en') or data.get('ten_en') or '').strip()
+    note = (data.get('note') or data.get('mo_ta') or '').strip()
+    if not label_vi or not label_en:
+        return jsonify({"error": "Vui lòng cung cấp label_vi và label_en (hoặc ten/ten_en)."}), 400
+
+    ma = (data.get('id') or data.get('ma') or slugify(label_en))
+    # ensure unique ma
+    if TrieuChung.query.filter_by(ma=ma).first():
+        ma = f"{ma}_{secrets.token_hex(3)}"
+
+    obj = TrieuChung(ma=ma, ten=label_vi, ten_en=label_en, mo_ta=note)
+    db.session.add(obj)
+    db.session.commit()
+    # invalidate cache
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict()), 201
+
+
+@app.route('/api/admin/symptoms/<string:item_id>', methods=['PUT'])
+def admin_update_symptom(item_id):
+    # Admin-only update -> DB
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    # find by numeric id or by ma
+    obj = None
+    if str(item_id).isdigit():
+        obj = TrieuChung.query.get(int(item_id))
+    if obj is None:
+        obj = TrieuChung.query.filter_by(ma=str(item_id)).first()
+    if not obj:
+        return jsonify({"error": "Không tìm thấy mục"}), 404
+
+    label_vi = (data.get('label_vi') or data.get('label') )
+    label_en = data.get('label_en')
+    note = data.get('note')
+    if label_vi:
+        obj.ten = label_vi.strip()
+    if label_en is not None:
+        obj.ten_en = label_en.strip()
+    if note is not None:
+        obj.mo_ta = note
+    obj.updated_at = datetime.utcnow()
+    db.session.commit()
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict()), 200
+
+
+@app.route('/api/admin/symptoms/<string:item_id>', methods=['DELETE'])
+def admin_delete_symptom(item_id):
+    # Admin-only delete -> DB
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    obj = None
+    if str(item_id).isdigit():
+        obj = TrieuChung.query.get(int(item_id))
+    if obj is None:
+        obj = TrieuChung.query.filter_by(ma=str(item_id)).first()
+    if not obj:
+        return jsonify({"error": "Không tìm thấy mục"}), 404
+    db.session.delete(obj)
+    db.session.commit()
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify({"message": "Đã xóa"}), 200
+
+
+@app.route('/api/symptoms', methods=['GET','POST'])
+def add_symptom_public():
+    # GET: return combined dictionary from model + DB TrieuChung
+    if request.method == 'GET':
+        try:
+            base = build_readable_symptoms() or []
+        except Exception:
+            base = []
+        # append DB-managed symptoms
+        try:
+            db_items = TrieuChung.query.order_by(TrieuChung.ten).all()
+            existing_ids = {str(s.get('id')) for s in base if isinstance(s, dict) and s.get('id')}
+            for o in db_items:
+                id_val = o.ma or f"db_{o.id}"
+                if str(id_val) in existing_ids:
+                    continue
+                base.append({
+                    'id': str(id_val),
+                    'label': o.ten or o.ten_en or '',
+                    'label_vi': o.ten or '',
+                    'label_en': o.ten_en or '',
+                    'note': o.mo_ta or ''
+                })
+        except Exception:
+            pass
+        return jsonify({"symptoms": base})
+
+    # POST: require Admin token and create DB entry
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    # accept both label_vi/label_en and ten/ten_en
+    label_vi = (data.get('label_vi') or data.get('label') or data.get('ten') or '').strip()
+    label_en = (data.get('label_en') or data.get('ten_en') or '').strip()
+    note = (data.get('note') or data.get('mo_ta') or '').strip()
+    if not label_vi or not label_en:
+        return jsonify({"error": "Vui lòng cung cấp label_vi và label_en (hoặc ten/ten_en)."}), 400
+    ma = (data.get('id') or data.get('ma') or slugify(label_en))
+    if TrieuChung.query.filter_by(ma=ma).first():
+        ma = f"{ma}_{secrets.token_hex(3)}"
+    obj = TrieuChung(ma=ma, ten=label_vi, ten_en=label_en, mo_ta=note)
+    db.session.add(obj)
+    db.session.commit()
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict()), 201
+
+
+@app.route('/api/symptoms/<string:item_id>', methods=['PUT'])
+def update_symptom_public(item_id):
+    # require admin token and update DB-backed symptom
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    obj = None
+    if str(item_id).isdigit():
+        obj = TrieuChung.query.get(int(item_id))
+    if obj is None:
+        obj = TrieuChung.query.filter_by(ma=str(item_id)).first()
+    if not obj:
+        return jsonify({"error": "Không tìm thấy mục"}), 404
+    label_vi = (data.get('label_vi') or data.get('label'))
+    label_en = data.get('label_en')
+    note = data.get('note')
+    if label_vi:
+        obj.ten = label_vi.strip()
+    if label_en is not None:
+        obj.ten_en = label_en.strip()
+    if note is not None:
+        obj.mo_ta = note
+    obj.updated_at = datetime.utcnow()
+    db.session.commit()
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify(obj.to_dict()), 200
+
+
+@app.route('/api/symptoms/<string:item_id>', methods=['DELETE'])
+def delete_symptom_public(item_id):
+    admin = load_admin_symptoms()
+    new = [it for it in admin if str(it.get('id')) != str(item_id)]
+    if len(new) == len(admin):
+        return jsonify({"error": "Không tìm thấy mục"}), 404
+    save_admin_symptoms(new)
+    return jsonify({"message": "Đã xóa"}), 200
+
+
+@app.route('/api/symptoms', methods=['GET'])
+def get_symptoms():
+    # Build base readable symptoms from internal model/features if available
+    try:
+        base = build_readable_symptoms() or []
+    except Exception:
+        base = []
+    # Load admin-provided symptoms and append (avoid id duplicates)
+    admin = load_admin_symptoms()
+    existing_ids = {str(s.get('id')) for s in base if isinstance(s, dict) and s.get('id')}
+    for a in admin:
+        if str(a.get('id')) not in existing_ids:
+            base.append({
+                'id': a.get('id'),
+                'label': a.get('label_vi') or a.get('label') or a.get('label_en') or '',
+                'label_vi': a.get('label_vi') or a.get('label') or '',
+                'label_en': a.get('label_en') or '',
+                'note': a.get('note') or ''
+            })
+    return jsonify({"symptoms": base})
+
+
 @app.get("/")
 def home():
     return send_from_directory(FRONTEND_DIR, "index.html")
 
 
-@app.get("/<path:path>")
-def static_files(path):
-    if path not in ALLOWED_STATIC_FILES:
-        return jsonify({"error": "Not found"}), 404
-    return send_from_directory(FRONTEND_DIR, path)
+@app.get('/index.html')
+def index_html():
+    return send_from_directory(FRONTEND_DIR, 'index.html')
+
+
+@app.get('/styles.css')
+def styles_css():
+    return send_from_directory(FRONTEND_DIR, 'styles.css')
+
+
+@app.get('/script.js')
+def script_js():
+    return send_from_directory(FRONTEND_DIR, 'script.js')
 
 
 @app.get("/api/health")
@@ -3082,9 +3567,433 @@ def reset_password():
     )
     return jsonify({'message': 'Đặt lại mật khẩu thành công', 'token': token, 'user': {'name': user.full_name, 'email': email, 'role': 'User'}}), 200
 # --- KẾT THÚC: BỘ API XÁC THỰC, TÀI KHOẢN & HỒ SƠ ---
-@app.get("/api/symptoms")
-def symptoms():
-    return jsonify({"symptoms": readable_symptoms})
+
+# =========================
+# USER STORY 11 - TASK 29, 30, 31
+# Trích xuất triệu chứng từ văn bản đã xử lý
+# =========================
+
+SYMPTOM_DICTIONARY_CACHE = None
+
+
+def get_cached_symptom_dictionary():
+    """
+    SCRUM-61 / Task 30:
+    Tối ưu danh sách từ điển triệu chứng bằng cache.
+    Không phải build lại danh sách triệu chứng mỗi lần gọi API.
+    """
+    global SYMPTOM_DICTIONARY_CACHE
+
+    if SYMPTOM_DICTIONARY_CACHE is not None:
+        return SYMPTOM_DICTIONARY_CACHE
+
+    dictionary = []
+    dictionary_indexes = {}
+
+    def add_symptom(symptom_id, label_vi, label_en="", keywords=None, source="model"):
+        symptom_id = str(symptom_id or "").strip()
+        label_vi = str(label_vi or "").strip()
+        label_en = str(label_en or "").strip()
+        if not (symptom_id or label_vi or label_en):
+            return
+
+        symptom_id = symptom_id or slugify(label_en or label_vi)
+        label_vi = label_vi or label_en or symptom_id.replace("_", " ")
+        label_en = label_en or symptom_id.replace("_", " ").title()
+        if isinstance(keywords, str):
+            keyword_values = [keywords]
+        elif isinstance(keywords, (list, tuple, set)):
+            keyword_values = list(keywords)
+        else:
+            keyword_values = []
+        all_keywords = unique_values([
+            label_vi,
+            label_en,
+            symptom_id.replace("_", " "),
+            *keyword_values,
+        ])
+        lookup_keys = unique_values([
+            f"id:{normalize(symptom_id)}",
+            f"label:{normalize(label_vi)}",
+        ])
+        existing_index = next(
+            (dictionary_indexes[key] for key in lookup_keys if key in dictionary_indexes),
+            None,
+        )
+
+        if existing_index is not None:
+            existing = dictionary[existing_index]
+            existing["keywords"] = unique_values([*existing["keywords"], *all_keywords])
+            for key in lookup_keys:
+                dictionary_indexes[key] = existing_index
+            return
+
+        item = {
+            "id": symptom_id,
+            "label_vi": label_vi,
+            "label_en": label_en,
+            "keywords": all_keywords,
+            "source": source,
+        }
+        dictionary.append(item)
+        item_index = len(dictionary) - 1
+        for key in lookup_keys:
+            dictionary_indexes[key] = item_index
+
+    try:
+        for symptom in build_readable_symptoms() or []:
+            symptom_id = symptom.get("id", "")
+            add_symptom(
+                symptom_id,
+                symptom.get("label_vi") or symptom.get("label"),
+                symptom.get("label_en"),
+                symptom_keywords(str(symptom_id)),
+            )
+    except Exception:
+        app.logger.exception("Không thể tạo cache triệu chứng từ mô hình")
+
+    try:
+        for symptom in TrieuChung.query.order_by(TrieuChung.ten).all():
+            symptom_data = symptom.to_dict()
+            add_symptom(
+                symptom.ma or f"db_{symptom.id}",
+                symptom.ten,
+                symptom.ten_en,
+                symptom_data.get("synonyms") or [],
+                source="database",
+            )
+    except Exception:
+        app.logger.exception("Không thể tạo cache triệu chứng từ database")
+
+    for symptom in load_admin_symptoms():
+        if not isinstance(symptom, dict):
+            continue
+        add_symptom(
+            symptom.get("id"),
+            symptom.get("label_vi") or symptom.get("label"),
+            symptom.get("label_en"),
+            symptom.get("synonyms") or [],
+            source="admin_file",
+        )
+
+    SYMPTOM_DICTIONARY_CACHE = dictionary
+    return SYMPTOM_DICTIONARY_CACHE
+
+
+def rank_symptom_suggestion(query, symptom):
+    """Trả về khóa sắp xếp và từ khóa khớp; None nếu không khớp."""
+    normalized_query = normalize(query)
+    if not normalized_query:
+        return None
+
+    fields = unique_values([
+        symptom.get("label_vi"),
+        symptom.get("label_en"),
+        symptom.get("id"),
+        *(symptom.get("keywords") or []),
+    ])
+    best_match = None
+    query_tokens = normalized_query.split()
+
+    for field_index, field in enumerate(fields):
+        normalized_field = normalize(str(field))
+        if not normalized_field:
+            continue
+        if normalized_field == normalized_query:
+            match_level = 0
+        elif normalized_field.startswith(normalized_query):
+            match_level = 1
+        elif f" {normalized_query}" in normalized_field:
+            match_level = 2
+        elif normalized_query in normalized_field:
+            match_level = 3
+        elif f" {normalized_field} " in f" {normalized_query} ":
+            # Hỗ trợ autocomplete từ một câu đang nhập, ví dụ
+            # "tôi bị đau họng và..." vẫn khớp từ khóa "đau họng".
+            match_level = 4
+        elif all(token in normalized_field.split() for token in query_tokens):
+            match_level = 5
+        else:
+            continue
+
+        candidate = (match_level, field_index, len(normalized_field), str(field))
+        if best_match is None or candidate < best_match:
+            best_match = candidate
+
+    return best_match
+
+
+@app.get("/api/symptoms/suggestions")
+def suggest_symptoms():
+    """Gợi ý triệu chứng cho ô tìm kiếm/autocomplete theo từ khóa đang nhập."""
+    query = (request.args.get("q") or request.args.get("keyword") or "").strip()
+    if len(query) > 100:
+        return jsonify({
+            "success": False,
+            "message": "Từ khóa không được vượt quá 100 ký tự.",
+            "suggestions": [],
+        }), 400
+
+    raw_limit = request.args.get("limit", "10")
+    try:
+        limit = int(raw_limit)
+    except (TypeError, ValueError):
+        return jsonify({
+            "success": False,
+            "message": "limit phải là số nguyên từ 1 đến 50.",
+            "suggestions": [],
+        }), 400
+    if not 1 <= limit <= 50:
+        return jsonify({
+            "success": False,
+            "message": "limit phải nằm trong khoảng từ 1 đến 50.",
+            "suggestions": [],
+        }), 400
+
+    if not normalize(query):
+        return jsonify({
+            "success": True,
+            "query": query,
+            "total": 0,
+            "suggestions": [],
+        }), 200
+
+    ranked_suggestions = []
+    for symptom in get_cached_symptom_dictionary():
+        rank = rank_symptom_suggestion(query, symptom)
+        if rank is None:
+            continue
+        ranked_suggestions.append((rank, symptom))
+
+    ranked_suggestions.sort(
+        key=lambda entry: (*entry[0][:-1], normalize(entry[1]["label_vi"]))
+    )
+    suggestions = [
+        {
+            "id": symptom["id"],
+            "label": symptom["label_vi"],
+            "label_vi": symptom["label_vi"],
+            "label_en": symptom["label_en"],
+            "matched_keyword": rank[-1],
+            "source": symptom.get("source", "model"),
+        }
+        for rank, symptom in ranked_suggestions[:limit]
+    ]
+
+    return jsonify({
+        "success": True,
+        "query": query,
+        "total": len(ranked_suggestions),
+        "suggestions": suggestions,
+    }), 200
+
+
+def extract_symptoms_from_medical_text(text):
+    """
+    SCRUM-60 / Task 29:
+    So khớp văn bản đầu vào với từ điển triệu chứng.
+    Dùng lại pipeline hiện có của hệ thống:
+    - ordered_symptoms_from_text()
+    - symptom_label_vi()
+    - filter_negated_symptoms()
+    """
+    if not isinstance(text, str):
+        return []
+
+    cleaned_text = text.strip()
+    if not cleaned_text:
+        return []
+
+    matched_symptoms = ordered_symptoms_from_text(cleaned_text)
+    matched_symptoms = filter_negated_symptoms(matched_symptoms, cleaned_text)
+
+    result = []
+    for symptom in matched_symptoms:
+        result.append({
+            "id": symptom,
+            "label_en": symptom.replace("_", " ").replace("  ", " "),
+            "label_vi": symptom_label_vi(symptom)
+        })
+
+    return result
+
+# =========================
+# SCRUM-68, SCRUM-69, SCRUM-70
+# Cảnh báo y khoa nguy hiểm
+# =========================
+
+DANGEROUS_KEYWORDS = [
+    "khó thở cấp",
+    "khó thở nặng",
+    "thở gấp",
+    "đau ngực",
+    "tức ngực",
+    "lơ mơ",
+    "mất ý thức",
+    "co giật",
+    "nhồi máu",
+    "nhồi máu cơ tim",
+    "đột quỵ",
+    "liệt nửa người",
+    "sốt cao kéo dài",
+    "nôn ra máu",
+    "ho ra máu",
+    "đau đầu dữ dội",
+    "phát ban toàn thân",
+    "môi tím",
+    "tím tái",
+    "mất nước nặng"
+]
+
+
+def detect_dangerous_keywords(text, symptoms_vi=None):
+    """
+    SCRUM-69:
+    Kiểm tra từ khóa nguy hiểm trong mô tả bệnh án và triệu chứng đã nhận diện.
+    """
+    symptoms_vi = symptoms_vi or []
+
+    source_text = " ".join([
+        str(text or ""),
+        " ".join([str(s) for s in symptoms_vi])
+    ]).lower()
+
+    matched = []
+
+    for keyword in DANGEROUS_KEYWORDS:
+        if keyword.lower() in source_text:
+            matched.append(keyword)
+
+    return {
+        "has_danger": len(matched) > 0,
+        "danger_keywords": matched,
+        "danger_level": "HIGH" if matched else "NORMAL",
+        "warning_message": (
+            "Phát hiện dấu hiệu nguy hiểm. Người bệnh cần được thăm khám y tế sớm, "
+            "không tự ý dùng thuốc nếu có triệu chứng nặng."
+            if matched else ""
+        )
+    }
+@app.post("/api/extract-symptoms")
+def extract_symptoms_api():
+    """
+    SCRUM-62 / Task 31:
+    API trả về danh sách triệu chứng đã nhận diện để Frontend sử dụng.
+    """
+    data = request.get_json(silent=True) or {}
+    text = data.get("text") or data.get("notes") or ""
+
+    if not isinstance(text, str):
+        return jsonify({
+            "success": False,
+            "message": "Văn bản đầu vào không hợp lệ.",
+            "symptoms": []
+        }), 400
+
+    if not text.strip():
+        return jsonify({
+            "success": False,
+            "message": "Vui lòng nhập mô tả bệnh án hoặc triệu chứng.",
+            "symptoms": []
+        }), 400
+
+    dictionary = get_cached_symptom_dictionary()
+    symptoms = extract_symptoms_from_medical_text(text)
+    # SCRUM-69
+    danger_info = detect_dangerous_keywords(
+        text,
+        [item["label_vi"] for item in symptoms]
+    )
+    return jsonify({
+        "success": True,
+        "message": "Trích xuất triệu chứng thành công.",
+        "dictionary_size": len(dictionary),
+        "total": len(symptoms),
+        "symptoms": symptoms,
+        "symptoms_vi": [item["label_vi"] for item in symptoms],
+        "symptoms_en": [item["label_en"] for item in symptoms],
+        "danger_warning": danger_info
+    }), 200
+
+
+@app.post("/api/symptoms/cache/refresh")
+def refresh_symptom_cache():
+    """
+    API phụ để làm mới cache từ điển triệu chứng khi admin cập nhật từ điển.
+    """
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+
+    return jsonify({
+        "success": True,
+        "message": "Đã làm mới cache từ điển triệu chứng.",
+        "dictionary_size": len(get_cached_symptom_dictionary())
+    }), 200
+
+
+# ── API admin: danh sách, chi tiết, xóa từ điển triệu chứng ───────────────────────
+@app.route('/api/admin/symptoms', methods=['GET'])
+def list_symptoms():
+    q = (request.args.get('q') or '').strip()
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+    except Exception:
+        page = 1
+    try:
+        per_page = min(100, max(1, int(request.args.get('per_page', 20))))
+    except Exception:
+        per_page = 20
+
+    query = TrieuChung.query
+    if q:
+        q_like = f"%{q}%"
+        query = query.filter(
+            (TrieuChung.ten.ilike(q_like)) | (TrieuChung.ten_en.ilike(q_like)) | (TrieuChung.ma.ilike(q_like))
+        )
+
+    pagination = query.order_by(TrieuChung.ten).paginate(page=page, per_page=per_page, error_out=False)
+    items = [item.to_dict() for item in pagination.items]
+    return jsonify({
+        'total': pagination.total,
+        'page': page,
+        'per_page': per_page,
+        'items': items,
+    }), 200
+
+
+@app.route('/api/admin/symptoms/<int:item_id>', methods=['GET'])
+def get_symptom(item_id):
+    obj = TrieuChung.query.get(item_id)
+    if not obj:
+        return jsonify({'error': 'Không tìm thấy triệu chứng.'}), 404
+    return jsonify(obj.to_dict()), 200
+
+
+@app.route('/api/admin/symptoms/<int:item_id>', methods=['DELETE'])
+def delete_symptom(item_id):
+    # Kiểm tra token Admin
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        if payload.get('role') != 'Admin':
+            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token đã hết hạn.'}), 401
+    except Exception:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+
+    obj = TrieuChung.query.get(item_id)
+    if not obj:
+        return jsonify({'error': 'Không tìm thấy triệu chứng.'}), 404
+    db.session.delete(obj)
+    db.session.commit()
+    # làm mới cache từ điển
+    global SYMPTOM_DICTIONARY_CACHE
+    SYMPTOM_DICTIONARY_CACHE = None
+    return jsonify({'success': True}), 200
 
 
 def authenticated_email():
@@ -4258,6 +5167,137 @@ def delete_thuoc(id):
         return jsonify({"error": f"Lỗi khi xóa thuốc: {str(e)}"}), 500
 
 
+
+@app.route('/api/evaluation/<int:id>', methods=['DELETE'])
+def delete_evaluation(id):
+    try:
+        # 1. Tìm bản ghi lịch sử dự đoán theo ID trong Database
+        record = DanhGiaDuDoan.query.get(id)
+        
+        # 2. Nếu không tìm thấy, trả về lỗi 404
+        if not record:
+            return jsonify({
+                'success': False,
+                'message': f'Không tìm thấy bản ghi lịch sử với ID = {id}!'
+            }), 404
+
+        # 3. Tiến hành xóa và lưu (commit) vào Database
+        db.session.delete(record)
+        db.session.commit()
+
+        # 4. Trả về phản hồi thành công
+        return jsonify({
+            'success': True,
+            'message': f'Xóa bản ghi lịch sử dự đoán ID = {id} thành công!'
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()  # Thu hồi lệnh nếu xảy ra lỗi hệ thống
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi hệ thống khi xóa: {str(e)}'
+        }), 500
+    
+    
+
+# ────────────────────────────────────────────────────────────────────────────
+# API QUẢN LÝ PHẢN HỒI ĐÁNH GIÁ NHÓM THUỐC
+# ────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/feedback', methods=['POST'])
+def submit_feedback():
+    """
+    Ghi lại phản hồi Đồng ý/Không đồng ý từ người dùng.
+    
+    Body:
+    {
+        "prediction_id": <optional int>,
+        "user_id": <optional int>,
+        "feedback_type": "agree" hoặc "disagree",
+        "comment": <optional string>
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        feedback_type = (data.get('feedback_type') or '').strip().lower()
+        
+        if feedback_type not in ['agree', 'disagree']:
+            return jsonify({
+                'success': False,
+                'message': 'feedback_type phải là "agree" hoặc "disagree".'
+            }), 400
+        
+        new_feedback = Feedback(
+            prediction_id=data.get('prediction_id'),
+            user_id=data.get('user_id'),
+            feedback_type=feedback_type,
+            comment=data.get('comment', '').strip() or None
+        )
+        
+        db.session.add(new_feedback)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Phản hồi đã được ghi nhận thành công.',
+            'feedback': new_feedback.to_dict()
+        }), 201
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': 'Không thể ghi nhận phản hồi.',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/feedback/statistics', methods=['GET'])
+def get_feedback_statistics():
+    """
+    Lấy thống kê số lượng phản hồi Đồng ý / Không đồng ý.
+    
+    Response:
+    {
+        "success": true,
+        "total": <int>,
+        "agree_count": <int>,
+        "disagree_count": <int>,
+        "agree_percentage": <float>,
+        "disagree_percentage": <float>
+    }
+    """
+    try:
+        total = Feedback.query.count()
+        agree_count = Feedback.query.filter_by(feedback_type='agree').count()
+        disagree_count = Feedback.query.filter_by(feedback_type='disagree').count()
+        
+        # Tính tỷ lệ phần trăm, xử lý trường hợp total = 0
+        if total == 0:
+            agree_percentage = 0.0
+            disagree_percentage = 0.0
+        else:
+            agree_percentage = round((agree_count / total) * 100, 2)
+            disagree_percentage = round((disagree_count / total) * 100, 2)
+        
+        return jsonify({
+            'success': True,
+            'total': total,
+            'agree_count': agree_count,
+            'disagree_count': disagree_count,
+            'agree_percentage': agree_percentage,
+            'disagree_percentage': disagree_percentage
+        }), 200
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': 'Không thể lấy dữ liệu thống kê.',
+            'error': str(e)
+        }), 500
+
+
+    
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="127.0.0.1", port=port, debug=False)

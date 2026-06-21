@@ -155,6 +155,18 @@
             <span class="material-symbols-outlined" aria-hidden="true">medication</span>
             <span>Quản Lý Thuốc</span>
           </button>
+          <button class="nav-link" type="button" data-page="admin-dictionary">
+            <span class="material-symbols-outlined" aria-hidden="true">menu_book</span>
+            <span>Quản Lý Từ Điển</span>
+          </button>
+          <button class="nav-link" type="button" data-page="admin-feedback">
+            <span class="material-symbols-outlined" aria-hidden="true">rate_review</span>
+            <span>Phản Hồi</span>
+          </button>
+          <button class="nav-link" type="button" data-page="dashboard">
+            <span class="material-symbols-outlined" aria-hidden="true">analytics</span>
+            <span>Thống Kê</span>
+          </button>
           <button class="nav-link" type="button" data-page="about">
             <span class="material-symbols-outlined" aria-hidden="true">person</span>
             <span>Hồ Sơ Của Tôi</span>
@@ -198,8 +210,16 @@
             </div>
             <label class="sr-only" for="case-description">Mô tả ca lâm sàng</label>
             <div class="textarea-wrap">
-              <textarea id="case-description" maxlength="2000" rows="11" placeholder="Ví dụ: Bệnh nhân sốt cao, ho có đờm, đau ngực, khó thở, mệt mỏi..."></textarea>
+              <textarea id="case-description" maxlength="2000" rows="11" placeholder="Ví dụ: Bệnh nhân sốt cao, ho có đờm, đau ngực, khó thở, mệt mỏi..." aria-autocomplete="list" aria-controls="typing-suggestions" aria-expanded="false"></textarea>
               <span id="char-count">0 / 2000 ký tự</span>
+              <div class="typing-suggestions is-hidden" id="typing-suggestions" role="listbox" aria-label="Gợi ý triệu chứng">
+                <div class="typing-suggestions-heading">
+                  <span class="material-symbols-outlined" aria-hidden="true">auto_awesome</span>
+                  <strong>Gợi ý triệu chứng</strong>
+                  <span>Dùng ↑ ↓ và Enter</span>
+                </div>
+                <div class="typing-suggestions-list" id="typing-suggestions-list"></div>
+              </div>
             </div>
             <div class="symptom-picker">
               <div class="picker-head">
@@ -290,6 +310,41 @@
               <p>Những thông tin này giúp hệ thống phân biệt nguyên nhân tốt hơn.</p>
               <div class="suggested-symptoms-list" id="suggested-symptoms-list"></div>
             </div>
+            <div class="evaluation-box">
+              <h3>Đánh giá kết quả dự đoán của hệ thống</h3>
+              <p>Kết quả dự đoán này có chính xác với chuyên môn của bạn không?</p>
+
+            <div class="evaluation-actions">
+              <button type="button" class="secondary-button" id="btn-eval-approve">
+                Đồng ý (Chính xác)
+              </button>
+
+              <button type="button" class="secondary-button" id="btn-eval-reject">
+                Không đồng ý
+              </button>
+            </div>
+
+            <div id="evaluation-note-box" class="is-hidden">
+              <label for="evaluation-note"><strong>Lý do không đồng ý?</strong></label>
+              <textarea
+                id="evaluation-note"
+                rows="4"
+                placeholder="Ví dụ: Triệu chứng này nên đi kèm nhóm thuốc khác..."
+              ></textarea>
+
+              <div class="evaluation-actions">
+                <button type="button" class="secondary-button" id="btn-eval-cancel">
+                  Hủy bỏ
+                </button>
+
+                <button type="button" class="primary-button" id="btn-eval-submit">
+                  Gửi đánh giá
+                </button>
+              </div>
+            </div>
+
+            <p id="evaluation-message" class="form-message"></p>
+          </div>
             <div class="form-actions">
               <button class="primary-button" type="button" id="save-result">
                 <span class="material-symbols-outlined" aria-hidden="true">save</span>
@@ -364,6 +419,10 @@
               <p class="lead">Tra cứu và quản lý các phân loại nhóm thuốc đã thực hiện.</p>
             </div>
             <div class="history-actions">
+              <div class="view-toggle" role="tablist" aria-label="Chế độ hiển thị lịch sử">
+                <button class="text-button view-toggle-btn is-active" type="button" data-history-view="cards" role="tab" aria-selected="true">Thẻ</button>
+                <button class="text-button view-toggle-btn" type="button" data-history-view="table" role="tab" aria-selected="false">Bảng</button>
+              </div>
               <button class="secondary-button compact" type="button">
                 <span class="material-symbols-outlined" aria-hidden="true">filter_list</span>
                 Lọc
@@ -376,6 +435,41 @@
                 <span class="material-symbols-outlined" aria-hidden="true">picture_as_pdf</span>
                 Tải báo cáo PDF
               </button>
+              <button id="history-export-button" class="secondary-button compact" type="button" title="Tùy chọn xuất CSV hoặc JSON" aria-haspopup="dialog" aria-expanded="false">
+                <span class="material-symbols-outlined" aria-hidden="true">download</span>
+                CSV/JSON
+              </button>
+              <div id="history-export-options" class="export-options is-hidden" role="dialog" aria-label="Tùy chọn xuất lịch sử" aria-hidden="true">
+                <div class="export-options-title">Tùy chọn xuất</div>
+                <div class="export-settings">
+                  <label for="export-format">Định dạng</label>
+                  <select id="export-format">
+                    <option value="csv">CSV</option>
+                    <option value="json">JSON</option>
+                  </select>
+                  <label for="export-sep">Phân cách</label>
+                  <select id="export-sep">
+                    <option value=",">Dấu phẩy (,)</option>
+                    <option value=";">Chấm phẩy (;)</option>
+                  </select>
+                </div>
+                <div class="export-columns" aria-label="Các cột cần xuất">
+                  <label class="export-checkbox"><input type="checkbox" id="col-date" checked> <span>Ngày</span></label>
+                  <label class="export-checkbox"><input type="checkbox" id="col-disease" checked> <span>Bệnh/Nhóm thuốc</span></label>
+                  <label class="export-checkbox"><input type="checkbox" id="col-symptoms" checked> <span>Triệu chứng</span></label>
+                  <label class="export-checkbox"><input type="checkbox" id="col-notes" checked> <span>Ghi chú</span></label>
+                  <label class="export-checkbox"><input type="checkbox" id="col-user" checked> <span>Người dùng</span></label>
+                  <label class="export-checkbox"><input type="checkbox" id="col-score" checked> <span>Score (confidence)</span></label>
+                  <label class="export-checkbox"><input type="checkbox" id="col-score-type" checked> <span>Score type</span></label>
+                </div>
+                <div class="export-all-row">
+                  <label class="export-checkbox"><input type="checkbox" id="export-all"> <span>Xuất toàn bộ (bỏ bộ lọc)</span></label>
+                </div>
+                <div class="export-options-actions">
+                  <button id="history-export-cancel" class="secondary-button compact" type="button">Hủy</button>
+                  <button id="history-export-confirm" class="primary-button" type="button">Xuất</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -384,7 +478,45 @@
             <input id="history-search" type="search" placeholder="Tìm theo nhóm thuốc, mô tả hoặc ngày..." />
           </label>
 
-          <div class="history-grid" id="history-list" aria-live="polite"></div>
+          <div class="history-views">
+            <div class="history-grid" id="history-list" aria-live="polite"></div>
+
+            <div class="summary-table-wrap is-hidden" id="history-table-wrap" style="margin-top: 16px; overflow-x: auto;">
+              <table class="case-summary-table" id="history-table" style="width:100%; border-collapse: collapse;">
+                <thead>
+                  <tr style="background: var(--surface-low); border-bottom: 2px solid var(--outline);">
+                    <th style="text-align:left; padding:12px; width:140px;">Ngày</th>
+                    <th style="text-align:left; padding:12px; width:240px;">Bệnh / Nhóm thuốc</th>
+                    <th style="text-align:left; padding:12px;">Triệu chứng</th>
+                    <th style="text-align:left; padding:12px; width:200px;">Ghi chú</th>
+                    <th style="text-align:center; padding:12px; width:120px;">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="history-table-tbody"></tbody>
+              </table>
+              <div id="history-table-pager" class="table-pager" style="display:flex; align-items:center; justify-content:space-between; padding:12px 8px; gap:12px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <button id="history-pager-prev" class="secondary-button compact" type="button">Prev</button>
+                  <button id="history-pager-next" class="secondary-button compact" type="button">Next</button>
+                  <label style="margin-left:8px;color:var(--text-muted);">Trang</label>
+                  <input id="history-jump-input" type="number" min="1" style="width:72px; padding:6px;" />
+                  <button id="history-jump-go" class="secondary-button compact" type="button">Go</button>
+                  <span id="history-jump-error" role="alert" style="color:var(--danger); margin-left:8px; display:none; font-size:13px;"></span>
+                  <span id="history-pager-info" style="margin-left:8px; color:var(--text-muted);"></span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <label for="history-page-size" style="color:var(--text-muted);">Hiển thị</label>
+                  <select id="history-page-size" style="padding:6px;">
+                    <option value="5">5</option>
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="empty-state is-hidden" id="history-empty">
             <span class="empty-icon material-symbols-outlined" aria-hidden="true">inbox</span>
             <h2>Chưa có lịch sử dự đoán</h2>
@@ -393,6 +525,163 @@
               <span class="material-symbols-outlined" aria-hidden="true">add</span>
               Tạo dự đoán
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-dashboard" aria-labelledby="dashboard-title">
+        <div class="container">
+          <div class="profile-form-section">
+            <div class="profile-form-head">
+              <div>
+                <p class="eyebrow">Thống kê</p>
+                <h2 id="dashboard-title">Thống kê phản hồi đánh giá</h2>
+              </div>
+            </div>
+            
+            <!-- Loading State -->
+            <div id="feedback-stats-loading" class="feedback-stats-section feedback-loading-state">
+              <div class="stats-grid">
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
+                </div>
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
+                </div>
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
+                </div>
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
+                </div>
+              </div>
+              <div class="chart-section-skeleton">
+                <div class="skeleton-chart-title"></div>
+                <div class="skeleton-chart"></div>
+              </div>
+            </div>
+
+            <!-- Stats Content -->
+            <div id="feedback-stats-content" class="feedback-stats-section is-hidden">
+              <!-- Stats Cards -->
+              <div class="stats-grid">
+                <!-- Total Evaluations Card -->
+                <div class="stat-card stat-card-total" data-stat="total">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">bar_chart_3</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Tổng đánh giá</p>
+                    <h3 id="stat-total-count" class="stat-value">0</h3>
+                    <p class="stat-description">Tổng số phản hồi từ chuyên gia</p>
+                  </div>
+                </div>
+
+                <!-- Agree Card -->
+                <div class="stat-card stat-card-agree" data-stat="agree">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">thumb_up</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Đồng ý</p>
+                    <div class="stat-value-row">
+                      <h3 id="stat-agree-count" class="stat-value">0</h3>
+                      <span id="stat-agree-percent" class="stat-percentage">0%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Disagree Card -->
+                <div class="stat-card stat-card-disagree" data-stat="disagree">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">thumb_down</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Không đồng ý</p>
+                    <div class="stat-value-row">
+                      <h3 id="stat-disagree-count" class="stat-value">0</h3>
+                      <span id="stat-disagree-percent" class="stat-percentage">0%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Consensus Rate Card -->
+                <div class="stat-card stat-card-consensus" data-stat="consensus">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">activity</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Độ đồng thuận</p>
+                    <h3 id="stat-consensus-rate" class="stat-value">0%</h3>
+                    <p class="stat-description">Tỷ lệ đánh giá Đồng ý</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Chart Section -->
+              <div class="chart-section">
+                <div class="chart-section-header">
+                  <h3 class="chart-title">Biểu đồ đánh giá của chuyên gia</h3>
+                </div>
+                <div class="chart-grid">
+                  <div class="chart-container">
+                    <canvas id="feedbackChart"></canvas>
+                  </div>
+                  <div class="chart-legend">
+                    <div class="legend-item legend-agree" data-legend="agree">
+                      <div class="legend-color"></div>
+                      <div class="legend-content">
+                        <div class="legend-title">Đồng ý</div>
+                        <div class="legend-stats"><span id="legend-agree-count">0</span> đánh giá · <span id="legend-agree-percent">0%</span></div>
+                      </div>
+                    </div>
+                    <div class="legend-item legend-disagree" data-legend="disagree">
+                      <div class="legend-color"></div>
+                      <div class="legend-content">
+                        <div class="legend-title">Không đồng ý</div>
+                        <div class="legend-stats"><span id="legend-disagree-count">0</span> đánh giá · <span id="legend-disagree-percent">0%</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Error State -->
+              <div id="feedback-stats-error" class="error-state is-hidden">
+                <div class="error-icon">
+                  <span class="material-symbols-outlined" aria-hidden="true">error_outline</span>
+                </div>
+                <h3 class="error-title">Không thể tải dữ liệu</h3>
+                <p class="error-message">Đã xảy ra lỗi khi tải thống kê đánh giá.</p>
+                <button type="button" id="btn-retry-stats" class="primary-button">
+                  <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                  Thử lại
+                </button>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="feedback-stats-empty" class="feedback-stats-section is-hidden">
+              <div class="empty-state">
+                <div class="empty-icon">
+                  <span class="material-symbols-outlined" aria-hidden="true">assessment</span>
+                </div>
+                <h3 class="empty-title">Chưa có đánh giá nào</h3>
+                <p class="empty-message">Khi chuyên gia bắt đầu đánh giá kết quả dự đoán, dữ liệu thống kê sẽ được hiển thị tại đây.</p>
+                <button type="button" id="btn-refresh-empty" class="primary-button">
+                  <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                  Làm mới dữ liệu
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -551,6 +840,30 @@
               <button class="primary-button" type="button" id="btn-add-thuoc" style="height: 34px; padding: 0 16px;">
                 <span class="material-symbols-outlined" style="font-size: 18px;">add</span> Thêm thuốc
               </button>
+              <button class="secondary-button" type="button" id="btn-toggle-upload" style="height: 34px; padding: 0 16px;">
+                <span class="material-symbols-outlined" style="font-size: 18px;">upload_file</span> Nhập từ file
+              </button>
+            </div>
+
+            <!-- Drag & Drop Upload Zone -->
+            <div id="file-upload-zone" class="file-upload-zone" style="display: none; margin-bottom: 20px; padding: 30px; border: 2px dashed var(--outline); border-radius: 8px; background: var(--surface-low); text-align: center; cursor: pointer; transition: all 0.3s ease;">
+              <input type="file" id="file-upload-input" accept=".csv,.xlsx,.xls" style="display: none;" />
+              <div class="upload-content">
+                <span class="material-symbols-outlined" style="font-size: 48px; display: block; color: var(--primary); margin-bottom: 12px;">cloud_upload</span>
+                <h3 style="margin: 0 0 8px 0; color: var(--text);">Kéo thả file vào đây</h3>
+                <p style="margin: 0 0 16px 0; color: var(--text-muted);">hoặc <button type="button" id="file-upload-browse" class="text-button" style="padding: 0; display: inline;">chọn từ máy tính</button></p>
+                <p style="margin: 0; font-size: 12px; color: var(--text-subtle);">Hỗ trợ: CSV, XLSX (Hàng: thuốc, Cột: tên, hoạt chất, hàm lượng, dạng, nhóm, giá, v.v.)</p>
+              </div>
+              <div class="upload-progress" style="display: none; margin-top: 20px;">
+                <p id="upload-status" style="margin: 0 0 12px 0; color: var(--text-muted); font-size: 14px;">Đang xử lý...</p>
+                <div style="width: 100%; height: 6px; background: var(--outline); border-radius: 3px; overflow: hidden;">
+                  <div id="upload-progress-bar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s ease;"></div>
+                </div>
+                <p id="upload-count" style="margin: 12px 0 0 0; font-size: 12px; color: var(--text-muted);">0 / 0 hàng</p>
+              </div>
+              <div class="upload-result" style="display: none; margin-top: 16px; padding: 12px; border-radius: 6px; background: var(--surface); text-align: left;">
+                <p id="upload-result-text" style="margin: 0; color: var(--text);"></p>
+              </div>
             </div>
 
             <div class="summary-table-wrap" style="margin-top: 20px; overflow-x: auto;">
@@ -675,6 +988,102 @@
     </div>
     <!-- END MODAL THUOC -->
 
+    <!-- PAGE: Quản lý Từ điển (Admin) -->
+    <section class="page" id="page-admin-dictionary" aria-labelledby="admin-dict-title">
+      <div class="container" style="margin-top: 30px; margin-bottom: 50px;">
+        <div class="profile-form-section" style="padding: 20px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
+          <div class="profile-form-head" style="margin-bottom: 20px;">
+            <div>
+              <p class="eyebrow">Từ điển triệu chứng</p>
+              <h2 id="admin-dict-title">Quản lý từ điển (Vi → En)</h2>
+            </div>
+            <p style="color: var(--text-muted); margin: 8px 0 0 0;">Quản lý ánh xạ triệu chứng tiếng Việt sang mã/nhãn tiếng Anh dùng cho preprocessing.</p>
+          </div>
+
+          <div class="admin-dict-toolbar" style="display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="dict-search" class="search-box" placeholder="Tìm kiếm (Tiếng Việt / Tiếng Anh)..." style="flex:1; min-width:200px; padding:8px 12px; border:1px solid var(--outline); border-radius:6px;" />
+            <button class="primary-button" type="button" id="btn-add-dict" style="height:34px; padding:0 16px;"><span class="material-symbols-outlined" style="font-size:18px;">add</span> Thêm</button>
+            <button class="secondary-button" type="button" id="btn-import-dict" style="height:34px; padding:0 16px;"><span class="material-symbols-outlined" style="font-size:18px;">upload_file</span> Nhập CSV</button>
+            <input type="file" id="dict-file-input" accept=".csv" style="display:none" />
+            <button class="secondary-button" type="button" id="btn-export-dict" style="height:34px; padding:0 16px;"><span class="material-symbols-outlined" style="font-size:18px;">download</span> Xuất CSV</button>
+          </div>
+
+          <div class="summary-table-wrap" style="margin-top: 8px; overflow-x: auto;">
+            <table class="admin-dict-table" style="width:100%; border-collapse: collapse;">
+              <thead>
+                <tr style="background: var(--surface-low); border-bottom: 2px solid var(--outline);">
+                  <th style="text-align:left; padding:12px; width:40px;">ID</th>
+                  <th style="text-align:left; padding:12px;">Triệu chứng (VI)</th>
+                  <th style="text-align:left; padding:12px;">Label (EN)</th>
+                  <th style="text-align:left; padding:12px;">Ghi chú</th>
+                  <th style="text-align:center; padding:12px; width:120px;">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="dict-tbody"></tbody>
+            </table>
+            <div id="dict-empty" style="text-align:center; padding: 30px 10px; color:var(--text-muted);">
+              <span class="material-symbols-outlined" style="font-size:42px; display:block; margin-bottom:8px; opacity:0.5;">menu_book</span>
+              <p style="margin:0;">Chưa có mục nào trong từ điển</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="page" id="page-admin-feedback" aria-labelledby="admin-feedback-title">
+  <div class="container" style="margin-top: 30px; margin-bottom: 50px;">
+    <div class="profile-form-section" style="padding: 20px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
+      <div class="profile-form-head" style="margin-bottom: 20px;">
+        <div>
+          <p class="eyebrow">Phản hồi chuyên gia</p>
+          <h2 id="admin-feedback-title">Danh sách phản hồi Không đồng ý</h2>
+        </div>
+        <p style="color: var(--text-muted); margin: 8px 0 0 0;">
+          Admin xem các phản hồi không đồng ý của bác sĩ để có cơ sở cập nhật lại từ điển triệu chứng thủ công.
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+        <input
+          type="text"
+          id="feedback-search"
+          class="search-box"
+          placeholder="Tìm theo triệu chứng, ghi chú..."
+          style="flex:1; min-width:200px; padding:8px 12px; border:1px solid var(--outline); border-radius:6px;"
+        />
+        <button class="secondary-button" type="button" id="btn-reload-feedback" style="height:34px; padding:0 16px;">
+          <span class="material-symbols-outlined" style="font-size:18px;">refresh</span>
+          Tải lại
+        </button>
+      </div>
+
+      <div class="summary-table-wrap" style="margin-top: 8px; overflow-x: auto;">
+        <table style="width:100%; border-collapse: collapse;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--border);">
+              <th style="text-align:left; padding:12px;">ID</th>
+              <th style="text-align:left; padding:12px;">Triệu chứng nhập</th>
+              <th style="text-align:left; padding:12px;">Ghi chú</th>
+              <th style="text-align:left; padding:12px;">Ngày tạo</th>
+              <th style="text-align:center; padding:12px;">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="feedback-tbody">
+            <tr>
+              <td colspan="5" style="padding:20px; text-align:center; color:var(--text-muted);">
+                Đang tải danh sách phản hồi...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p id="feedback-empty" class="muted-text is-hidden" style="margin-top:16px;">
+        Không có phản hồi Không đồng ý nào cần xem xét.
+      </p>
+    </div>
+  </div>
+</section>
+
     <nav class="bottom-nav" aria-label="Dieu huong mobile">
       <button class="bottom-link is-active" type="button" data-page="home">
         <span class="material-symbols-outlined" aria-hidden="true">home</span>
@@ -684,16 +1093,45 @@
         <span class="material-symbols-outlined" aria-hidden="true">medication</span>
         <span>Thuốc</span>
       </button>
+      <button class="bottom-link" type="button" data-page="admin-dictionary">
+        <span class="material-symbols-outlined" aria-hidden="true">menu_book</span>
+        <span>Từ điển</span>
+      </button>
       <button class="bottom-link" type="button" data-page="history">
         <span class="material-symbols-outlined" aria-hidden="true">history</span>
         <span>Lịch sử</span>
       </button>
       <button class="bottom-link" type="button" data-page="about">
         <span class="material-symbols-outlined" aria-hidden="true">person</span>
-        <span>Hồ sơ</span>
+        <span>Hồ Sơ</span>
       </button>
     </nav>
 
     <script src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+
+
+
+    <div id="delete-confirm-modal" class="custom-modal is-hidden" role="dialog" aria-modal="true">
+  <div class="modal-overlay" onclick="closeDeleteModal()"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <span class="material-symbols-outlined icon-warning">warning</span>
+      <h2>Xác nhận xóa lịch sử</h2>
+    </div>
+    <div class="modal-body">
+      <p>Hành động này không thể hoàn tác. Bạn có chắc chắn muốn xóa bản ghi lịch sử dự đoán này khỏi hệ thống không?</p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="text-button compact" onclick="closeDeleteModal()">Hủy bỏ</button>
+      <button type="button" id="btn-confirm-delete-execute" class="secondary-button compact btn-danger-action">
+        <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+        Xác nhận xóa
+      </button>
+    </div>
+  </div>
+</div>
+
+
   </body>
 </html>

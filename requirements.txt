@@ -9,7 +9,7 @@ PyJWT
 # Xử lý dữ liệu
 pandas
 pyarrow               # đọc file .parquet (dataset HuggingFace)
-openpyxl               # xuất lịch sử dự đoán ra file Excel .xlsx
+openpyxl               # đọc và xuất file Excel .xlsx
 reportlab              # tạo báo cáo lịch sử định dạng PDF
 
 # Hiểu ngữ nghĩa tiếng Việt (khớp triệu chứng câu lạ cùng nghĩa)

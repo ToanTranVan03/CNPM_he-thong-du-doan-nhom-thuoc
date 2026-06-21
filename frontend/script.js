@@ -27,6 +27,8 @@ const newPredictionButton = document.getElementById("new-prediction-button");
 const exampleButton = document.getElementById("example-case");
 const symptomSearch = document.getElementById("symptom-search");
 const symptomList = document.getElementById("symptom-list");
+const typingSuggestions = document.getElementById("typing-suggestions");
+const typingSuggestionsList = document.getElementById("typing-suggestions-list");
 const selectedCount = document.getElementById("selected-count");
 const formMessage = document.getElementById("form-message");
 const historySearch = document.getElementById("history-search");
@@ -72,6 +74,15 @@ let savedResults = [];
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
 let currentUser = null;
 let symptomsLoaded = false;
+let activeSymptomSuggestions = null;
+let symptomSuggestionTimer = null;
+let symptomSuggestionController = null;
+const symptomSuggestionCache = new Map();
+let caseSuggestionTimer = null;
+let caseSuggestionController = null;
+let caseSymptomSuggestions = [];
+let caseAutocompleteContext = null;
+let activeCaseSuggestionIndex = 0;
 try {
   currentUser = JSON.parse(localStorage.getItem(AUTH_USER_KEY) || "null");
 } catch {
@@ -232,6 +243,10 @@ async function authRequest(endpoint, payload) {
     body: JSON.stringify(payload),
   });
   const data = await response.json();
+  renderTop3DrugGroups(
+    data.top3_predictions || data.predictions || data.results || [],
+    data.symptoms_vi || data.matched_symptoms || []
+);
   if (!response.ok) {
     throw new Error(data.message || data.error || "Không xử lý được yêu cầu.");
   }
@@ -288,15 +303,6 @@ function setProfileMessage(message, isError = false) {
   if (!profileMessage) return;
   profileMessage.textContent = message;
   profileMessage.classList.toggle("is-error", isError);
-}
-
-function setFormLoading(button, isLoading) {
-  if (!button) return;
-  button.disabled = isLoading;
-  const icon = button.querySelector(".material-symbols-outlined");
-  if (icon) {
-    icon.style.opacity = isLoading ? "0.5" : "1";
-  }
 }
 
 async function loadProfileData() {
@@ -449,6 +455,7 @@ function updateSelectedCount() {
 
 function resetPredictionInput({ focus = true, clearSearch = true } = {}) {
   textarea.value = "";
+  scheduleCaseSymptomSuggestions();
   selectedSymptoms.clear();
   currentResult = null;
   if (clearSearch && symptomSearch) {
@@ -458,21 +465,46 @@ function resetPredictionInput({ focus = true, clearSearch = true } = {}) {
   updateSelectedCount();
   updatePredictButtonState();
   setMessage("");
-  renderSymptoms(symptomSearch?.value || "");
+  if (clearSearch) {
+    scheduleSymptomSuggestions("");
+  } else {
+    renderSymptoms(symptomSearch?.value || "");
+  }
   if (focus) {
     textarea.focus();
   }
 }
 
-function renderSymptoms(filter = "") {
-  const query = filter.trim().toLowerCase();
-  const visibleSymptoms = symptoms
+function normalizeSymptomSearch(value = "") {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .trim();
+}
+
+function localSymptomMatches(filter = "") {
+  const query = normalizeSymptomSearch(filter);
+  return symptoms
     .filter((symptom) => {
-      const viLabel = (symptom.label_vi || symptom.label || "").toLowerCase();
-      const enLabel = (symptom.label_en || "").toLowerCase();
-      return viLabel.includes(query) || enLabel.includes(query);
+      const searchableText = [
+        symptom.label_vi,
+        symptom.label,
+        symptom.label_en,
+        symptom.id,
+      ].map(normalizeSymptomSearch).join(" ");
+      return searchableText.includes(query);
     })
     .slice(0, 80);
+}
+
+function renderSymptoms(filter = "") {
+  const query = filter.trim();
+  const visibleSymptoms = query && activeSymptomSuggestions !== null
+    ? activeSymptomSuggestions
+    : localSymptomMatches(query);
 
   symptomList.innerHTML = "";
 
@@ -486,19 +518,303 @@ function renderSymptoms(filter = "") {
     button.type = "button";
     button.className = "symptom-chip";
     button.dataset.symptom = symptom.id;
-    button.textContent = symptom.label;
+    button.textContent = symptom.label_vi || symptom.label || symptom.label_en || symptom.id;
     button.classList.toggle("is-selected", selectedSymptoms.has(symptom.id));
     button.addEventListener("click", () => {
-      if (selectedSymptoms.has(symptom.id)) {
-        selectedSymptoms.delete(symptom.id);
-      } else {
-        selectedSymptoms.add(symptom.id);
-      }
-      updateSelectedCount();
-      renderSymptoms(symptomSearch.value);
+      toggleSymptomSelection(symptom.id);
     });
     symptomList.appendChild(button);
   });
+}
+
+function toggleSymptomSelection(symptomId) {
+  if (selectedSymptoms.has(symptomId)) {
+    selectedSymptoms.delete(symptomId);
+  } else {
+    selectedSymptoms.add(symptomId);
+  }
+  updateSelectedCount();
+  renderSymptoms(symptomSearch.value);
+  renderTypingSuggestions(caseSymptomSuggestions);
+}
+
+const CASE_AUTOCOMPLETE_STOP_WORDS = new Set([
+  "toi", "bi", "co", "dang", "thay", "benh", "nhan", "nguoi", "cam", "giac",
+]);
+const CASE_AUTOCOMPLETE_CONNECTORS = new Set(["va", "kem", "voi", "roi"]);
+
+function getCaseAutocompleteContext() {
+  const caret = textarea.selectionStart ?? textarea.value.length;
+  const beforeCaret = textarea.value.slice(0, caret);
+  const trailingMatch = beforeCaret.match(/[\p{L}\d]+(?:\s+[\p{L}\d]+){0,2}$/u);
+  if (!trailingMatch) return null;
+
+  const fragment = trailingMatch[0];
+  const words = Array.from(fragment.matchAll(/[\p{L}\d]+/gu));
+  let firstWordIndex = 0;
+  for (let index = words.length - 1; index >= 0; index -= 1) {
+    if (CASE_AUTOCOMPLETE_CONNECTORS.has(normalizeSymptomSearch(words[index][0]))) {
+      firstWordIndex = index + 1;
+      break;
+    }
+  }
+  while (
+    firstWordIndex < words.length - 1
+    && CASE_AUTOCOMPLETE_STOP_WORDS.has(normalizeSymptomSearch(words[firstWordIndex][0]))
+  ) {
+    firstWordIndex += 1;
+  }
+  if (firstWordIndex >= words.length) return null;
+  if (CASE_AUTOCOMPLETE_STOP_WORDS.has(normalizeSymptomSearch(words[firstWordIndex][0]))) return null;
+
+  const offset = words[firstWordIndex].index;
+  const query = fragment.slice(offset).trim();
+  if (normalizeSymptomSearch(query).length < 2) return null;
+  return {
+    query,
+    start: trailingMatch.index + offset,
+    end: caret,
+  };
+}
+
+function textareaCaretCoordinates(element, position) {
+  const mirror = document.createElement("div");
+  const style = window.getComputedStyle(element);
+  const properties = [
+    "boxSizing", "width", "borderTopWidth", "borderRightWidth", "borderBottomWidth",
+    "borderLeftWidth", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+    "fontStyle", "fontVariant", "fontWeight", "fontStretch", "fontSize", "fontFamily",
+    "lineHeight", "letterSpacing", "textTransform", "textIndent", "wordSpacing", "tabSize",
+  ];
+  properties.forEach((property) => {
+    mirror.style[property] = style[property];
+  });
+  Object.assign(mirror.style, {
+    position: "absolute",
+    visibility: "hidden",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "break-word",
+    top: "0",
+    left: "-9999px",
+  });
+  mirror.textContent = element.value.slice(0, position);
+  const marker = document.createElement("span");
+  marker.textContent = "\u200b";
+  mirror.appendChild(marker);
+  document.body.appendChild(mirror);
+  const coordinates = {
+    left: marker.offsetLeft - element.scrollLeft,
+    top: marker.offsetTop - element.scrollTop,
+    lineHeight: Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.4,
+  };
+  mirror.remove();
+  return coordinates;
+}
+
+function positionTypingSuggestions() {
+  if (!typingSuggestions || typingSuggestions.classList.contains("is-hidden")) return;
+  const caret = textareaCaretCoordinates(textarea, textarea.selectionStart ?? textarea.value.length);
+  const popupWidth = typingSuggestions.offsetWidth;
+  const popupHeight = typingSuggestions.offsetHeight;
+  const maxLeft = Math.max(8, textarea.clientWidth - popupWidth - 8);
+  const left = Math.max(8, Math.min(caret.left, maxLeft));
+  let top = caret.top + caret.lineHeight + 8;
+  if (top + popupHeight > textarea.clientHeight - 8) {
+    top = Math.max(8, caret.top - popupHeight - 6);
+  }
+  typingSuggestions.style.left = `${left}px`;
+  typingSuggestions.style.top = `${top}px`;
+}
+
+function renderTypingSuggestions(items = []) {
+  if (!typingSuggestions || !typingSuggestionsList) return;
+  caseSymptomSuggestions = Array.isArray(items) ? items : [];
+  typingSuggestions.classList.toggle("is-hidden", caseSymptomSuggestions.length === 0);
+  textarea.setAttribute("aria-expanded", String(caseSymptomSuggestions.length > 0));
+  typingSuggestionsList.innerHTML = "";
+
+  if (caseSymptomSuggestions.length === 0) {
+    activeCaseSuggestionIndex = 0;
+    textarea.removeAttribute("aria-activedescendant");
+    return;
+  }
+  activeCaseSuggestionIndex = Math.min(activeCaseSuggestionIndex, caseSymptomSuggestions.length - 1);
+
+  caseSymptomSuggestions.forEach((symptom, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "typing-suggestion-option";
+    button.id = `case-suggestion-${index}`;
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", String(index === activeCaseSuggestionIndex));
+    button.dataset.symptom = symptom.id;
+    button.classList.toggle("is-active", index === activeCaseSuggestionIndex);
+    const label = document.createElement("strong");
+    label.textContent = symptom.label_vi || symptom.label || symptom.label_en || symptom.id;
+    const englishLabel = document.createElement("small");
+    englishLabel.textContent = symptom.label_en || "";
+    button.append(label, englishLabel);
+    button.addEventListener("mousedown", (event) => event.preventDefault());
+    button.addEventListener("click", () => acceptCaseSuggestion(index));
+    typingSuggestionsList.appendChild(button);
+  });
+  textarea.setAttribute("aria-activedescendant", `case-suggestion-${activeCaseSuggestionIndex}`);
+  requestAnimationFrame(positionTypingSuggestions);
+}
+
+function setActiveCaseSuggestionIndex(index) {
+  if (!caseSymptomSuggestions.length) return;
+  activeCaseSuggestionIndex = (index + caseSymptomSuggestions.length) % caseSymptomSuggestions.length;
+  typingSuggestionsList.querySelectorAll(".typing-suggestion-option").forEach((option, optionIndex) => {
+    const isActive = optionIndex === activeCaseSuggestionIndex;
+    option.classList.toggle("is-active", isActive);
+    option.setAttribute("aria-selected", String(isActive));
+    if (isActive) option.scrollIntoView({ block: "nearest" });
+  });
+  textarea.setAttribute("aria-activedescendant", `case-suggestion-${activeCaseSuggestionIndex}`);
+}
+
+function acceptCaseSuggestion(index) {
+  const symptom = caseSymptomSuggestions[index];
+  const context = caseAutocompleteContext;
+  if (!symptom || !context) return;
+
+  let replacement = symptom.label_vi || symptom.label || symptom.label_en || symptom.id;
+  const precedingText = textarea.value.slice(0, context.start).trimEnd();
+  if (precedingText && !/[.!?\n]$/.test(precedingText)) {
+    replacement = replacement.charAt(0).toLocaleLowerCase("vi-VN") + replacement.slice(1);
+  }
+  const trailingText = textarea.value.slice(context.end);
+  const suffix = trailingText && /^[\s,.;:!?]/.test(trailingText) ? "" : " ";
+  textarea.value = `${textarea.value.slice(0, context.start)}${replacement}${suffix}${trailingText}`;
+  const nextCaret = context.start + replacement.length + suffix.length;
+  textarea.setSelectionRange(nextCaret, nextCaret);
+  selectedSymptoms.add(symptom.id);
+  updateCharCount();
+  updateSelectedCount();
+  updatePredictButtonState();
+  renderSymptoms(symptomSearch.value);
+  renderTypingSuggestions([]);
+  textarea.focus();
+}
+
+async function requestCaseSymptomSuggestions(context) {
+  if (!context) {
+    renderTypingSuggestions([]);
+    return;
+  }
+
+  caseSuggestionController?.abort();
+  const controller = new AbortController();
+  caseSuggestionController = controller;
+  typingSuggestions?.setAttribute("aria-busy", "true");
+
+  try {
+    const params = new URLSearchParams({ q: context.query, limit: "8" });
+    const response = await fetch(`/api/symptoms/suggestions?${params}`, {
+      signal: controller.signal,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || "Không tải được gợi ý triệu chứng.");
+    }
+    const currentContext = getCaseAutocompleteContext();
+    if (!currentContext || normalizeSymptomSearch(currentContext.query) !== normalizeSymptomSearch(context.query)) return;
+    caseAutocompleteContext = currentContext;
+    activeCaseSuggestionIndex = 0;
+    renderTypingSuggestions(data.suggestions || []);
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      renderTypingSuggestions([]);
+    }
+  } finally {
+    if (caseSuggestionController === controller) {
+      caseSuggestionController = null;
+      typingSuggestions?.removeAttribute("aria-busy");
+    }
+  }
+}
+
+function scheduleCaseSymptomSuggestions() {
+  clearTimeout(caseSuggestionTimer);
+  caseSuggestionController?.abort();
+  const context = getCaseAutocompleteContext();
+  caseAutocompleteContext = context;
+  if (!context) {
+    renderTypingSuggestions([]);
+    return;
+  }
+  caseSuggestionTimer = setTimeout(() => {
+    void requestCaseSymptomSuggestions(context);
+  }, 250);
+}
+
+async function requestSymptomSuggestions(query) {
+  const normalizedQuery = normalizeSymptomSearch(query);
+  if (!normalizedQuery) {
+    activeSymptomSuggestions = null;
+    renderSymptoms("");
+    return;
+  }
+
+  if (symptomSuggestionCache.has(normalizedQuery)) {
+    activeSymptomSuggestions = symptomSuggestionCache.get(normalizedQuery);
+    renderSymptoms(query);
+    return;
+  }
+
+  symptomSuggestionController?.abort();
+  const controller = new AbortController();
+  symptomSuggestionController = controller;
+  symptomList.setAttribute("aria-busy", "true");
+
+  try {
+    const params = new URLSearchParams({ q: query, limit: "20" });
+    const response = await fetch(`/api/symptoms/suggestions?${params}`, {
+      signal: controller.signal,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || "Không tải được gợi ý triệu chứng.");
+    }
+    if (normalizeSymptomSearch(symptomSearch.value) !== normalizedQuery) {
+      return;
+    }
+
+    const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+    symptomSuggestionCache.set(normalizedQuery, suggestions);
+    activeSymptomSuggestions = suggestions;
+    renderSymptoms(query);
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    // API autocomplete không khả dụng: vẫn cho phép người dùng lọc danh sách đã tải.
+    activeSymptomSuggestions = null;
+    renderSymptoms(query);
+  } finally {
+    if (symptomSuggestionController === controller) {
+      symptomSuggestionController = null;
+      symptomList.removeAttribute("aria-busy");
+    }
+  }
+}
+
+function scheduleSymptomSuggestions(query) {
+  clearTimeout(symptomSuggestionTimer);
+  symptomSuggestionController?.abort();
+
+  if (!query.trim()) {
+    activeSymptomSuggestions = null;
+    symptomList.removeAttribute("aria-busy");
+    renderSymptoms("");
+    return;
+  }
+
+  // Hiển thị kết quả cục bộ ngay lập tức trong lúc chờ API autocomplete.
+  activeSymptomSuggestions = null;
+  renderSymptoms(query);
+  symptomSuggestionTimer = setTimeout(() => {
+    void requestSymptomSuggestions(query);
+  }, 250);
 }
 
 function renderList(element, items, fallback) {
@@ -658,7 +974,143 @@ function renderSavedHistory() {
     .forEach(({ entry, index }) => {
       historyList.appendChild(createHistoryCard(entry, index));
     });
+  renderHistoryTable();
   updateHistoryEmptyState();
+}
+
+function renderHistoryTable() {
+  const tbody = document.getElementById('history-table-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  // Use current filter from search box
+  const allFiltered = getFilteredHistoryEntries();
+  const total = allFiltered.length;
+  historyPageSize = parseInt(document.getElementById('history-page-size')?.value || historyPageSize, 10) || historyPageSize;
+  const totalPages = Math.max(1, Math.ceil(total / historyPageSize));
+  if (historyCurrentPage > totalPages) historyCurrentPage = totalPages;
+  if (historyCurrentPage < 1) historyCurrentPage = 1;
+
+  const start = (historyCurrentPage - 1) * historyPageSize;
+  const pageRows = allFiltered.slice(start, start + historyPageSize);
+
+  pageRows.forEach((entry, localIdx) => {
+    const idx = start + localIdx; // index in reversed array
+    const tr = document.createElement('tr');
+    tr.dataset.search = `${entry.disease || ''} ${entry.notes || ''} ${(entry.symptoms || []).join(' ')} ${entry.savedAt || ''}`.toLowerCase();
+
+    const tdDate = document.createElement('td');
+    tdDate.style.padding = '12px';
+    tdDate.textContent = entry.savedAt || '';
+
+    const tdTitle = document.createElement('td');
+    tdTitle.style.padding = '12px';
+    tdTitle.textContent = entry.disease || '';
+
+    const tdSymptoms = document.createElement('td');
+    tdSymptoms.style.padding = '12px';
+    tdSymptoms.textContent = (entry.symptoms || []).join(', ');
+
+    const tdNotes = document.createElement('td');
+    tdNotes.style.padding = '12px';
+    tdNotes.textContent = entry.notes || '';
+
+    const tdActions = document.createElement('td');
+    tdActions.style.padding = '12px';
+    tdActions.style.textAlign = 'center';
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'text-button';
+    viewBtn.type = 'button';
+    viewBtn.textContent = 'Xem';
+    viewBtn.addEventListener('click', () => {
+      alert(`Chi tiết:\n${entry.disease}\n${(entry.symptoms||[]).join(', ')}\n${entry.notes || ''}`);
+    });
+    const delBtn = document.createElement('button');
+    delBtn.className = 'text-button';
+    delBtn.type = 'button';
+    delBtn.textContent = 'Xóa';
+    delBtn.addEventListener('click', () => {
+      if (confirm('Xác nhận xóa mục lịch sử này?')) {
+        // compute global index in savedResults (reversed earlier)
+        const globalIdx = savedResults.length - 1 - idx;
+        savedResults.splice(globalIdx, 1);
+        saveHistory();
+        renderSavedHistory();
+        renderRecentActivity();
+      }
+    });
+    tdActions.append(viewBtn, delBtn);
+
+    tr.append(tdDate, tdTitle, tdSymptoms, tdNotes, tdActions);
+    tbody.appendChild(tr);
+  });
+
+  // update pager UI
+  const pagerInfo = document.getElementById('history-pager-info');
+  const pagerPrev = document.getElementById('history-pager-prev');
+  const pagerNext = document.getElementById('history-pager-next');
+  if (pagerInfo) {
+    const from = total === 0 ? 0 : start + 1;
+    const to = Math.min(total, start + pageRows.length);
+    pagerInfo.textContent = `Hiển thị ${from}–${to} / ${total}`;
+  }
+  if (pagerPrev) pagerPrev.disabled = historyCurrentPage <= 1;
+  if (pagerNext) pagerNext.disabled = historyCurrentPage >= totalPages;
+
+  // set jump input value
+  const jumpInput = document.getElementById('history-jump-input');
+  if (jumpInput) jumpInput.value = historyCurrentPage;
+
+  // ensure pager controls wired once
+  attachHistoryPagerHandlers();
+}
+
+function attachHistoryPagerHandlers() {
+  const pagerPrev = document.getElementById('history-pager-prev');
+  const pagerNext = document.getElementById('history-pager-next');
+  const pageSizeSelect = document.getElementById('history-page-size');
+  if (pagerPrev && !pagerPrev._hasHandler) {
+    pagerPrev.addEventListener('click', () => { historyCurrentPage = Math.max(1, historyCurrentPage - 1); renderHistoryTable(); updateHistoryEmptyState(); });
+    pagerPrev._hasHandler = true;
+  }
+  if (pagerNext && !pagerNext._hasHandler) {
+    pagerNext.addEventListener('click', () => { historyCurrentPage = historyCurrentPage + 1; renderHistoryTable(); updateHistoryEmptyState(); });
+    pagerNext._hasHandler = true;
+  }
+  if (pageSizeSelect && !pageSizeSelect._hasHandler) {
+    pageSizeSelect.addEventListener('change', () => { historyPageSize = parseInt(pageSizeSelect.value, 10) || 10; historyCurrentPage = 1; renderHistoryTable(); updateHistoryEmptyState(); });
+    pageSizeSelect._hasHandler = true;
+  }
+  // Jump-to-page handlers
+  const jumpInputEl = document.getElementById('history-jump-input');
+  const jumpGo = document.getElementById('history-jump-go');
+  if (jumpGo && !jumpGo._hasHandler) {
+    jumpGo.addEventListener('click', () => {
+      const val = parseInt(jumpInputEl?.value, 10);
+      const total = getFilteredHistoryEntries().length;
+      const totalPages = Math.max(1, Math.ceil(total / historyPageSize));
+      const errorEl = document.getElementById('history-jump-error');
+      if (!Number.isFinite(val) || val < 1 || val > totalPages) {
+        if (errorEl) {
+          errorEl.textContent = `Nhập số trang hợp lệ: 1 - ${totalPages}`;
+          errorEl.style.display = 'inline';
+        } else {
+          alert(`Nhập số trang hợp lệ: 1 - ${totalPages}`);
+        }
+        if (jumpInputEl) jumpInputEl.focus();
+        return;
+      }
+      if (errorEl) { errorEl.textContent = ''; errorEl.style.display = 'none'; }
+      historyCurrentPage = val;
+      renderHistoryTable();
+      updateHistoryEmptyState();
+    });
+    jumpGo._hasHandler = true;
+  }
+  if (jumpInputEl && !jumpInputEl._hasHandler) {
+    jumpInputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('history-jump-go')?.click(); }});
+    jumpInputEl._hasHandler = true;
+  }
 }
 
 function updateHistoryEmptyState() {
@@ -667,17 +1119,23 @@ function updateHistoryEmptyState() {
     return;
   }
   const cards = historyList.querySelectorAll(".history-card");
-  const anyVisible = Array.from(cards).some((card) => !card.classList.contains("is-hidden"));
+  const visibleCard = Array.from(cards).some((card) => !card.classList.contains("is-hidden"));
+  const visibleTableRows = document.querySelectorAll("#history-table-tbody tr:not(.is-hidden)");
+  const anyVisible = visibleCard || visibleTableRows.length > 0;
   empty.classList.toggle("is-hidden", anyVisible);
   const title = empty.querySelector("h2");
   const desc = empty.querySelector("p");
   if (title && desc) {
-    if (cards.length === 0) {
+    if (cards.length === 0 && document.querySelectorAll('#history-table-tbody tr').length === 0) {
       title.textContent = "Chưa có lịch sử dự đoán";
       desc.textContent = "Các kết quả bạn lưu sẽ xuất hiện ở đây. Hãy thử tạo một dự đoán mới.";
-    } else {
+    } else if (!anyVisible) {
       title.textContent = "Không tìm thấy kết quả";
       desc.textContent = "Không có mục nào khớp với từ khóa tìm kiếm.";
+    } else {
+      // Có ít nhất một mục, giữ mặc định thông điệp
+      title.textContent = "Kết quả";
+      desc.textContent = "Hiển thị các mục lịch sử phù hợp.";
     }
   }
 }
@@ -725,6 +1183,10 @@ function setFormLoading(button, loading) {
   }
   button.disabled = loading;
   button.setAttribute("aria-busy", String(loading));
+  const icon = button.querySelector(".material-symbols-outlined");
+  if (icon) {
+    icon.style.opacity = loading ? "0.5" : "1";
+  }
 }
 
 function setConfidenceLevel(level) {
@@ -745,7 +1207,29 @@ function setConfidenceLevel(level) {
     tag.textContent = labels[level] || "";
   }
 }
+function renderDangerWarning(dangerWarning) {
+  if (!dangerWarning || !dangerWarning.has_danger) {
+    return;
+  }
 
+  const warningContainer = document.getElementById("warning-text");
+
+  if (!warningContainer) {
+    return;
+  }
+
+  const keywords = dangerWarning.danger_keywords || [];
+
+  warningContainer.innerHTML = `
+    <div class="danger-banner">
+      <h3>🚨 CẢNH BÁO Y KHOA KHẨN CẤP</h3>
+      <p>${dangerWarning.warning_message}</p>
+      <div class="danger-keywords">
+        ${keywords.map(x => `<span>${x}</span>`).join("")}
+      </div>
+    </div>
+  `;
+}
 function renderPrediction(result) {
   const isRuleBased = result.score_type === "rule";
   const confidence = result.confidence === null || result.confidence === undefined ? "0.0" : (result.confidence * 100).toFixed(1);
@@ -755,6 +1239,7 @@ function renderPrediction(result) {
   const scoreText = result.score_label || "Độ tin cậy";
 
   currentResult = result;
+  renderDangerWarning(result.danger_warning);
   renderCaseSummary(result);
   renderSuggestedSymptoms(result);
   if (scoreLabel) {
@@ -914,7 +1399,7 @@ async function loadSymptoms() {
       throw new Error("Không tải được danh sách triệu chứng.");
     }
     const data = await response.json();
-    symptoms = data.symptoms;
+    symptoms = Array.isArray(data.symptoms) ? data.symptoms : [];
     symptomsLoaded = true;
     renderSymptoms();
   } catch (error) {
@@ -1036,12 +1521,39 @@ navButtons.forEach((button) => {
       if (button.dataset.page === "about") {
           loadProfileData();
       }
+            if (button.dataset.page === "admin-feedback") {
+          loadRejectedFeedbacks();
+      }
   });
 });
 
 textarea.addEventListener("input", () => {
   updateCharCount();
   updatePredictButtonState();
+  scheduleCaseSymptomSuggestions();
+});
+
+textarea.addEventListener("keydown", (event) => {
+  if (!caseSymptomSuggestions.length || typingSuggestions?.classList.contains("is-hidden")) return;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    setActiveCaseSuggestionIndex(activeCaseSuggestionIndex + 1);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    setActiveCaseSuggestionIndex(activeCaseSuggestionIndex - 1);
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    acceptCaseSuggestion(activeCaseSuggestionIndex);
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    renderTypingSuggestions([]);
+  }
+});
+
+textarea.addEventListener("click", scheduleCaseSymptomSuggestions);
+textarea.addEventListener("scroll", positionTypingSuggestions);
+textarea.addEventListener("blur", () => {
+  window.setTimeout(() => renderTypingSuggestions([]), 100);
 });
 
 clearButton.addEventListener("click", () => {
@@ -1062,7 +1574,8 @@ exampleButton.addEventListener("click", () => {
   updateSelectedCount();
   updatePredictButtonState();
   setMessage("");
-  renderSymptoms("");
+  scheduleSymptomSuggestions("");
+  scheduleCaseSymptomSuggestions();
   textarea.focus();
 });
 
@@ -1087,16 +1600,23 @@ form.addEventListener("submit", async (event) => {
 });
 
 symptomSearch.addEventListener("input", (event) => {
-  renderSymptoms(event.target.value);
+  scheduleSymptomSuggestions(event.target.value);
 });
+
+let historyCurrentPage = 1;
+let historyPageSize = 10;
 
 historySearch.addEventListener("input", (event) => {
   const query = event.target.value.trim().toLowerCase();
 
   document.querySelectorAll(".history-card").forEach((card) => {
-    const haystack = card.dataset.search.toLowerCase();
+    const haystack = (card.dataset.search || '').toLowerCase();
     card.classList.toggle("is-hidden", query !== "" && !haystack.includes(query));
   });
+
+  // Reset to first page when searching
+  historyCurrentPage = 1;
+  renderHistoryTable();
   updateHistoryEmptyState();
 });
 
@@ -1107,6 +1627,192 @@ exportHistoryButton?.addEventListener("click", () => {
 downloadHistoryReportButton?.addEventListener("click", () => {
   void downloadPredictionHistoryReport();
 });
+
+// Thiết lập chuyển chế độ Thẻ / Bảng
+(function initHistoryViewToggle(){
+  const historyViewButtons = document.querySelectorAll('.view-toggle-btn');
+  const historyTableWrap = document.getElementById('history-table-wrap');
+  const historyGrid = document.getElementById('history-list');
+  if (!historyViewButtons || historyViewButtons.length === 0) return;
+  historyViewButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      historyViewButtons.forEach((b) => {
+        b.classList.toggle('is-active', b === btn);
+        b.setAttribute('aria-selected', String(b === btn));
+      });
+      const view = btn.dataset.historyView;
+      if (view === 'table') {
+        if (historyGrid) historyGrid.classList.add('is-hidden');
+        if (historyTableWrap) historyTableWrap.classList.remove('is-hidden');
+      } else {
+        if (historyGrid) historyGrid.classList.remove('is-hidden');
+        if (historyTableWrap) historyTableWrap.classList.add('is-hidden');
+      }
+    });
+  });
+})();
+
+// --- CSV EXPORT FOR HISTORY ---
+function getFilteredHistoryEntries() {
+  const query = (historySearch && historySearch.value ? historySearch.value.trim().toLowerCase() : '');
+  return savedResults.slice().reverse().filter((entry) => {
+    const hay = `${entry.disease || ''} ${entry.notes || ''} ${(entry.symptoms || []).join(' ') } ${entry.savedAt || ''}`.toLowerCase();
+    return query === '' || hay.includes(query);
+  });
+}
+
+function toCsvRow(fields, sep = ',') {
+  return fields
+    .map((f) => {
+      if (f === null || f === undefined) return '';
+      const s = String(f);
+      const needsQuote = s.includes('"') || s.includes('\n') || (sep && s.includes(sep));
+      if (needsQuote) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    })
+    .join(sep);
+}
+
+function exportHistoryCsv(selectedCols = ['date','disease','symptoms','notes','user','score','score_type'], exportAll = false, sep = ',') {
+  const rows = exportAll ? savedResults.slice().reverse() : getFilteredHistoryEntries();
+  if (!rows || rows.length === 0) {
+    alert('Không có mục lịch sử để xuất.');
+    return;
+  }
+
+  const colMap = {
+    date: 'Ngày',
+    disease: 'Bệnh/Nhóm thuốc',
+    symptoms: 'Triệu chứng',
+    notes: 'Ghi chú',
+    user: 'Người dùng',
+    score: 'Score',
+    score_type: 'Score type',
+  };
+
+  const header = selectedCols.map((c) => colMap[c] || c);
+  const lines = [toCsvRow(header, sep)];
+
+  rows.forEach((r) => {
+    const values = selectedCols.map((c) => {
+      switch (c) {
+        case 'date':
+          return r.savedAt || '';
+        case 'disease':
+          return r.disease || '';
+        case 'symptoms':
+          return (r.symptoms || []).join('; ');
+        case 'notes':
+          return r.notes || '';
+        case 'user':
+          return r.user || (currentUser ? (currentUser.email || currentUser.name) : 'guest') || '';
+        case 'score':
+          return r.score != null ? String(r.score) : (r._raw_confidence != null ? String(r._raw_confidence) : '');
+        case 'score_type':
+          return r.score_type || r._raw_score_type || '';
+        default:
+          return '';
+      }
+    });
+    lines.push(toCsvRow(values, sep));
+  });
+
+  const csv = '\uFEFF' + lines.join('\r\n'); // BOM for Excel
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `pharma_history_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function exportHistoryJson(selectedCols = ['date','disease','symptoms','notes','user','score','score_type'], exportAll = false) {
+  const rows = exportAll ? savedResults.slice().reverse() : getFilteredHistoryEntries();
+  if (!rows || rows.length === 0) {
+    alert('Không có mục lịch sử để xuất.');
+    return;
+  }
+  const items = rows.map((r) => {
+    const obj = {};
+    selectedCols.forEach((c) => {
+      switch (c) {
+        case 'date': obj['date'] = r.savedAt || ''; break;
+        case 'disease': obj['disease'] = r.disease || ''; break;
+        case 'symptoms': obj['symptoms'] = r.symptoms || []; break;
+        case 'notes': obj['notes'] = r.notes || ''; break;
+        case 'user': obj['user'] = r.user || (currentUser ? (currentUser.email || currentUser.name) : 'guest') || ''; break;
+        case 'score': obj['score'] = r.score != null ? r.score : (r._raw_confidence != null ? r._raw_confidence : null); break;
+        case 'score_type': obj['score_type'] = r.score_type || r._raw_score_type || null; break;
+        default: obj[c] = ''; break;
+      }
+    });
+    return obj;
+  });
+  const json = JSON.stringify(items, null, 2);
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `pharma_history_${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+const historyExportBtn = document.getElementById('history-export-button');
+if (historyExportBtn) {
+  const exportOptions = document.getElementById('history-export-options');
+  const setExportOptionsOpen = (isOpen) => {
+    if (!exportOptions) return;
+    exportOptions.classList.toggle('is-hidden', !isOpen);
+    exportOptions.setAttribute('aria-hidden', String(!isOpen));
+    historyExportBtn.setAttribute('aria-expanded', String(isOpen));
+  };
+
+  historyExportBtn.addEventListener('click', (e) => {
+    if (!exportOptions) return;
+    e.stopPropagation();
+    setExportOptionsOpen(exportOptions.classList.contains('is-hidden'));
+  });
+
+  exportOptions?.addEventListener('click', (event) => event.stopPropagation());
+  document.addEventListener('click', () => setExportOptionsOpen(false));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !exportOptions?.classList.contains('is-hidden')) {
+      setExportOptionsOpen(false);
+      historyExportBtn.focus();
+    }
+  });
+
+  const exportConfirm = document.getElementById('history-export-confirm');
+  const exportCancel = document.getElementById('history-export-cancel');
+  if (exportCancel) exportCancel.addEventListener('click', () => setExportOptionsOpen(false));
+  if (exportConfirm) exportConfirm.addEventListener('click', () => {
+    const selected = [];
+    if (document.getElementById('col-date')?.checked) selected.push('date');
+    if (document.getElementById('col-disease')?.checked) selected.push('disease');
+    if (document.getElementById('col-symptoms')?.checked) selected.push('symptoms');
+    if (document.getElementById('col-notes')?.checked) selected.push('notes');
+    if (document.getElementById('col-user')?.checked) selected.push('user');
+    if (document.getElementById('col-score')?.checked) selected.push('score');
+    if (document.getElementById('col-score-type')?.checked) selected.push('score_type');
+    const exportAll = !!document.getElementById('export-all')?.checked;
+    const format = (document.getElementById('export-format')?.value || 'csv').toLowerCase();
+    const sep = (document.getElementById('export-sep')?.value) || ',';
+    if (format === 'json') {
+      exportHistoryJson(selected, exportAll);
+    } else {
+      exportHistoryCsv(selected, exportAll, sep);
+    }
+    setExportOptionsOpen(false);
+  });
+}
 
 saveResultButton.addEventListener("click", () => {
   // Kết quả đã được backend tự lưu ngay sau /api/predict; chỉ cần tải lại từ DB.
@@ -1230,6 +1936,127 @@ function escapeHtml(value = "") {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+// ============================================================
+// SCRUM-78 / Task 47
+// UI Admin xem danh sách phản hồi "Không đồng ý"
+// ============================================================
+
+let rejectedFeedbacks = [];
+
+async function loadRejectedFeedbacks() {
+  const tbody = document.getElementById("feedback-tbody");
+  const empty = document.getElementById("feedback-empty");
+
+  if (!tbody) return;
+
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="5" style="padding:20px; text-align:center; color:var(--text-muted);">
+        Đang tải danh sách phản hồi...
+      </td>
+    </tr>
+  `;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/admin/rejected-feedbacks`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.message || "Không tải được phản hồi.");
+    }
+
+    rejectedFeedbacks = data.feedbacks || [];
+    renderRejectedFeedbacks();
+
+    if (empty) {
+      empty.classList.toggle("is-hidden", rejectedFeedbacks.length > 0);
+    }
+  } catch (error) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" style="padding:20px; text-align:center; color:#ef4444;">
+          ${escapeHtml(error.message || "Lỗi tải phản hồi.")}
+        </td>
+      </tr>
+    `;
+  }
+}
+
+function renderRejectedFeedbacks() {
+  const tbody = document.getElementById("feedback-tbody");
+  const searchInput = document.getElementById("feedback-search");
+
+  if (!tbody) return;
+
+  const keyword = (searchInput?.value || "").trim().toLowerCase();
+
+  const filtered = rejectedFeedbacks.filter((item) => {
+    const text = `${item.trieu_chung_nhap || ""} ${item.ghi_chu || ""}`.toLowerCase();
+    return !keyword || text.includes(keyword);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" style="padding:20px; text-align:center; color:var(--text-muted);">
+          Không có phản hồi phù hợp.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = "";
+
+  filtered.forEach((item) => {
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+      <td style="padding:12px; border-bottom:1px solid var(--border); color:var(--text-muted);">
+        ${item.id}
+      </td>
+      <td style="padding:12px; border-bottom:1px solid var(--border); font-weight:600;">
+        ${escapeHtml(item.trieu_chung_nhap || "Không rõ")}
+      </td>
+      <td style="padding:12px; border-bottom:1px solid var(--border); color:var(--text-muted);">
+        ${escapeHtml(item.ghi_chu || "Không có ghi chú")}
+      </td>
+      <td style="padding:12px; border-bottom:1px solid var(--border); color:var(--text-muted);">
+        ${item.created_at ? new Date(item.created_at).toLocaleString("vi-VN") : "Không rõ"}
+      </td>
+      <td style="padding:12px; border-bottom:1px solid var(--border); text-align:center;">
+        <button class="text-button" type="button" onclick="markFeedbackReviewed(${item.id})" style="color:#22c55e; font-weight:700;">
+          <span class="material-symbols-outlined" style="font-size:18px;">done</span>
+          Đã xem xét
+        </button>
+      </td>
+    `;
+
+    tbody.appendChild(row);
+  });
+}
+
+async function markFeedbackReviewed(id) {
+  if (!confirm("Đánh dấu phản hồi này là đã xem xét?")) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/admin/rejected-feedbacks/${id}/reviewed`, {
+      method: "POST"
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.message || "Không cập nhật được phản hồi.");
+    }
+
+    await loadRejectedFeedbacks();
+  } catch (error) {
+    alert(error.message || "Lỗi cập nhật phản hồi.");
+  }
+}
+
+window.markFeedbackReviewed = markFeedbackReviewed;
 
 function setDrugGroupFormMode(mode = "add", group = null) {
   editingDrugGroupId = mode === "edit" && group ? group.id : null;
@@ -1371,7 +2198,100 @@ if (drugGroupForm) {
     }
   });
 }
+document.getElementById("btn-reload-feedback")
+  ?.addEventListener("click", loadRejectedFeedbacks);
 
+document.getElementById("feedback-search")
+  ?.addEventListener("input", renderRejectedFeedbacks);
+// ============================================================
+// SCRUM-75 / SCRUM-76
+// Bác sĩ đánh giá kết quả dự đoán: Đồng ý / Không đồng ý
+// ============================================================
+
+const btnEvalApprove = document.getElementById("btn-eval-approve");
+const btnEvalReject = document.getElementById("btn-eval-reject");
+const btnEvalCancel = document.getElementById("btn-eval-cancel");
+const btnEvalSubmit = document.getElementById("btn-eval-submit");
+const evaluationNoteBox = document.getElementById("evaluation-note-box");
+const evaluationNote = document.getElementById("evaluation-note");
+const evaluationMessage = document.getElementById("evaluation-message");
+
+function setEvaluationMessage(message, isError = false) {
+  if (!evaluationMessage) return;
+  evaluationMessage.textContent = message;
+  evaluationMessage.classList.toggle("is-error", isError);
+}
+
+async function sendEvaluation(status, note = "") {
+  if (!currentResult) {
+    setEvaluationMessage("Chưa có kết quả dự đoán để đánh giá.", true);
+    return;
+  }
+
+  const symptomsText =
+    textarea?.value?.trim() ||
+    (currentResult.matched_symptoms_vi || []).join(", ") ||
+    "Không rõ";
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/evaluation`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        trieu_chung_nhap: symptomsText,
+        trang_thai: status,
+        ghi_chu: note
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Không gửi được đánh giá.");
+    }
+
+    setEvaluationMessage("Đã gửi đánh giá thành công.", false);
+
+    if (evaluationNoteBox) {
+      evaluationNoteBox.classList.add("is-hidden");
+    }
+
+    if (evaluationNote) {
+      evaluationNote.value = "";
+    }
+  } catch (error) {
+    setEvaluationMessage(error.message || "Lỗi gửi đánh giá.", true);
+  }
+}
+
+btnEvalApprove?.addEventListener("click", () => {
+  sendEvaluation("APPROVE", "Bác sĩ đồng ý với kết quả dự đoán.");
+});
+
+btnEvalReject?.addEventListener("click", () => {
+  setEvaluationMessage("");
+  evaluationNoteBox?.classList.remove("is-hidden");
+  evaluationNote?.focus();
+});
+
+btnEvalCancel?.addEventListener("click", () => {
+  evaluationNoteBox?.classList.add("is-hidden");
+  if (evaluationNote) evaluationNote.value = "";
+  setEvaluationMessage("");
+});
+
+btnEvalSubmit?.addEventListener("click", () => {
+  const note = evaluationNote?.value?.trim() || "";
+
+  if (!note) {
+    setEvaluationMessage("Vui lòng nhập lý do không đồng ý.", true);
+    return;
+  }
+
+  sendEvaluation("REJECT", note);
+});
 initTheme();
 updateCharCount();
 updateSelectedCount();
@@ -1385,6 +2305,295 @@ loadDrugGroups();
 // ============================================================
 
 const API = "http://127.0.0.1:5000/api";
+
+
+// ============================================================
+// MODULE: QUẢN LÝ TỪ ĐIỂN TRIỆU CHỨNG (Admin)
+// - CRUD đơn giản, tìm kiếm, import CSV, export CSV
+// - Endpoints dự kiến: GET/POST/PUT/DELETE /api/symptoms
+// ============================================================
+
+(async function () {
+  // State
+  let _dictList = [];
+  let _editDictId = null;
+
+  // DOM refs
+  const dictTbody = document.getElementById("dict-tbody");
+  const dictEmpty = document.getElementById("dict-empty");
+  const dictSearch = document.getElementById("dict-search");
+  const btnAddDict = document.getElementById("btn-add-dict");
+  const btnImportDict = document.getElementById("btn-import-dict");
+  const dictFileInput = document.getElementById("dict-file-input");
+  const btnExportDict = document.getElementById("btn-export-dict");
+
+  // Create modal elements (lightweight, reuse modal style)
+  const modalId = 'modal-dict';
+  if (!document.getElementById(modalId)) {
+    const modalHtml = `
+    <div class="modal-overlay is-hidden" id="${modalId}" role="dialog" aria-modal="true" aria-labelledby="modal-dict-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 id="modal-dict-title">Thêm mục từ điển</h2>
+          <button class="icon-button" type="button" id="modal-dict-close" aria-label="Đóng"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
+        </div>
+        <form id="modal-dict-form" class="modal-body" novalidate>
+          <input type="hidden" id="modal-dict-id" />
+          <div class="form-row">
+            <div class="form-field"><label for="dict-vi">Triệu chứng (Tiếng Việt) *</label><input id="dict-vi" type="text" required placeholder="ví dụ: sốt"/></div>
+            <div class="form-field"><label for="dict-en">Label (Tiếng Anh) *</label><input id="dict-en" type="text" required placeholder="ví dụ: fever"/></div>
+          </div>
+          <div class="form-field"><label for="dict-note">Ghi chú</label><input id="dict-note" type="text" placeholder="Ghi chú/alias"/></div>
+          <p class="form-message" id="modal-dict-msg" role="status"></p>
+          <div class="form-actions">
+            <button class="primary-button" type="submit" id="modal-dict-submit"><span class="material-symbols-outlined">save</span> Lưu</button>
+            <button class="secondary-button" type="button" id="modal-dict-cancel"><span class="material-symbols-outlined">close</span> Hủy</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  }
+
+  const modalOverlay = document.getElementById(modalId);
+  const modalForm = document.getElementById('modal-dict-form');
+  const modalMsg = document.getElementById('modal-dict-msg');
+  const modalSubmit = document.getElementById('modal-dict-submit');
+  const inpId = document.getElementById('modal-dict-id');
+  const inpVi = document.getElementById('dict-vi');
+  const inpEn = document.getElementById('dict-en');
+  const inpNote = document.getElementById('dict-note');
+  const btnClose = document.getElementById('modal-dict-close');
+  const btnCancel = document.getElementById('modal-dict-cancel');
+
+  function setModalDictMsg(m, err = false) { modalMsg.textContent = m; modalMsg.className = 'form-message' + (err ? ' is-error' : ''); }
+
+  // Fetch list
+  async function loadDict() {
+    try {
+      const res = await fetch(`${API}/symptoms`);
+      if (!res.ok) throw new Error('Không tải được từ điển.');
+      const data = await res.json();
+      _dictList = Array.isArray(data) ? data : (data.symptoms || []);
+    } catch (e) {
+      _dictList = [];
+      console.error(e);
+    }
+    renderDictTable(dictSearch?.value || '');
+  }
+
+  function renderDictTable(keyword = '') {
+    const kw = (keyword || '').trim().toLowerCase();
+    dictTbody.innerHTML = '';
+    const filtered = _dictList.filter(item => {
+      if (!kw) return true;
+      return (item.label_vi || '').toLowerCase().includes(kw) || (item.label_en || '').toLowerCase().includes(kw) || (item.note || '').toLowerCase().includes(kw);
+    });
+    if (filtered.length === 0) {
+      dictEmpty.classList.remove('is-hidden');
+      dictTbody.innerHTML = '';
+      return;
+    }
+    dictEmpty.classList.add('is-hidden');
+    filtered.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="padding:10px;">${item.id ?? ''}</td>
+        <td style="padding:10px;">${escapeHtml(item.label_vi || item.label || '')}</td>
+        <td style="padding:10px;">${escapeHtml(item.label_en || '')}</td>
+        <td style="padding:10px;">${escapeHtml(item.note || '')}</td>
+        <td style="text-align:center; padding:10px; white-space:nowrap;">
+          <button class="text-button" data-action="edit" data-id="${item.id}" style="margin-right:8px;"><span class="material-symbols-outlined">edit</span> Sửa</button>
+          <button class="text-button" data-action="delete" data-id="${item.id}"><span class="material-symbols-outlined">delete</span> Xóa</button>
+        </td>`;
+      dictTbody.appendChild(tr);
+    });
+  }
+
+  function openAddDict() {
+    _editDictId = null;
+    inpId.value = '';
+    inpVi.value = '';
+    inpEn.value = '';
+    inpNote.value = '';
+    setModalDictMsg('');
+    document.getElementById('modal-dict-title').textContent = 'Thêm mục từ điển';
+    modalSubmit.innerHTML = '<span class="material-symbols-outlined">add</span> Thêm';
+    modalOverlay.classList.remove('is-hidden');
+    inpVi.focus();
+  }
+
+  function openEditDict(id) {
+    const item = _dictList.find(x => String(x.id) === String(id));
+    if (!item) return alert('Không tìm thấy mục.');
+    _editDictId = item.id;
+    inpId.value = item.id;
+    inpVi.value = item.label_vi || item.label || '';
+    inpEn.value = item.label_en || '';
+    inpNote.value = item.note || '';
+    setModalDictMsg('');
+    document.getElementById('modal-dict-title').textContent = 'Sửa mục từ điển';
+    modalSubmit.innerHTML = '<span class="material-symbols-outlined">save</span> Lưu';
+    modalOverlay.classList.remove('is-hidden');
+    inpVi.focus();
+  }
+
+  function closeModalDict() { modalOverlay.classList.add('is-hidden'); setModalDictMsg(''); _editDictId = null; }
+
+  modalForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setModalDictMsg('');
+    const vi = inpVi.value.trim();
+    const en = inpEn.value.trim();
+    if (!vi || !en) { setModalDictMsg('Vui lòng nhập cả Tiếng Việt và Label Tiếng Anh.', true); return; }
+    const payload = { label_vi: vi, label_en: en, note: inpNote.value.trim() || null };
+    try {
+      const method = _editDictId ? 'PUT' : 'POST';
+      const url = _editDictId ? `${API}/symptoms/${_editDictId}` : `${API}/symptoms`;
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setModalDictMsg(data.error || 'Lỗi lưu mục', true); return; }
+      closeModalDict();
+      await loadDict();
+    } catch (err) {
+      setModalDictMsg('Không kết nối được máy chủ.', true);
+    }
+  });
+
+  btnClose?.addEventListener('click', closeModalDict);
+  btnCancel?.addEventListener('click', closeModalDict);
+  modalOverlay?.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModalDict(); });
+
+  // actions in table
+  dictTbody?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const act = btn.dataset.action;
+    const id = btn.dataset.id;
+    if (act === 'edit') openEditDict(id);
+    if (act === 'delete') confirmDeleteDict(id);
+  });
+
+
+// =========================================================
+// TASK 65 & 66: XỬ LÝ XÓA LỊCH SỬ DỰ ĐOÁN VỚI MODAL HIỆN ĐẠI
+// =========================================================
+let currentDeleteId = null;
+
+// 1. Hàm này gắn vào nút "Xóa" ngoài giao diện lịch sử để mở Modal
+function confirmDelete(id) {
+    currentDeleteId = id; 
+    const modal = document.getElementById('delete-confirm-modal');
+    if (modal) {
+        modal.classList.remove('is-hidden'); 
+    }
+}
+
+// 2. Hàm này dùng để đóng Modal khi bấm Hủy
+function closeDeleteModal() {
+    currentDeleteId = null;
+    const modal = document.getElementById('delete-confirm-modal');
+    if (modal) {
+        modal.classList.add('is-hidden'); 
+    }
+}
+
+// 3. Hàm thực thi xóa khi bấm nút "Xác nhận xóa" bên trong Modal (Viết theo đúng phong cách của nhóm bạn)
+async function executeDeleteHistory() {
+    if (!currentDeleteId) return;
+    try {
+        // Gọi tới API của Flask Backend (Cổng 5000)
+        const res = await fetch(`http://127.0.0.1:5000/api/evaluation/${currentDeleteId}`, { method: 'DELETE' });
+        
+        if (!res.ok) { 
+            const d = await res.json().catch(() => ({})); 
+            alert(d.message || 'Xóa thất bại'); 
+            closeDeleteModal();
+            return; 
+        }
+        
+        alert('Xóa bản ghi lịch sử thành công!');
+        
+        // Xóa dòng đó trên giao diện mà không cần reload
+        const element = document.getElementById(`record-${currentDeleteId}`);
+        if (element) {
+            element.remove();
+        } else {
+            window.location.reload(); // Dự phòng nếu không tìm thấy ID dòng
+        }
+    } catch (e) { 
+        alert('Không kết nối máy chủ Backend.'); 
+    } finally {
+        closeDeleteModal(); // Luôn luôn đóng modal sau khi chạy xong
+    }
+}
+
+
+  async function confirmDeleteDict(id) {
+    if (!confirm('Xóa mục này khỏi từ điển?')) return;
+    try {
+      const res = await fetch(`${API}/symptoms/${id}`, { method: 'DELETE' });
+      if (!res.ok) { const d = await res.json().catch(()=>({})); alert(d.error || 'Xóa thất bại'); return; }
+      await loadDict();
+    } catch (e) { alert('Không kết nối máy chủ.'); }
+  }
+
+  // search
+  dictSearch?.addEventListener('input', (e) => renderDictTable(e.target.value));
+
+  // add
+  btnAddDict?.addEventListener('click', openAddDict);
+
+  // import CSV
+  btnImportDict?.addEventListener('click', () => dictFileInput.click());
+  dictFileInput?.addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try {
+      const text = await f.text();
+      const parsed = parseCSV(text);
+      // expect columns like label_vi,label_en,note
+      const header = parsed.header.map(h => h.toLowerCase());
+      const viIdx = header.findIndex(h => h.includes('vi') || h.includes('label_vi') || h.includes('tieng_viet') || h.includes('vietnam'));
+      const enIdx = header.findIndex(h => h.includes('en') || h.includes('label_en') || h.includes('label') || h.includes('english'));
+      if (viIdx === -1 || enIdx === -1) {
+        alert('CSV phải có cột chứa Tiếng Việt và Label Tiếng Anh (ví dụ header: label_vi,label_en).');
+        return;
+      }
+      let added = 0, failed = 0;
+      for (let i=0;i<parsed.data.length;i++){
+        const row = parsed.data[i];
+        const vi = row[header[viIdx]]?.trim() || '';
+        const en = row[header[enIdx]]?.trim() || '';
+        const note = (header.includes('note') ? (row['note'] || '') : (row[header.find(h=>h.includes('note'))]||''));
+        if (!vi||!en){ failed++; continue; }
+        try {
+          const res = await fetch(`${API}/symptoms`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label_vi:vi, label_en:en, note: note || null }) });
+          if (res.ok) added++; else failed++;
+        } catch { failed++; }
+      }
+      alert(`Nhập xong. Thêm: ${added}, Lỗi: ${failed}`);
+      await loadDict();
+    } catch (err) { alert('Lỗi đọc file CSV'); }
+  });
+
+  // export CSV
+  btnExportDict?.addEventListener('click', () => {
+    const rows = [ ['id','label_vi','label_en','note'] ];
+    _dictList.forEach(r => rows.push([r.id, r.label_vi||r.label||'', r.label_en||'', r.note||'']));
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'dictionary_export.csv'; a.click(); URL.revokeObjectURL(url);
+  });
+
+  // initial load when page is shown
+  const origShow = window.showPage;
+  window.showPage = function(pageName){ origShow(pageName); if (pageName === 'admin-dictionary') loadDict(); };
+
+  // expose for debugging
+  window._dictReload = loadDict;
+})();
 
 // ── State ──────────────────────────────────────────────────
 let _thuocList    = [];   // cache danh sách thuốc
@@ -1701,4 +2910,767 @@ modalThuoc?.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !modalThuoc.classList.contains("is-hidden"))
     closeThuocModal();
+});
+
+// ── Hook vào showPage để load dữ liệu khi vào trang ───────
+const _origShowPage = showPage;
+window.showPage = function(pageName) {
+  _origShowPage(pageName);
+  if (pageName === "admin-thuoc") {
+    loadNhomThuocOptions().then(reloadThuoc);
+  }
+};
+
+// ════════════════════════════════════════════════════════════
+// ── DRAG & DROP FILE UPLOAD COMPONENT ──────────────────────
+// ════════════════════════════════════════════════════════════
+
+const uploadZone = document.getElementById("file-upload-zone");
+const fileInput = document.getElementById("file-upload-input");
+const fileUploadBrowse = document.getElementById("file-upload-browse");
+const btnToggleUpload = document.getElementById("btn-toggle-upload");
+
+if (uploadZone && fileInput && btnToggleUpload) {
+  // Toggle upload zone visibility
+  btnToggleUpload.addEventListener("click", () => {
+    const isVisible = uploadZone.style.display !== "none";
+    uploadZone.style.display = isVisible ? "none" : "block";
+    if (!isVisible) {
+      fileInput.value = "";
+      uploadZone.querySelector(".upload-progress").style.display = "none";
+      uploadZone.querySelector(".upload-result").style.display = "none";
+    }
+  });
+
+  // Browse button click
+  fileUploadBrowse?.addEventListener("click", (e) => {
+    e.preventDefault();
+    fileInput.click();
+  });
+
+  // File input change
+  fileInput.addEventListener("change", (e) => {
+    const files = e.target.files;
+    if (files.length > 0) {
+      handleFileUpload(files[0]);
+    }
+  });
+
+  // Drag and drop events
+  uploadZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadZone.style.borderColor = "var(--primary)";
+    uploadZone.style.background = "rgba(var(--primary-rgb), 0.05)";
+  });
+
+  uploadZone.addEventListener("dragleave", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadZone.style.borderColor = "var(--outline)";
+    uploadZone.style.background = "var(--surface-low)";
+  });
+
+  uploadZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadZone.style.borderColor = "var(--outline)";
+    uploadZone.style.background = "var(--surface-low)";
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileUpload(files[0]);
+    }
+  });
+
+  // Click on zone to select file
+  uploadZone.addEventListener("click", (e) => {
+    if (e.target.id !== "file-upload-browse") {
+      fileInput.click();
+    }
+  });
+}
+
+// Parse CSV data
+function parseCSV(text) {
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l);
+  const header = lines[0].split(",").map(h => h.trim().toLowerCase());
+  
+  const data = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    if (values.length < 2) continue; // Skip empty lines
+    
+    const row = {};
+    header.forEach((col, idx) => {
+      row[col] = values[idx] ? values[idx].trim() : "";
+    });
+    data.push(row);
+  }
+  return { header, data };
+}
+
+// Parse CSV line handling quoted values
+function parseCSVLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+    
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+// Parse XLSX (simplified - requires reading file)
+async function parseXLSX(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const sheet = XLSX.read(data, { type: "array" });
+        const firstSheet = sheet.Sheets[sheet.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+        
+        if (rows.length === 0) {
+          resolve({ header: [], data: [] });
+          return;
+        }
+        
+        const header = Object.keys(rows[0]).map(k => k.toLowerCase());
+        resolve({ header, data: rows });
+      } catch (err) {
+        console.error("XLSX parsing error:", err);
+        resolve({ header: [], data: [] });
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Map column names flexibly
+function mapColumnName(columnName, possibleNames) {
+  const normalized = columnName.toLowerCase().trim();
+  for (const name of possibleNames) {
+    if (normalized.includes(name.toLowerCase()) || name.toLowerCase().includes(normalized)) {
+      return true;
+    }
+  }
+  return normalized.length > 0 && possibleNames.some(n => n.length > 0);
+}
+
+// Main file upload handler
+async function handleFileUpload(file) {
+  const uploadProgress = uploadZone.querySelector(".upload-progress");
+  const uploadResult = uploadZone.querySelector(".upload-result");
+  const uploadStatus = document.getElementById("upload-status");
+  const uploadCount = document.getElementById("upload-count");
+  const uploadResultText = document.getElementById("upload-result-text");
+  const progressBar = document.getElementById("upload-progress-bar");
+
+  uploadProgress.style.display = "block";
+  uploadResult.style.display = "none";
+  progressBar.style.width = "0%";
+
+  const fileName = file.name.toLowerCase();
+  let parsedData;
+
+  try {
+    if (fileName.endsWith(".csv")) {
+      uploadStatus.textContent = "Đang đọc file CSV...";
+      const text = await file.text();
+      parsedData = parseCSV(text);
+    } else if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+      uploadStatus.textContent = "Đang đọc file Excel...";
+      
+      // Load XLSX library if not available
+      if (typeof XLSX === "undefined") {
+        const script = document.createElement("script");
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js";
+        document.head.appendChild(script);
+        
+        await new Promise(resolve => {
+          script.onload = resolve;
+        });
+      }
+      
+      parsedData = await parseXLSX(file);
+    } else {
+      throw new Error("Định dạng file không hỗ trợ. Vui lòng sử dụng CSV hoặc XLSX.");
+    }
+
+    if (!parsedData || parsedData.data.length === 0) {
+      throw new Error("File không chứa dữ liệu hoặc định dạng không đúng.");
+    }
+
+    uploadStatus.textContent = `Đang nhập ${parsedData.data.length} hàng...`;
+    const totalItems = parsedData.data.length;
+
+    // Map columns
+    const header = parsedData.header || Object.keys(parsedData.data[0] || {});
+    const colMap = {
+      ten: header.find(h => h.includes("ten") || h.includes("name") || h === "tên"),
+      hoatChat: header.find(h => h.includes("hoat") || h.includes("active") || h.includes("substance")),
+      hamLuong: header.find(h => h.includes("ham") || h.includes("strength") || h.includes("dose")),
+      dangBaoChe: header.find(h => h.includes("dang") || h.includes("form")),
+      nhom: header.find(h => h.includes("nhom") || h.includes("group")),
+      gia: header.find(h => h.includes("gia") || h.includes("price")),
+      donVi: header.find(h => h.includes("don") || h.includes("unit")),
+      hangSx: header.find(h => h.includes("hang") || h.includes("manufacturer")),
+      nuocSx: header.find(h => h.includes("nuoc") || h.includes("country")),
+      soDk: header.find(h => h.includes("so") || h.includes("registration")),
+      moTa: header.find(h => h.includes("mo") || h.includes("description"))
+    };
+
+    // Check required columns
+    if (!colMap.ten || !colMap.nhom) {
+      throw new Error("File phải chứa cột 'Tên thuốc' (name) và 'Nhóm thuốc' (group). Kiểm tra tiêu đề cột.");
+    }
+
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    // Fetch nhom mapping
+    const nhomsResp = await fetch(`${API_BASE_URL}/api/nhom-thuoc`);
+    const nhomsList = (await nhomsResp.json()) || [];
+    const nhomMap = {};
+    nhomsList.forEach(n => {
+      nhomMap[n.ten.toLowerCase()] = n.id;
+    });
+
+    // Process each row
+    for (let i = 0; i < totalItems; i++) {
+      try {
+        const row = parsedData.data[i];
+        const ten = row[colMap.ten]?.trim();
+        const nhomName = row[colMap.nhom]?.trim();
+
+        if (!ten || !nhomName) {
+          errorCount++;
+          errors.push(`Hàng ${i + 2}: Thiếu tên thuốc hoặc nhóm thuốc`);
+          continue;
+        }
+
+        const nhomId = nhomMap[nhomName.toLowerCase()];
+        if (!nhomId) {
+          errorCount++;
+          errors.push(`Hàng ${i + 2}: Nhóm thuốc "${nhomName}" không tồn tại`);
+          continue;
+        }
+
+        const thuocData = {
+          ten: ten,
+          nhom_id: nhomId,
+          hoat_chat: row[colMap.hoatChat]?.trim() || "",
+          ham_luong: row[colMap.hamLuong]?.trim() || "",
+          dang_bao_che: row[colMap.dangBaoChe]?.trim() || "",
+          don_vi: row[colMap.donVi]?.trim() || "",
+          hang_sx: row[colMap.hangSx]?.trim() || "",
+          nuoc_sx: row[colMap.nuocSx]?.trim() || "",
+          so_dk: row[colMap.soDk]?.trim() || "",
+          gia: parseInt(row[colMap.gia]) || 0,
+          mo_ta: row[colMap.moTa]?.trim() || ""
+        };
+
+        // Send to API
+        const response = await fetch(`${API_BASE_URL}/api/thuoc`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${authToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(thuocData)
+        });
+
+        if (response.ok) {
+          successCount++;
+        } else {
+          errorCount++;
+          const errText = await response.text();
+          errors.push(`Hàng ${i + 2}: ${errText || "Lỗi thêm thuốc"}`);
+        }
+      } catch (err) {
+        errorCount++;
+        errors.push(`Hàng ${i + 2}: ${err.message}`);
+      }
+
+      // Update progress
+      const progress = ((i + 1) / totalItems) * 100;
+      progressBar.style.width = progress + "%";
+      uploadCount.textContent = `${successCount} thành công / ${i + 1} hàng`;
+    }
+
+    // Show result
+    uploadProgress.style.display = "none";
+    uploadResult.style.display = "block";
+    
+    let resultHTML = `<strong>✅ Nhập file thành công!</strong><br>Thêm ${successCount} thuốc`;
+    if (errorCount > 0) {
+      resultHTML += `<br>❌ Lỗi: ${errorCount} hàng`;
+      if (errors.length > 0 && errors.length <= 5) {
+        resultHTML += "<br><small>" + errors.join("<br>") + "</small>";
+      }
+    }
+    uploadResultText.innerHTML = resultHTML;
+
+    // Reload table
+    setTimeout(() => {
+      reloadThuoc();
+    }, 1000);
+
+  } catch (error) {
+    uploadProgress.style.display = "none";
+    uploadResult.style.display = "block";
+    uploadResult.style.background = "rgba(var(--error-rgb, 220, 38, 38), 0.1)";
+    uploadResultText.innerHTML = `<strong>❌ Lỗi:</strong> ${error.message}`;
+  }
+}
+function renderTop3DrugGroups(predictions = [], matchedSymptoms = []) {
+    const resultArea = document.getElementById("prediction-result");
+
+    if (!resultArea) {
+        console.warn("Không tìm thấy #prediction-result");
+        return;
+    }
+
+    const top3 = predictions.slice(0, 3);
+
+    const top3Html = top3.map((item, index) => {
+        const groupName =
+            item.group ||
+            item.group_name ||
+            item.ten_nhom ||
+            item.label ||
+            "Nhóm thuốc không xác định";
+
+        const score =
+            item.score ??
+            item.confidence ??
+            item.probability ??
+            0;
+
+        const percent = Number(score).toFixed(1);
+
+        return `
+            <div class="top-drug-item">
+                <div class="top-drug-header">
+                    <span class="top-drug-rank">Top ${index + 1}</span>
+                    <strong>${groupName}</strong>
+                    <span>${percent}%</span>
+                </div>
+
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${percent}%"></div>
+                </div>
+            </div>
+        `;
+    }).join("");
+
+    const symptomsHtml = matchedSymptoms.length > 0
+        ? matchedSymptoms.map(symptom => `<span class="symptom-chip">${symptom}</span>`).join("")
+        : `<span class="text-muted">Chưa có triệu chứng khớp.</span>`;
+
+    resultArea.innerHTML += `
+        <div class="result-card mt-3">
+            <h3>Top 3 nhóm thuốc gợi ý</h3>
+            ${top3Html || "<p>Chưa có kết quả dự đoán.</p>"}
+        </div>
+
+        <div class="result-card mt-3">
+            <h3>Triệu chứng đã khớp</h3>
+            <div class="symptom-chip-list">
+                ${symptomsHtml}
+            </div>
+        </div>
+    `;
+}
+
+
+
+/// ==========================================
+// ĐOẠN MÃ MỚI SỬ DỤNG FETCH() ĐỂ GỌI API (TASK 45)
+// ==========================================
+
+// 1. Hàm xử lý khi bấm nút "Đồng ý" -> Gửi trạng thái APPROVE về Backend
+function handleApprove() {
+    // Lấy tên triệu chứng hiện tại từ giao diện (ví dụ lấy từ thẻ h1 hiển thị kết quả)
+    const symptomName = document.getElementById('result-title')?.innerText || "Triệu chứng ẩn danh";
+
+    fetch('http://127.0.0.1:5000/api/evaluation', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            trieu_chung_nhap: symptomName,
+            trang_thai: 'APPROVE',
+            ghi_chu: ''
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert("Cảm ơn bác sĩ đã xác nhận kết quả chính xác!");
+            const btn = document.getElementById('btnApprove');
+            if (btn) {
+                btn.style.background = "#059669";
+                btn.style.color = "#ffffff";
+                btn.disabled = true;
+                btn.innerText = "Đã đồng ý";
+            }
+        }
+    })
+    .catch(err => console.error("Lỗi gửi đánh giá:", err));
+}
+
+// 2. Hàm xử lý khi viết ghi chú và bấm "Gửi đánh giá" -> Gửi trạng thái REJECT kèm lời nhắn
+function submitRejectFeedback() {
+    const notes = document.getElementById('feedbackNotes').value.trim();
+    const symptomName = document.getElementById('result-title')?.innerText || "Triệu chứng ẩn danh";
+
+    if (!notes) {
+        alert("Vui lòng nhập lý do hoặc ghi chú trước khi gửi!");
+        return;
+    }
+
+    fetch('http://127.0.0.1:5000/api/evaluation', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            trieu_chung_nhap: symptomName,
+            trang_thai: 'REJECT',
+            ghi_chu: notes
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert("Hệ thống đã ghi nhận phản hồi đóng góp của bạn!");
+            
+            // Xóa nội dung trong ô nhập và đóng Modal ẩn đi
+            document.getElementById('feedbackNotes').value = '';
+            const modalEl = document.getElementById('feedbackModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) {
+                modal.hide();
+            }
+        }
+    })
+    .catch(err => console.error("Lỗi gửi phản hồi:", err));
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// FEEDBACK STATISTICS (DASHBOARD)
+// ────────────────────────────────────────────────────────────────────────────
+
+let feedbackChartInstance = null;
+
+// Register custom plugin for center label in doughnut chart
+const centerLabelPlugin = {
+    id: 'centerLabel',
+    afterDraw(chart) {
+        const {width, height} = chart;
+        const ctx = chart.ctx;
+        
+        // Calculate font size responsively
+        const fontSize = Math.min(width, height) / 8;
+        const smallFontSize = fontSize / 1.5;
+        
+        // Get chart data
+        const data = chart.data.datasets[0].data;
+        const total = data.reduce((a, b) => a + b, 0);
+        
+        // Draw text
+        ctx.save();
+        ctx.font = `bold ${fontSize}px Inter, system-ui`;
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#000000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Main text
+        ctx.fillText(total, width / 2, height / 2 - fontSize / 4);
+        
+        // Label text - "Tổng đánh giá"
+        ctx.font = `500 ${smallFontSize}px Inter, system-ui`;
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#666666';
+        ctx.fillText('Tổng đánh giá', width / 2, height / 2 + smallFontSize * 0.8);
+        
+        ctx.restore();
+    }
+};
+
+// Register the plugin
+if (window.Chart && window.Chart.register) {
+    Chart.register(centerLabelPlugin);
+}
+
+async function loadFeedbackStatistics() {
+    const loading = document.getElementById('feedback-stats-loading');
+    const content = document.getElementById('feedback-stats-content');
+    const empty = document.getElementById('feedback-stats-empty');
+    const errorDiv = document.getElementById('feedback-stats-error');
+    
+    // Show loading state
+    if (loading) loading.style.display = 'block';
+    if (content) content.classList.add('is-hidden');
+    if (empty) empty.classList.add('is-hidden');
+    
+    try {
+        const response = await fetch('/api/feedback/statistics');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.message || 'API returned error');
+        }
+        
+        // Hide loading
+        if (loading) loading.style.display = 'none';
+        
+        // Check for empty state
+        if (data.total === 0) {
+            if (content) content.classList.add('is-hidden');
+            if (empty) empty.classList.remove('is-hidden');
+            return;
+        }
+        
+        // Update stat cards
+        const agreeCount = document.getElementById('stat-agree-count');
+        const agreePercent = document.getElementById('stat-agree-percent');
+        const disagreeCount = document.getElementById('stat-disagree-count');
+        const disagreePercent = document.getElementById('stat-disagree-percent');
+        const totalCount = document.getElementById('stat-total-count');
+        const consensusRate = document.getElementById('stat-consensus-rate');
+        
+        // Calculate consensus rate
+        const consensus = data.agree_percentage;
+        
+        // Update values with animation
+        if (agreeCount) {
+            agreeCount.textContent = data.agree_count;
+            agreeCount.parentElement.parentElement.style.animation = 'none';
+            setTimeout(() => {
+                agreeCount.parentElement.parentElement.style.animation = '';
+            }, 10);
+        }
+        if (agreePercent) agreePercent.textContent = data.agree_percentage.toFixed(1) + '%';
+        if (disagreeCount) disagreeCount.textContent = data.disagree_count;
+        if (disagreePercent) disagreePercent.textContent = data.disagree_percentage.toFixed(1) + '%';
+        if (totalCount) totalCount.textContent = data.total;
+        if (consensusRate) consensusRate.textContent = data.agree_percentage.toFixed(1) + '%';
+        
+        // Update legend labels
+        const legendAgreeCount = document.getElementById('legend-agree-count');
+        const legendAgreePercent = document.getElementById('legend-agree-percent');
+        const legendDisagreeCount = document.getElementById('legend-disagree-count');
+        const legendDisagreePercent = document.getElementById('legend-disagree-percent');
+        
+        if (legendAgreeCount) legendAgreeCount.textContent = data.agree_count;
+        if (legendAgreePercent) legendAgreePercent.textContent = data.agree_percentage.toFixed(0);
+        if (legendDisagreeCount) legendDisagreeCount.textContent = data.disagree_count;
+        if (legendDisagreePercent) legendDisagreePercent.textContent = data.disagree_percentage.toFixed(0);
+        
+        // Render chart
+        renderFeedbackChart(data);
+        
+        // Show content, hide loading/error
+        if (content) {
+            content.classList.remove('is-hidden');
+            if (errorDiv) errorDiv.classList.add('is-hidden');
+        }
+        
+    } catch (error) {
+        console.error('Error loading feedback statistics:', error);
+        
+        // Show error state
+        if (loading) loading.style.display = 'none';
+        if (content) content.classList.add('is-hidden');
+        if (empty) empty.classList.add('is-hidden');
+        if (errorDiv) errorDiv.classList.remove('is-hidden');
+    }
+}
+
+function renderFeedbackChart(data) {
+    const canvas = document.getElementById('feedbackChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Destroy previous chart instance if it exists
+    if (feedbackChartInstance) {
+        feedbackChartInstance.destroy();
+    }
+    
+    // Prepare chart options
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#0e1b2b';
+    const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#5a6675';
+    
+    // Create new chart with enhanced styling
+    feedbackChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Đồng ý', 'Không đồng ý'],
+            datasets: [{
+                data: [data.agree_count, data.disagree_count],
+                backgroundColor: ['#22c55e', '#ef4444'],
+                borderColor: [
+                    getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#f5f7fb',
+                    getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#f5f7fb'
+                ],
+                borderWidth: 3,
+                hoverBorderWidth: 5,
+                hoverOffset: 8,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            animation: {
+                duration: 800,
+                easing: 'easeInOutQuart',
+                delay: (context) => {
+                    let delay = 0;
+                    if (context.type === 'data' && context.mode === 'default' && !context.dropped) {
+                        delay = context.dataIndex * 100 + context.datasetIndex * 50;
+                    }
+                    return delay;
+                },
+            },
+            plugins: {
+                centerLabel: {},
+                legend: {
+                    position: 'right',
+                    align: 'center',
+                    labels: {
+                        color: textColor,
+                        padding: 16,
+                        font: {
+                            size: 14,
+                            weight: '500',
+                            family: 'Inter, system-ui, -apple-system'
+                        },
+                        boxWidth: 12,
+                        boxHeight: 12,
+                        borderRadius: 3,
+                        generateLabels(chart) {
+                            const data = chart.data;
+                            const datasets = data.datasets;
+                            const total = datasets[0].data.reduce((a, b) => a + b, 0);
+                            
+                            return data.labels.map((label, i) => {
+                                const value = datasets[0].data[i];
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(0) : 0;
+                                const emoji = i === 0 ? '🟢' : '🔴';
+                                
+                                return {
+                                    text: `${emoji} ${label}\n${value} (${percentage}%)`,
+                                    fillStyle: datasets[0].backgroundColor[i],
+                                    hidden: false,
+                                    index: i,
+                                };
+                            });
+                        }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#ffffff',
+                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                    borderWidth: 1,
+                    padding: 12,
+                    displayColors: true,
+                    boxWidth: 10,
+                    boxHeight: 10,
+                    cornerRadius: 6,
+                    titleFont: {
+                        size: 13,
+                        weight: '600',
+                        family: 'Inter, system-ui'
+                    },
+                    bodyFont: {
+                        size: 12,
+                        family: 'Inter, system-ui'
+                    },
+                    callbacks: {
+                        title: function(context) {
+                            const index = context[0].dataIndex;
+                            const labels = ['Đồng ý', 'Không đồng ý'];
+                            return labels[index] || '';
+                        },
+                        label: function(context) {
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                            return [`${value} đánh giá`, `${percentage}%`];
+                        },
+                        afterLabel: function(context) {
+                            const index = context.dataIndex;
+                            return index === 0 ? '✓ Chính xác' : '✗ Không chính xác';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Hook into page switching
+const originalPageSwitch = document.querySelector('[data-page="dashboard"]');
+if (originalPageSwitch) {
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('[data-page="dashboard"]')) {
+            setTimeout(loadFeedbackStatistics, 100);
+        }
+    });
+}
+
+// Retry button handler
+const retryBtn = document.getElementById('btn-retry-stats');
+if (retryBtn) {
+    retryBtn.addEventListener('click', loadFeedbackStatistics);
+}
+
+// Refresh empty state button handler
+const refreshEmptyBtn = document.getElementById('btn-refresh-empty');
+if (refreshEmptyBtn) {
+    refreshEmptyBtn.addEventListener('click', loadFeedbackStatistics);
+}
+
+// Legend item hover effects
+document.addEventListener('DOMContentLoaded', function() {
+    const legendItems = document.querySelectorAll('.legend-item');
+    if (legendItems.length > 0 && feedbackChartInstance) {
+        legendItems.forEach((item, index) => {
+            item.addEventListener('click', function() {
+                if (feedbackChartInstance) {
+                    feedbackChartInstance.toggleDataVisibility(index, true);
+                }
+            });
+        });
+    }
 });
