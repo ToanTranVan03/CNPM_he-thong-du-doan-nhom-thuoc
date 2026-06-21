@@ -998,7 +998,33 @@ function renderDictionary(data) {
     const td2 = document.createElement("td");
     td2.className = "muted-text";
     td2.textContent = it.tu_khoa || "—";
-    tr.append(td0, td1, td2);
+    const td3 = document.createElement("td");
+    td3.className = "admin-row-actions";
+    const eBtn = document.createElement("button");
+    eBtn.className = "text-button";
+    eBtn.type = "button";
+    eBtn.textContent = "Sửa";
+    eBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      document.getElementById("tc-edit-ma").value = it.ma;
+      document.getElementById("tc-ten").value = it.ten;
+      document.getElementById("tc-tu-khoa").value = it.tu_khoa || "";
+      document.getElementById("tc-submit").textContent = "Lưu sửa";
+      document.getElementById("tc-cancel").hidden = false;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    const dBtn = document.createElement("button");
+    dBtn.className = "text-button danger";
+    dBtn.type = "button";
+    dBtn.textContent = "Xóa";
+    dBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      if (!confirm(`Xóa triệu chứng "${it.ten}"?`)) return;
+      const r = await fetch(`/api/admin/db/trieu-chung/${it.ma}`, { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+      if (r.ok) loadDictionary(dictPage);
+    });
+    td3.append(eBtn, dBtn);
+    tr.append(td0, td1, td2, td3);
     tr.addEventListener("click", () => openMappingModal(it.ma, it.ten)); // US28
     dictionaryRows.appendChild(tr);
   });
@@ -1039,6 +1065,40 @@ if (dictionarySearch) {
 }
 if (dictPrev) dictPrev.addEventListener("click", () => { if (dictPage > 1) loadDictionary(dictPage - 1); });
 if (dictNext) dictNext.addEventListener("click", () => { if (dictPage < dictTotalPages) loadDictionary(dictPage + 1); });
+
+// PORT: thêm/sửa triệu chứng trong từ điển
+const tcForm = document.getElementById("tc-form");
+const tcMessage = document.getElementById("tc-message");
+const tcEditMa = document.getElementById("tc-edit-ma");
+const tcSubmit = document.getElementById("tc-submit");
+const tcCancel = document.getElementById("tc-cancel");
+function resetTcForm() {
+  if (tcForm) tcForm.reset();
+  if (tcEditMa) tcEditMa.value = "";
+  if (tcSubmit) tcSubmit.textContent = "Thêm triệu chứng";
+  if (tcCancel) tcCancel.hidden = true;
+}
+if (tcForm) {
+  tcForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const ma = tcEditMa.value;
+    const body = JSON.stringify({ ten: document.getElementById("tc-ten").value, tu_khoa: document.getElementById("tc-tu-khoa").value });
+    const url = ma ? `/api/admin/db/trieu-chung/${ma}` : "/api/admin/db/trieu-chung";
+    tcMessage.classList.remove("is-error");
+    try {
+      const r = await fetch(url, { method: ma ? "PUT" : "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` }, body });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Không lưu được.");
+      resetTcForm();
+      tcMessage.textContent = ma ? "Đã cập nhật triệu chứng." : "Đã thêm triệu chứng.";
+      loadDictionary(ma ? dictPage : 1);
+    } catch (error) {
+      tcMessage.textContent = formatError(error);
+      tcMessage.classList.add("is-error");
+    }
+  });
+}
+if (tcCancel) tcCancel.addEventListener("click", resetTcForm);
 
 // ── US28: Modal ánh xạ chi tiết triệu chứng ↔ nhóm thuốc ─────────────────────
 const mappingModal = document.getElementById("mapping-modal");

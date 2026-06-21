@@ -3610,6 +3610,58 @@ def admin_db_trieu_chung():
     })
 
 
+# ── PORT toan/main: CRUD từ điển TRIỆU CHỨNG (thêm/sửa/xóa) ───────────────────
+@app.post("/api/admin/db/trieu-chung")
+def create_trieu_chung():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    p = request.get_json(silent=True) or {}
+    ten = str(p.get("ten") or "").strip()
+    if not ten:
+        return jsonify({"error": "Cần tên triệu chứng."}), 400
+    if db.session.query(db_models.TrieuChung).filter_by(ten_trieu_chung=ten).first():
+        return jsonify({"error": "Triệu chứng đã tồn tại."}), 409
+    t = db_models.TrieuChung(ten_trieu_chung=ten[:255], tu_khoa=(str(p.get("tu_khoa") or "").strip() or None))
+    db.session.add(t)
+    db.session.commit()
+    return jsonify({"ok": True, "ma": t.ma_trieu_chung}), 201
+
+
+@app.put("/api/admin/db/trieu-chung/<int:ma>")
+def update_trieu_chung(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    t = db.session.get(db_models.TrieuChung, ma)
+    if not t:
+        return jsonify({"error": "Không tìm thấy triệu chứng."}), 404
+    p = request.get_json(silent=True) or {}
+    ten = str(p.get("ten") or "").strip()
+    if ten:
+        dup = db.session.query(db_models.TrieuChung).filter_by(ten_trieu_chung=ten).first()
+        if dup and dup.ma_trieu_chung != ma:
+            return jsonify({"error": "Tên triệu chứng đã tồn tại."}), 409
+        t.ten_trieu_chung = ten[:255]
+    if "tu_khoa" in p:
+        t.tu_khoa = (str(p.get("tu_khoa") or "").strip() or None)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+@app.delete("/api/admin/db/trieu-chung/<int:ma>")
+def delete_trieu_chung(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    t = db.session.get(db_models.TrieuChung, ma)
+    if not t:
+        return jsonify({"error": "Không tìm thấy triệu chứng."}), 404
+    db.session.delete(t)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
 # ── US28 (SCRUM-112): ánh xạ chi tiết TRIỆU CHỨNG ↔ NHÓM THUỐC ────────────────
 # Nguồn ánh xạ = dữ liệu TRAIN (kiểm tra dữ liệu): đếm đồng xuất hiện symptom↔nhom_thuoc
 # trong train_ready_mapped_drug_groups.csv. Lazy-cache trong biến module.

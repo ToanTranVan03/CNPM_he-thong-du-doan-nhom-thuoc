@@ -557,6 +557,17 @@
             <span class="status-pill status-secure" id="dictionary-total">0 triệu chứng</span>
           </div>
 
+          <form class="inline-form dict-add-form" id="tc-form">
+            <input type="hidden" id="tc-edit-ma" value="" />
+            <input id="tc-ten" type="text" maxlength="255" required placeholder="Tên triệu chứng" />
+            <input id="tc-tu-khoa" type="text" maxlength="500" placeholder="Từ khóa (tùy chọn)" />
+            <div class="inline-form-actions">
+              <button class="primary-button compact" type="submit" id="tc-submit">Thêm triệu chứng</button>
+              <button class="text-button" type="button" id="tc-cancel" hidden>Hủy sửa</button>
+            </div>
+            <p class="form-message" id="tc-message" role="status"></p>
+          </form>
+
           <label class="search-box" for="dictionary-search">
             <span class="material-symbols-outlined" aria-hidden="true">search</span>
             <input id="dictionary-search" type="search" placeholder="Gõ tên hoặc từ khóa triệu chứng (vd: fever, đau, cough)..." autocomplete="off" />
@@ -567,7 +578,7 @@
           <div class="dict-table-wrap">
             <table class="dict-table">
               <thead>
-                <tr><th style="width:64px">#</th><th>Tên triệu chứng</th><th>Từ khóa</th></tr>
+                <tr><th style="width:64px">#</th><th>Tên triệu chứng</th><th>Từ khóa</th><th style="width:120px">Thao tác</th></tr>
               </thead>
               <tbody id="dictionary-rows"></tbody>
             </table>
