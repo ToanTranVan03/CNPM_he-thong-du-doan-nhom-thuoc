@@ -1903,6 +1903,61 @@ const API = "http://127.0.0.1:5000/api";
     if (act === 'delete') confirmDeleteDict(id);
   });
 
+
+// =========================================================
+// TASK 65 & 66: XỬ LÝ XÓA LỊCH SỬ DỰ ĐOÁN VỚI MODAL HIỆN ĐẠI
+// =========================================================
+let currentDeleteId = null;
+
+// 1. Hàm này gắn vào nút "Xóa" ngoài giao diện lịch sử để mở Modal
+function confirmDelete(id) {
+    currentDeleteId = id; 
+    const modal = document.getElementById('delete-confirm-modal');
+    if (modal) {
+        modal.classList.remove('is-hidden'); 
+    }
+}
+
+// 2. Hàm này dùng để đóng Modal khi bấm Hủy
+function closeDeleteModal() {
+    currentDeleteId = null;
+    const modal = document.getElementById('delete-confirm-modal');
+    if (modal) {
+        modal.classList.add('is-hidden'); 
+    }
+}
+
+// 3. Hàm thực thi xóa khi bấm nút "Xác nhận xóa" bên trong Modal (Viết theo đúng phong cách của nhóm bạn)
+async function executeDeleteHistory() {
+    if (!currentDeleteId) return;
+    try {
+        // Gọi tới API của Flask Backend (Cổng 5000)
+        const res = await fetch(`http://127.0.0.1:5000/api/evaluation/${currentDeleteId}`, { method: 'DELETE' });
+        
+        if (!res.ok) { 
+            const d = await res.json().catch(() => ({})); 
+            alert(d.message || 'Xóa thất bại'); 
+            closeDeleteModal();
+            return; 
+        }
+        
+        alert('Xóa bản ghi lịch sử thành công!');
+        
+        // Xóa dòng đó trên giao diện mà không cần reload
+        const element = document.getElementById(`record-${currentDeleteId}`);
+        if (element) {
+            element.remove();
+        } else {
+            window.location.reload(); // Dự phòng nếu không tìm thấy ID dòng
+        }
+    } catch (e) { 
+        alert('Không kết nối máy chủ Backend.'); 
+    } finally {
+        closeDeleteModal(); // Luôn luôn đóng modal sau khi chạy xong
+    }
+}
+
+
   async function confirmDeleteDict(id) {
     if (!confirm('Xóa mục này khỏi từ điển?')) return;
     try {

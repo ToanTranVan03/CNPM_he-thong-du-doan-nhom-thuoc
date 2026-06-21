@@ -416,7 +416,7 @@
                 Lọc
               </button>
               <button id="history-export-button" class="secondary-button compact" type="button" title="Tùy chọn xuất CSV">
-                <span class="material-symbols-outlined" aria-hidden="true">download</span>
+                <span class="materhial-symbols-outlined" aria-hidden="true">download</span>
                 Xuất
               </button>
               <div id="history-export-options" class="export-options is-hidden" aria-hidden="true" style="position: absolute; z-index: 60; background: var(--surface-lowest); border:1px solid var(--outline); padding:12px; border-radius:8px; min-width:260px; box-shadow: var(--shadow);">
@@ -931,5 +931,29 @@
     </nav>
 
     <script src="script.js"></script>
+
+
+
+    <div id="delete-confirm-modal" class="custom-modal is-hidden" role="dialog" aria-modal="true">
+  <div class="modal-overlay" onclick="closeDeleteModal()"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <span class="material-symbols-outlined icon-warning">warning</span>
+      <h2>Xác nhận xóa lịch sử</h2>
+    </div>
+    <div class="modal-body">
+      <p>Hành động này không thể hoàn tác. Bạn có chắc chắn muốn xóa bản ghi lịch sử dự đoán này khỏi hệ thống không?</p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="text-button compact" onclick="closeDeleteModal()">Hủy bỏ</button>
+      <button type="button" id="btn-confirm-delete-execute" class="secondary-button compact btn-danger-action">
+        <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+        Xác nhận xóa
+      </button>
+    </div>
+  </div>
+</div>
+
+
   </body>
 </html>
