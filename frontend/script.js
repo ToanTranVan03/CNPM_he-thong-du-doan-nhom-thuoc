@@ -2824,6 +2824,45 @@ function submitRejectFeedback() {
 
 let feedbackChartInstance = null;
 
+// Register custom plugin for center label in doughnut chart
+const centerLabelPlugin = {
+    id: 'centerLabel',
+    afterDraw(chart) {
+        const {width, height} = chart;
+        const ctx = chart.ctx;
+        
+        // Calculate font size responsively
+        const fontSize = Math.min(width, height) / 8;
+        const smallFontSize = fontSize / 1.5;
+        
+        // Get chart data
+        const data = chart.data.datasets[0].data;
+        const total = data.reduce((a, b) => a + b, 0);
+        
+        // Draw text
+        ctx.save();
+        ctx.font = `bold ${fontSize}px Inter, system-ui`;
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#000000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Main text
+        ctx.fillText(total, width / 2, height / 2 - fontSize / 4);
+        
+        // Label text
+        ctx.font = `500 ${smallFontSize}px Inter, system-ui`;
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#666666';
+        ctx.fillText('phản hồi', width / 2, height / 2 + smallFontSize * 0.8);
+        
+        ctx.restore();
+    }
+};
+
+// Register the plugin
+if (window.Chart && window.Chart.register) {
+    Chart.register(centerLabelPlugin);
+}
+
 async function loadFeedbackStatistics() {
     const loading = document.getElementById('feedback-stats-loading');
     const content = document.getElementById('feedback-stats-content');
@@ -2847,6 +2886,13 @@ async function loadFeedbackStatistics() {
             throw new Error(data.message || 'API returned error');
         }
         
+        // Check for empty state
+        if (data.total === 0) {
+            showEmptyFeedbackState();
+            if (loading) loading.style.display = 'none';
+            return;
+        }
+        
         // Update stat cards
         const agreeCount = document.getElementById('stat-agree-count');
         const agreePercent = document.getElementById('stat-agree-percent');
@@ -2859,6 +2905,17 @@ async function loadFeedbackStatistics() {
         if (disagreeCount) disagreeCount.textContent = data.disagree_count;
         if (disagreePercent) disagreePercent.textContent = data.disagree_percentage.toFixed(1) + '%';
         if (totalCount) totalCount.textContent = data.total;
+        
+        // Update legend labels
+        const legendAgreeCount = document.getElementById('legend-agree-count');
+        const legendAgreePercent = document.getElementById('legend-agree-percent');
+        const legendDisagreeCount = document.getElementById('legend-disagree-count');
+        const legendDisagreePercent = document.getElementById('legend-disagree-percent');
+        
+        if (legendAgreeCount) legendAgreeCount.textContent = data.agree_count;
+        if (legendAgreePercent) legendAgreePercent.textContent = data.agree_percentage.toFixed(0);
+        if (legendDisagreeCount) legendDisagreeCount.textContent = data.disagree_count;
+        if (legendDisagreePercent) legendDisagreePercent.textContent = data.disagree_percentage.toFixed(0);
         
         // Render chart
         renderFeedbackChart(data);
@@ -2878,6 +2935,22 @@ async function loadFeedbackStatistics() {
     }
 }
 
+function showEmptyFeedbackState() {
+    const content = document.getElementById('feedback-stats-content');
+    if (!content) return;
+    
+    content.innerHTML = `
+        <div class="empty-feedback-state">
+            <div class="empty-icon">
+                <span class="material-symbols-outlined">assessment</span>
+            </div>
+            <h3>Chưa có đánh giá nào</h3>
+            <p>Khi chuyên gia bắt đầu đánh giá kết quả dự đoán, dữ liệu thống kê sẽ được hiển thị tại đây.</p>
+        </div>
+    `;
+    content.style.display = 'block';
+}
+
 function renderFeedbackChart(data) {
     const canvas = document.getElementById('feedbackChart');
     if (!canvas) return;
@@ -2889,41 +2962,112 @@ function renderFeedbackChart(data) {
         feedbackChartInstance.destroy();
     }
     
-    // Create new chart
+    // Prepare chart options
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#0e1b2b';
+    const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#5a6675';
+    
+    // Create new chart with enhanced styling
     feedbackChartInstance = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['👍 Đồng ý', '👎 Không đồng ý'],
+            labels: ['Đồng ý', 'Không đồng ý'],
             datasets: [{
                 data: [data.agree_count, data.disagree_count],
                 backgroundColor: ['#22c55e', '#ef4444'],
-                borderColor: ['rgba(34, 197, 94, 0.2)', 'rgba(239, 68, 68, 0.2)'],
-                borderWidth: 2,
+                borderColor: [
+                    getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#f5f7fb',
+                    getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#f5f7fb'
+                ],
+                borderWidth: 3,
+                hoverBorderWidth: 5,
+                hoverOffset: 8,
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            animation: {
+                duration: 800,
+                easing: 'easeInOutQuart',
+                delay: (context) => {
+                    let delay = 0;
+                    if (context.type === 'data' && context.mode === 'default' && !context.dropped) {
+                        delay = context.dataIndex * 100 + context.datasetIndex * 50;
+                    }
+                    return delay;
+                },
+            },
             plugins: {
+                centerLabel: {},
                 legend: {
-                    position: 'bottom',
+                    position: 'right',
+                    align: 'center',
                     labels: {
-                        color: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#000000',
+                        color: textColor,
                         padding: 16,
                         font: {
                             size: 14,
-                            weight: '500'
+                            weight: '500',
+                            family: 'Inter, system-ui, -apple-system'
+                        },
+                        boxWidth: 12,
+                        boxHeight: 12,
+                        borderRadius: 3,
+                        generateLabels(chart) {
+                            const data = chart.data;
+                            const datasets = data.datasets;
+                            const total = datasets[0].data.reduce((a, b) => a + b, 0);
+                            
+                            return data.labels.map((label, i) => {
+                                const value = datasets[0].data[i];
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(0) : 0;
+                                const emoji = i === 0 ? '🟢' : '🔴';
+                                
+                                return {
+                                    text: `${emoji} ${label}\n${value} (${percentage}%)`,
+                                    fillStyle: datasets[0].backgroundColor[i],
+                                    hidden: false,
+                                    index: i,
+                                };
+                            });
                         }
                     }
                 },
                 tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#ffffff',
+                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                    borderWidth: 1,
+                    padding: 12,
+                    displayColors: true,
+                    boxWidth: 10,
+                    boxHeight: 10,
+                    cornerRadius: 6,
+                    titleFont: {
+                        size: 13,
+                        weight: '600',
+                        family: 'Inter, system-ui'
+                    },
+                    bodyFont: {
+                        size: 12,
+                        family: 'Inter, system-ui'
+                    },
                     callbacks: {
+                        title: function(context) {
+                            const index = context[0].dataIndex;
+                            const labels = ['Đồng ý', 'Không đồng ý'];
+                            return labels[index] || '';
+                        },
                         label: function(context) {
-                            const label = context.label || '';
                             const value = context.parsed || 0;
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
                             const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                            return `${label}: ${value} (${percentage}%)`;
+                            return [`${value} đánh giá`, `${percentage}%`];
+                        },
+                        afterLabel: function(context) {
+                            const index = context.dataIndex;
+                            return index === 0 ? '✓ Chính xác' : '✗ Không chính xác';
                         }
                     }
                 }
