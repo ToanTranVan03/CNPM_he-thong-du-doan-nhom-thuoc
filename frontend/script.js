@@ -405,9 +405,11 @@ function saveHistory() {
   localStorage.setItem(historyStorageKey(), JSON.stringify(savedResults.slice(0, 20)));
 }
 
-function createHistoryCard(entry) {
+function createHistoryCard(entry, index) {
   const card = document.createElement("article");
   card.className = "history-card user-history-card";
+  // Gắn id cho thẻ card để lát xóa trực tiếp trên UI
+  card.id = `history-card-${index}`;
   card.dataset.search = `${entry.disease} ${entry.notes} ${entry.symptoms.join(" ")} ${entry.savedAt}`.toLowerCase();
 
   const topLine = document.createElement("div");
@@ -426,6 +428,33 @@ function createHistoryCard(entry) {
   const summary = document.createElement("p");
   summary.textContent = `${entry.symptoms.join(", ") || "Chưa rõ triệu chứng"} - ${entry.notes || "Không có mô tả."}`;
 
+  // Cụm bọc nút Hành động
+  const actionsDiv = document.createElement("div");
+  actionsDiv.style.display = "flex";
+  actionsDiv.style.justify = "flex-end";
+  actionsDiv.style.gap = "8px";
+  actionsDiv.style.marginTop = "12px";
+  actionsDiv.style.borderTop = "1px solid rgba(255,255,255,0.1)";
+  actionsDiv.style.paddingTop = "8px";
+
+  // Nút xóa dạng thẻ mượt mà
+  const delBtn = document.createElement("button");
+  delBtn.type = "button";
+  delBtn.style.color = "#ff4d4d";
+  delBtn.style.background = "none";
+  delBtn.style.border = "none";
+  delBtn.style.cursor = "pointer";
+  delBtn.style.display = "inline-flex";
+  delBtn.style.alignItems = "center";
+  delBtn.style.gap = "4px";
+  delBtn.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">delete</span> Xóa`;
+  
+  // Gọi sang hàm xác nhận xóa (Task 66)
+  delBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    confirmDelete(index); 
+  });
+
   const button = document.createElement("button");
   button.className = "icon-button";
   button.type = "button";
@@ -438,17 +467,22 @@ function createHistoryCard(entry) {
 
   topLine.append(status, time);
   button.appendChild(icon);
-  card.append(topLine, title, summary, button);
+  actionsDiv.appendChild(delBtn); // Thêm nút xóa vào cụm
+  card.append(topLine, title, summary, actionsDiv, button);
   return card;
 }
 
 function renderSavedHistory() {
   document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
+  
+ 
+  const totalItems = savedResults.length;
+  
   savedResults
     .slice()
-    .reverse()
-    .forEach((entry) => {
-      historyList.prepend(createHistoryCard(entry));
+    .forEach((entry, idx) => {
+    
+      historyList.prepend(createHistoryCard(entry, idx));
     });
   renderHistoryTable();
   updateHistoryEmptyState();
@@ -2816,4 +2850,60 @@ function submitRejectFeedback() {
         }
     })
     .catch(err => console.error("Lỗi gửi phản hồi:", err));
+}
+// =========================================================
+// TASK 65 & 66: ĐIỀU KHIỂN MODAL VÀ XÓA LỊCH SỬ BẤT ĐỒNG BỘ
+// =========================================================
+let deleteTargetIndex = null; // Lưu lại vị trí phần tử đang chờ xóa
+
+// Hàm kích hoạt mở Modal (Task 66) thay vì dùng alert confirm xấu xí
+function confirmDelete(index) {
+    deleteTargetIndex = index;
+    const modal = document.getElementById('deleteConfirmModal');
+    if (modal) {
+        modal.classList.add('is-active'); // Hiển thị modal lên màn hình
+    } else {
+        // Fallback phòng khi chưa làm giao diện modal ở index.html
+        if (confirm('Bạn có chắc chắn muốn xóa lịch sử dự đoán này không?')) {
+            executeDeleteHistory();
+        }
+    }
+}
+
+// Hàm thực thi xóa bất đồng bộ kết nối Backend API (Task 65)
+async function executeDeleteHistory() {
+    if (deleteTargetIndex === null) return;
+    
+    try {
+        // Gọi API Delete bất đồng bộ lên máy chủ Backend Flask
+        const response = await fetch(`http://127.0.0.1:5000/api/evaluation/${deleteTargetIndex}`, {
+            method: 'DELETE'
+        });
+        
+        // Tiến hành xóa dữ liệu cục bộ trong localStorage
+        savedResults.splice(deleteTargetIndex, 1);
+        saveHistory();
+        
+        // Đóng modal sau khi xóa thành công
+        const modal = document.getElementById('deleteConfirmModal');
+        if (modal) modal.classList.remove('is-active');
+        
+        // Render lại UI ngay lập tức không cần tải lại trang
+        renderSavedHistory();
+        renderRecentActivity();
+        
+        alert('Xóa lịch sử dự đoán thành công!');
+    } catch (error) {
+        console.error("Lỗi khi kết nối API xóa:", error);
+        alert('Không thể kết nối dữ liệu đến máy chủ để thực hiện xóa.');
+    } finally {
+        deleteTargetIndex = null; // Reset trạng thái mục tiêu xóa
+    }
+}
+
+// Đóng modal nếu người dùng bấm "Hủy"
+function closeDeleteModal() {
+    const modal = document.getElementById('deleteConfirmModal');
+    if (modal) modal.classList.remove('is-active');
+    deleteTargetIndex = null;
 }
