@@ -4,6 +4,11 @@ joblib
 flask
 flask-cors
 
+# Cơ sở dữ liệu PostgreSQL (tích hợp SQLAlchemy vào Flask app)
+psycopg2-binary>=2.9   # driver Postgres
+SQLAlchemy>=2.0
+Flask-SQLAlchemy>=3.1
+
 # Xử lý dữ liệu
 pandas
 pyarrow               # đọc file .parquet (dataset HuggingFace)

@@ -22,6 +22,8 @@ from translations import (
     translate_items,
 )
 import stats_source  # US19: lớp ĐỌC dữ liệu cho Dashboard thống kê (adapter, chỉ đọc)
+import models as db_models  # Tích hợp SQLAlchemy: models domain (Postgres)
+from sqlalchemy import text as _sql_text
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -60,6 +62,42 @@ CORS(
         }
     },
 )
+
+
+# ── TÍCH HỢP SQLAlchemy (Postgres) — GRACEFUL ────────────────────────────────
+# Bật DB khi có DATABASE_URL (env hoặc .env) và kết nối được. Thiếu/hỏng -> app vẫn
+# chạy chế độ JSON như cũ (DB_ENABLED=False). Tắt cưỡng bức bằng env DB_DISABLED=1.
+db = db_models.db
+
+
+def _resolve_database_url() -> str | None:
+    if os.environ.get("DB_DISABLED"):
+        return None
+    if os.environ.get("DATABASE_URL"):
+        return os.environ["DATABASE_URL"]
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("DATABASE_URL") and "=" in line:
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return None
+
+
+DB_ENABLED = False
+_database_url = _resolve_database_url()
+if _database_url:
+    try:
+        app.config["SQLALCHEMY_DATABASE_URI"] = _database_url
+        app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+        db.init_app(app)
+        with app.app_context():
+            db.session.execute(_sql_text("SELECT 1"))
+        DB_ENABLED = True
+        app.logger.info("SQLAlchemy: DB Postgres ĐÃ BẬT")
+    except Exception:
+        DB_ENABLED = False
+        app.logger.warning("SQLAlchemy: không kết nối được DB -> chạy chế độ JSON")
 
 
 @app.after_request
@@ -3032,6 +3070,76 @@ def admin_stats():
             "agree_rate": agree_rate,
         }
     )
+
+
+# ── DB-BACKED: đọc danh mục đã seed từ Postgres (admin) ───────────────────────
+# Tích hợp SQLAlchemy vào Flask app: các endpoint sau ĐỌC trực tiếp từ Postgres
+# (nhom_thuoc/thuoc_tham_khao/trieu_chung) — phục vụ QuanLyNhomThuoc() của Admin.
+def _require_admin_db():
+    """Guard admin + DB bật. Trả (None, response) nếu chặn; ngược lại (admin, None)."""
+    store = load_user_store()
+    admin, error = current_admin_from_request(store)
+    if error:
+        return None, error
+    if not DB_ENABLED:
+        return None, (jsonify({"error": "Cơ sở dữ liệu chưa được bật (đang chạy chế độ JSON)."}), 503)
+    return admin, None
+
+
+@app.get("/api/admin/db/health")
+def admin_db_health():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    counts = {
+        "nhom_thuoc": db.session.query(db_models.NhomThuoc).count(),
+        "thuoc_tham_khao": db.session.query(db_models.ThuocThamKhao).count(),
+        "trieu_chung": db.session.query(db_models.TrieuChung).count(),
+        "chan_doan_du_kien": db.session.query(db_models.ChanDoanDuKien).count(),
+        "mo_hinh_du_doan": db.session.query(db_models.MoHinhDuDoan).count(),
+    }
+    return jsonify({"db_enabled": True, "counts": counts})
+
+
+@app.get("/api/admin/db/nhom-thuoc")
+def admin_db_nhom_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    rows = (
+        db.session.query(db_models.NhomThuoc)
+        .order_by(db_models.NhomThuoc.ten_nhom_thuoc)
+        .all()
+    )
+    return jsonify({
+        "nhom_thuoc": [
+            {
+                "ma": n.ma_nhom_thuoc,
+                "ten": n.ten_nhom_thuoc,
+                "mo_ta": n.mo_ta,
+                "so_thuoc": len(n.thuoc_list),
+                "thuoc": [t.ten_thuoc for t in n.thuoc_list[:20]],
+            }
+            for n in rows
+        ]
+    })
+
+
+@app.get("/api/admin/db/trieu-chung")
+def admin_db_trieu_chung():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    q = (request.args.get("q") or "").strip()
+    query = db.session.query(db_models.TrieuChung)
+    if q:
+        query = query.filter(db_models.TrieuChung.ten_trieu_chung.ilike(f"%{q}%"))
+    total = query.count()
+    rows = query.order_by(db_models.TrieuChung.ten_trieu_chung).limit(50).all()
+    return jsonify({
+        "total": total,
+        "trieu_chung": [{"ma": t.ma_trieu_chung, "ten": t.ten_trieu_chung} for t in rows],
+    })
 
 
 # ── US15 (port): tự động lưu lịch sử mỗi lần dự đoán ──────────────────────────
