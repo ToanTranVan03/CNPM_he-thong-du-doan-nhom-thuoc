@@ -2849,10 +2849,10 @@ const centerLabelPlugin = {
         // Main text
         ctx.fillText(total, width / 2, height / 2 - fontSize / 4);
         
-        // Label text
+        // Label text - "Tổng đánh giá"
         ctx.font = `500 ${smallFontSize}px Inter, system-ui`;
         ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#666666';
-        ctx.fillText('phản hồi', width / 2, height / 2 + smallFontSize * 0.8);
+        ctx.fillText('Tổng đánh giá', width / 2, height / 2 + smallFontSize * 0.8);
         
         ctx.restore();
     }
@@ -2866,12 +2866,13 @@ if (window.Chart && window.Chart.register) {
 async function loadFeedbackStatistics() {
     const loading = document.getElementById('feedback-stats-loading');
     const content = document.getElementById('feedback-stats-content');
+    const empty = document.getElementById('feedback-stats-empty');
     const errorDiv = document.getElementById('feedback-stats-error');
     
     // Show loading state
     if (loading) loading.style.display = 'block';
-    if (content) content.style.display = 'none';
-    if (errorDiv) errorDiv.style.display = 'none';
+    if (content) content.classList.add('is-hidden');
+    if (empty) empty.classList.add('is-hidden');
     
     try {
         const response = await fetch('/api/feedback/statistics');
@@ -2886,10 +2887,13 @@ async function loadFeedbackStatistics() {
             throw new Error(data.message || 'API returned error');
         }
         
+        // Hide loading
+        if (loading) loading.style.display = 'none';
+        
         // Check for empty state
         if (data.total === 0) {
-            showEmptyFeedbackState();
-            if (loading) loading.style.display = 'none';
+            if (content) content.classList.add('is-hidden');
+            if (empty) empty.classList.remove('is-hidden');
             return;
         }
         
@@ -2899,12 +2903,24 @@ async function loadFeedbackStatistics() {
         const disagreeCount = document.getElementById('stat-disagree-count');
         const disagreePercent = document.getElementById('stat-disagree-percent');
         const totalCount = document.getElementById('stat-total-count');
+        const consensusRate = document.getElementById('stat-consensus-rate');
         
-        if (agreeCount) agreeCount.textContent = data.agree_count;
+        // Calculate consensus rate
+        const consensus = data.agree_percentage;
+        
+        // Update values with animation
+        if (agreeCount) {
+            agreeCount.textContent = data.agree_count;
+            agreeCount.parentElement.parentElement.style.animation = 'none';
+            setTimeout(() => {
+                agreeCount.parentElement.parentElement.style.animation = '';
+            }, 10);
+        }
         if (agreePercent) agreePercent.textContent = data.agree_percentage.toFixed(1) + '%';
         if (disagreeCount) disagreeCount.textContent = data.disagree_count;
         if (disagreePercent) disagreePercent.textContent = data.disagree_percentage.toFixed(1) + '%';
         if (totalCount) totalCount.textContent = data.total;
+        if (consensusRate) consensusRate.textContent = data.agree_percentage.toFixed(1) + '%';
         
         // Update legend labels
         const legendAgreeCount = document.getElementById('legend-agree-count');
@@ -2921,34 +2937,20 @@ async function loadFeedbackStatistics() {
         renderFeedbackChart(data);
         
         // Show content, hide loading/error
-        if (loading) loading.style.display = 'none';
-        if (content) content.style.display = 'block';
-        if (errorDiv) errorDiv.style.display = 'none';
+        if (content) {
+            content.classList.remove('is-hidden');
+            if (errorDiv) errorDiv.classList.add('is-hidden');
+        }
         
     } catch (error) {
         console.error('Error loading feedback statistics:', error);
         
         // Show error state
         if (loading) loading.style.display = 'none';
-        if (content) content.style.display = 'none';
-        if (errorDiv) errorDiv.style.display = 'block';
+        if (content) content.classList.add('is-hidden');
+        if (empty) empty.classList.add('is-hidden');
+        if (errorDiv) errorDiv.classList.remove('is-hidden');
     }
-}
-
-function showEmptyFeedbackState() {
-    const content = document.getElementById('feedback-stats-content');
-    if (!content) return;
-    
-    content.innerHTML = `
-        <div class="empty-feedback-state">
-            <div class="empty-icon">
-                <span class="material-symbols-outlined">assessment</span>
-            </div>
-            <h3>Chưa có đánh giá nào</h3>
-            <p>Khi chuyên gia bắt đầu đánh giá kết quả dự đoán, dữ liệu thống kê sẽ được hiển thị tại đây.</p>
-        </div>
-    `;
-    content.style.display = 'block';
 }
 
 function renderFeedbackChart(data) {
@@ -3091,3 +3093,23 @@ const retryBtn = document.getElementById('btn-retry-stats');
 if (retryBtn) {
     retryBtn.addEventListener('click', loadFeedbackStatistics);
 }
+
+// Refresh empty state button handler
+const refreshEmptyBtn = document.getElementById('btn-refresh-empty');
+if (refreshEmptyBtn) {
+    refreshEmptyBtn.addEventListener('click', loadFeedbackStatistics);
+}
+
+// Legend item hover effects
+document.addEventListener('DOMContentLoaded', function() {
+    const legendItems = document.querySelectorAll('.legend-item');
+    if (legendItems.length > 0 && feedbackChartInstance) {
+        legendItems.forEach((item, index) => {
+            item.addEventListener('click', function() {
+                if (feedbackChartInstance) {
+                    feedbackChartInstance.toggleDataVisibility(index, true);
+                }
+            });
+        });
+    }
+});

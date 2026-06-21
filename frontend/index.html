@@ -524,74 +524,114 @@
             </div>
             
             <!-- Loading State -->
-            <div id="feedback-stats-loading" class="loading-skeleton">
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                <div style="padding: 16px; background: var(--surface-low); border-radius: 12px; animation: pulse 1.5s ease-in-out infinite;">
-                  <div style="height: 20px; background: var(--outline); border-radius: 4px; margin-bottom: 8px;"></div>
-                  <div style="height: 32px; background: var(--outline); border-radius: 4px;"></div>
+            <div id="feedback-stats-loading" class="feedback-stats-section feedback-loading-state">
+              <div class="stats-grid">
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
                 </div>
-                <div style="padding: 16px; background: var(--surface-low); border-radius: 12px; animation: pulse 1.5s ease-in-out infinite;">
-                  <div style="height: 20px; background: var(--outline); border-radius: 4px; margin-bottom: 8px;"></div>
-                  <div style="height: 32px; background: var(--outline); border-radius: 4px;"></div>
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
                 </div>
-                <div style="padding: 16px; background: var(--surface-low); border-radius: 12px; animation: pulse 1.5s ease-in-out infinite;">
-                  <div style="height: 20px; background: var(--outline); border-radius: 4px; margin-bottom: 8px;"></div>
-                  <div style="height: 32px; background: var(--outline); border-radius: 4px;"></div>
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
                 </div>
+                <div class="stat-card-skeleton">
+                  <div class="skeleton-icon"></div>
+                  <div class="skeleton-label"></div>
+                  <div class="skeleton-value"></div>
+                </div>
+              </div>
+              <div class="chart-section-skeleton">
+                <div class="skeleton-chart-title"></div>
+                <div class="skeleton-chart"></div>
               </div>
             </div>
 
             <!-- Stats Content -->
-            <div id="feedback-stats-content" style="display: none;">
+            <div id="feedback-stats-content" class="feedback-stats-section is-hidden">
               <!-- Stats Cards -->
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+              <div class="stats-grid">
+                <!-- Total Evaluations Card -->
+                <div class="stat-card stat-card-total" data-stat="total">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">bar_chart_3</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Tổng đánh giá</p>
+                    <h3 id="stat-total-count" class="stat-value">0</h3>
+                    <p class="stat-description">Tổng số phản hồi từ chuyên gia</p>
+                  </div>
+                </div>
+
                 <!-- Agree Card -->
-                <div class="stat-card" style="padding: 20px; background: var(--surface-low); border-radius: 12px; border-left: 4px solid #22c55e;">
-                  <p style="margin: 0 0 8px 0; color: var(--text-muted); font-size: 13px; font-weight: 500;">👍 Đồng ý</p>
-                  <div style="display: flex; align-items: baseline; gap: 8px;">
-                    <h3 id="stat-agree-count" style="margin: 0; font-size: 32px; font-weight: 700; color: #22c55e;">0</h3>
-                    <span id="stat-agree-percent" style="color: var(--text-muted); font-size: 14px;">0%</span>
+                <div class="stat-card stat-card-agree" data-stat="agree">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">thumb_up</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Đồng ý</p>
+                    <div class="stat-value-row">
+                      <h3 id="stat-agree-count" class="stat-value">0</h3>
+                      <span id="stat-agree-percent" class="stat-percentage">0%</span>
+                    </div>
                   </div>
                 </div>
 
                 <!-- Disagree Card -->
-                <div class="stat-card" style="padding: 20px; background: var(--surface-low); border-radius: 12px; border-left: 4px solid #ef4444;">
-                  <p style="margin: 0 0 8px 0; color: var(--text-muted); font-size: 13px; font-weight: 500;">👎 Không đồng ý</p>
-                  <div style="display: flex; align-items: baseline; gap: 8px;">
-                    <h3 id="stat-disagree-count" style="margin: 0; font-size: 32px; font-weight: 700; color: #ef4444;">0</h3>
-                    <span id="stat-disagree-percent" style="color: var(--text-muted); font-size: 14px;">0%</span>
+                <div class="stat-card stat-card-disagree" data-stat="disagree">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">thumb_down</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Không đồng ý</p>
+                    <div class="stat-value-row">
+                      <h3 id="stat-disagree-count" class="stat-value">0</h3>
+                      <span id="stat-disagree-percent" class="stat-percentage">0%</span>
+                    </div>
                   </div>
                 </div>
 
-                <!-- Total Card -->
-                <div class="stat-card" style="padding: 20px; background: var(--surface-low); border-radius: 12px; border-left: 4px solid var(--primary);">
-                  <p style="margin: 0 0 8px 0; color: var(--text-muted); font-size: 13px; font-weight: 500;">📊 Tổng đánh giá</p>
-                  <div style="display: flex; align-items: baseline; gap: 8px;">
-                    <h3 id="stat-total-count" style="margin: 0; font-size: 32px; font-weight: 700; color: var(--primary);">0</h3>
+                <!-- Consensus Rate Card -->
+                <div class="stat-card stat-card-consensus" data-stat="consensus">
+                  <div class="stat-card-header">
+                    <span class="stat-icon material-symbols-outlined" aria-hidden="true">activity</span>
+                  </div>
+                  <div class="stat-card-body">
+                    <p class="stat-label">Độ đồng thuận</p>
+                    <h3 id="stat-consensus-rate" class="stat-value">0%</h3>
+                    <p class="stat-description">Tỷ lệ đánh giá Đồng ý</p>
                   </div>
                 </div>
               </div>
 
               <!-- Chart Section -->
-              <div style="background: var(--surface-low); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
-                <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">Biểu đồ đánh giá của chuyên gia</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; min-height: 300px;">
-                  <div style="display: flex; justify-content: center; align-items: center;">
-                    <canvas id="feedbackChart" style="max-width: 100%; max-height: 280px;"></canvas>
+              <div class="chart-section">
+                <div class="chart-section-header">
+                  <h3 class="chart-title">Biểu đồ đánh giá của chuyên gia</h3>
+                </div>
+                <div class="chart-grid">
+                  <div class="chart-container">
+                    <canvas id="feedbackChart"></canvas>
                   </div>
-                  <div style="display: flex; flex-direction: column; justify-content: center; gap: 12px;">
-                    <div class="legend-item" style="padding: 12px; background: var(--surface); border-radius: 8px; display: flex; align-items: center; gap: 12px; transition: all 0.2s ease; cursor: pointer;">
-                      <div style="width: 12px; height: 12px; background: #22c55e; border-radius: 3px;"></div>
-                      <div style="flex: 1;">
-                        <div style="font-weight: 600; color: var(--text); font-size: 14px;">🟢 Đồng ý</div>
-                        <div style="color: var(--text-muted); font-size: 13px; margin-top: 2px;"><span id="legend-agree-count">0</span> (<span id="legend-agree-percent">0%</span>)</div>
+                  <div class="chart-legend">
+                    <div class="legend-item legend-agree" data-legend="agree">
+                      <div class="legend-color"></div>
+                      <div class="legend-content">
+                        <div class="legend-title">Đồng ý</div>
+                        <div class="legend-stats"><span id="legend-agree-count">0</span> đánh giá · <span id="legend-agree-percent">0%</span></div>
                       </div>
                     </div>
-                    <div class="legend-item" style="padding: 12px; background: var(--surface); border-radius: 8px; display: flex; align-items: center; gap: 12px; transition: all 0.2s ease; cursor: pointer;">
-                      <div style="width: 12px; height: 12px; background: #ef4444; border-radius: 3px;"></div>
-                      <div style="flex: 1;">
-                        <div style="font-weight: 600; color: var(--text); font-size: 14px;">🔴 Không đồng ý</div>
-                        <div style="color: var(--text-muted); font-size: 13px; margin-top: 2px;"><span id="legend-disagree-count">0</span> (<span id="legend-disagree-percent">0%</span>)</div>
+                    <div class="legend-item legend-disagree" data-legend="disagree">
+                      <div class="legend-color"></div>
+                      <div class="legend-content">
+                        <div class="legend-title">Không đồng ý</div>
+                        <div class="legend-stats"><span id="legend-disagree-count">0</span> đánh giá · <span id="legend-disagree-percent">0%</span></div>
                       </div>
                     </div>
                   </div>
@@ -599,8 +639,31 @@
               </div>
 
               <!-- Error State -->
-              <div id="feedback-stats-error" style="display: none; padding: 20px; background: #fee2e2; border-radius: 12px; border: 1px solid #fecaca;">
-                <p style="margin: 0; color: #991b1b;">Không thể tải dữ liệu thống kê. <button type="button" id="btn-retry-stats" class="text-button" style="padding: 0; text-decoration: underline;">Thử lại</button></p>
+              <div id="feedback-stats-error" class="error-state is-hidden">
+                <div class="error-icon">
+                  <span class="material-symbols-outlined" aria-hidden="true">error_outline</span>
+                </div>
+                <h3 class="error-title">Không thể tải dữ liệu</h3>
+                <p class="error-message">Đã xảy ra lỗi khi tải thống kê đánh giá.</p>
+                <button type="button" id="btn-retry-stats" class="primary-button">
+                  <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                  Thử lại
+                </button>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="feedback-stats-empty" class="feedback-stats-section is-hidden">
+              <div class="empty-state">
+                <div class="empty-icon">
+                  <span class="material-symbols-outlined" aria-hidden="true">assessment</span>
+                </div>
+                <h3 class="empty-title">Chưa có đánh giá nào</h3>
+                <p class="empty-message">Khi chuyên gia bắt đầu đánh giá kết quả dự đoán, dữ liệu thống kê sẽ được hiển thị tại đây.</p>
+                <button type="button" id="btn-refresh-empty" class="primary-button">
+                  <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                  Làm mới dữ liệu
+                </button>
               </div>
             </div>
           </div>
