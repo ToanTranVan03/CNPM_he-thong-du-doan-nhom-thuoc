@@ -128,6 +128,7 @@ HIGH_RISK_DRUG_GROUPS = {
 HIGH_RISK_GROUP_KEYWORDS = (
     "kháng sinh", "tim mạch", "huyết áp", "tâm thần", "thần kinh", "kháng virus",
     "ung thư", "chống đông", "kháng tiểu cầu", "nội tiết", "miễn dịch", "opioid",
+    "đái tháo đường", "tiểu đường", "insulin",  # nhóm ĐTĐ là thuốc KÊ ĐƠN -> né an toàn
 )
 
 
@@ -2127,24 +2128,32 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
 
     # 1) Ý định tự tử / tự hại -> thông điệp hỗ trợ khủng hoảng (ưu tiên cao nhất)
     if has("tu tu", "tu sat", "muon chet", "ket thuc cuoc doi", "tu hai", "hai ban than",
-           "cat tay cho", "khong muon song"):
+           "cat tay cho", "khong muon song", "khong thiet song", "khong con thiet song",
+           "chan song", "buong xuoi cuoc song", "song khong con y nghia", "chet cho xong"):
         return ("Bạn đang mô tả ý định tự tử/tự hại. Bạn không đơn độc — hãy liên hệ NGAY người thân "
                 "tin cậy hoặc đường dây hỗ trợ tâm lý (vd Ngày Mai 096 306 1414) hoặc gọi cấp cứu 115. "
                 "Hệ thống này KHÔNG thay thế hỗ trợ y tế/khủng hoảng.")
 
     # 2) Ngộ độc / quá liều
     if has("ngo doc", "qua lieu", "uong nham", "thuoc tru sau", "uong thuoc sau", "uong nhieu thuoc",
-           "uong hoa chat", "uong nham thuoc"):
+           "uong hoa chat", "uong nham thuoc", "uong ca vi", "uong nguyen vi", "uong het vi",
+           "uong ca lo thuoc", "uong nhieu vien", "uong vai vi", "uong ca hop thuoc", "uong qua nhieu thuoc"):
         return "Nghi ngộ độc/quá liều." + GO
 
     # 3) Phản vệ / phù mạch (dị ứng nặng)
     angioedema = has("sung moi", "sung luoi", "phu moi", "phu luoi", "phu mat", "sung mat",
                      "hong nghen", "co hong nghen", "phu mach", "sung hong")
     allergic_trigger = has("an tom", "an hai san", "ong dot", "ong chich", "uong thuoc la", "sau khi tiem",
-                           "noi me day", "man khap nguoi", "noi man khap")
-    severe_resp_or_shock = has("kho tho", "tho rit", "tut huyet ap", "choang", "ngat")
-    if (angioedema and severe_resp_or_shock) or (allergic_trigger and severe_resp_or_shock and angioedema) \
-       or (allergic_trigger and has("tut huyet ap", "ngat", "soc")):
+                           "tiem vaccine", "tiem phong", "chich ngua", "tiem thuoc", "sau tiem", "tiem xong",
+                           "noi me day", "man khap nguoi", "noi man khap", "noi man do", "noi man")
+    # Dùng affirmative_mention để câu "KHÔNG khó thở" KHÔNG kích hoạt (has() khớp nhầm chuỗi con).
+    # Nhánh phù mạch (sưng môi/lưỡi rất đặc hiệu): chấp nhận cả "choáng". Nhánh tác nhân dị ứng
+    # (đồ ăn/tiêm) chỉ nhận khó thở/thở rít/tụt HA/ngất (sốc thật) để tránh báo giả.
+    severe_resp_or_shock = affirmative_mention(t, ("kho tho", "tho rit", "tut huyet ap", "choang", "ngat"))
+    severe_resp_or_real_shock = affirmative_mention(
+        t, ("kho tho", "tho rit", "khong tho duoc", "tut huyet ap", "ngat", "soc phan ve"))
+    if (angioedema and severe_resp_or_shock) or (allergic_trigger and severe_resp_or_real_shock) \
+       or (allergic_trigger and affirmative_mention(t, ("tut huyet ap", "ngat", "soc"))):
         return "Nghi PHẢN VỆ (dị ứng nặng: sưng môi/lưỡi/họng, khó thở, tụt huyết áp)." + GO
 
     # 4) Xuất huyết nặng: nôn ra máu / phân đen (melena)
@@ -2193,10 +2202,19 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
     if has("bung cung", "cung nhu go", "bung cung nhu go", "do cung bung", "phan ung thanh bung"):
         return "Nghi bụng ngoại khoa cấp (bụng cứng, đau dữ dội)." + GO
 
-    # 9) Cấp cứu sản khoa: thai + chảy máu/đau bụng
-    if has("mang thai", "co thai", "dang bau", "co bau", "thai ", "thai nhi", "bau "):
+    # 9) Cấp cứu sản khoa: thai + chảy máu/đau bụng HOẶC dấu tiền sản giật
+    if has("mang thai", "co thai", "dang bau", "co bau", "thai ", "thai nhi", "bau ", "co bau", "bau bi"):
         if has("chay mau", "ra mau", "ra dich nau", "dau bung", "dau quan", "dau lung du doi"):
             return "Có thai kèm chảy máu/đau bụng — nguy cơ cấp cứu sản khoa (sảy thai/thai ngoài tử cung)." + GO
+        # Tiền sản giật/sản giật: đau đầu dữ dội / rối loạn thị giác / phù nhiều / co giật.
+        preeclampsia_sign = (
+            (has("dau dau") and has("du doi", "nhieu", "nang", "nhu bua bo", "khong giam"))
+            or has("nhin mo", "mo mat", "mat mo", "hoa mat", "nhin khong ro", "loa mat")
+            or has("phu mat", "phu chan", "phu hai chan", "phu toan than", "phu nhieu", "phu tay chan", "phu nang")
+        )
+        if preeclampsia_sign:
+            return ("Có thai kèm đau đầu dữ dội / nhìn mờ / phù — nghi TIỀN SẢN GIẬT, cần cấp cứu "
+                    "sản khoa ngay.") + GO
 
     # ── P0 (2026-06-15): bổ sung cờ đỏ còn lọt, đo bằng scripts/independent_probe.py.
     # Dùng affirmative_mention (aff) để phủ định "không sụt cân"/"không co giật"/"không tê"
