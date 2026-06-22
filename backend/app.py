@@ -2148,14 +2148,24 @@ def affirmative_mention(text: str, patterns, window: int = 16) -> bool:
     return False
 
 
+# Hậu tố thông điệp cờ đỏ — DÙNG ĐỂ PHÂN LOẠI MỨC ĐỘ ở caller:
+#   GO  = CẤP CỨU thật (gọi 115/đến viện ngay) -> score_type "emergency".
+#   SEE = cần đi khám sớm để tầm soát, KHÔNG phải cấp cứu -> score_type "referral".
+# Caller (/api/predict) phân biệt 2 mức này bằng cách so hậu tố message.
+EMERGENCY_GO_SUFFIX = " Đây có thể là CẤP CỨU; gọi 115 hoặc đến cơ sở y tế ngay, KHÔNG tự dùng thuốc theo gợi ý."
+REFERRAL_SEE_SUFFIX = " Hãy đi khám bác sĩ sớm để được đánh giá, KHÔNG tự dùng thuốc theo gợi ý."
+
+
 def emergency_red_flag_from_notes(notes: str) -> str | None:
     """Dấu hiệu CẤP CỨU/khủng hoảng nhận từ mô tả thô (không phụ thuộc feature trích được).
     Trả về thông điệp cảnh báo nếu phát hiện; None nếu không. Ưu tiên AN TOÀN: thà cảnh báo thừa.
+
+    Message kết thúc bằng GO (cấp cứu) hoặc SEE (đi khám sớm) để caller phân loại mức độ.
     """
     t = normalize(notes or "")
     def has(*ps): return any(p in t for p in ps)
 
-    GO = " Đây có thể là CẤP CỨU; gọi 115 hoặc đến cơ sở y tế ngay, KHÔNG tự dùng thuốc theo gợi ý."
+    GO = EMERGENCY_GO_SUFFIX
 
     # 1) Ý định tự tử / tự hại -> thông điệp hỗ trợ khủng hoảng (ưu tiên cao nhất)
     if has("tu tu", "tu sat", "muon chet", "ket thuc cuoc doi", "tu hai", "hai ban than",
@@ -2250,7 +2260,7 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
     # ── P0 (2026-06-15): bổ sung cờ đỏ còn lọt, đo bằng scripts/independent_probe.py.
     # Dùng affirmative_mention (aff) để phủ định "không sụt cân"/"không co giật"/"không tê"
     # KHÔNG kích hoạt cờ đỏ sai (P0.6 near-miss).
-    SEE = " Hãy đi khám bác sĩ sớm để được đánh giá, KHÔNG tự dùng thuốc theo gợi ý."
+    SEE = REFERRAL_SEE_SUFFIX
     def aff(*ps): return affirmative_mention(t, ps)
 
     # 10) Đột quỵ (FAST): méo miệng / yếu-liệt nửa người / nói khó khởi phát đột ngột
@@ -2455,7 +2465,7 @@ def llm_safety_red_flag_message(context: dict | None, notes: str, active_symptom
     if not flags:
         return None
     t = normalize(notes or "")
-    GO = " Đây có thể là CẤP CỨU; gọi 115 hoặc đến cơ sở y tế ngay, KHÔNG tự dùng thuốc theo gợi ý."
+    GO = EMERGENCY_GO_SUFFIX
 
     # Nhóm ý định/ngộ độc/phản vệ: ưu tiên an toàn (lexicon đã bỏ sót mới tới đây).
     if "suicide_self_harm" in flags:
@@ -4160,13 +4170,15 @@ def predict():
     if not _emergency and context_safety is not None:
         _emergency = context_safety.emergency_message(notes)  # phản vệ: sưng môi/lưỡi/họng + khó thở
     if _emergency:
+        # Cờ đỏ dạng "đi khám sớm" (SEE) KHÔNG phải cấp cứu -> nhãn nhẹ hơn, vẫn chặn kê thuốc (422).
+        is_referral = _emergency.endswith(REFERRAL_SEE_SUFFIX)
         return jsonify({
             "error": _emergency,
-            "display_title": "⚠️ Cần hỗ trợ y tế khẩn cấp",
+            "display_title": "⚠️ Cần đi khám bác sĩ sớm" if is_referral else "⚠️ Cần hỗ trợ y tế khẩn cấp",
             "needs_more_input": True,
             "confidence": None,
             "label_type": LABEL_TYPE,
-            "score_type": "emergency",
+            "score_type": "referral" if is_referral else "emergency",
             "matched_symptoms": [],
             "top_predictions": [],
         }), 422
