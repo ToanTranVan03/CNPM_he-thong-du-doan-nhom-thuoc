@@ -1918,7 +1918,8 @@ async function loadAdminHistory(page = 1) {
         `<td>${ahEscape(it.email || "guest")}</td>` +
         `<td><span class="ah-status ah-${ahEscape(it.status || "")}">${ahEscape(label)}</span></td>` +
         `<td>${ahEscape(it.group || "—")}</td>` +
-        `<td>${conf}</td>`;
+        `<td>${conf}</td>` +
+        `<td class="ah-notes">${ahEscape(it.notes || "—")}</td>`;
       rows.appendChild(tr);
     });
     const isEmpty = (data.items || []).length === 0;
@@ -1947,6 +1948,32 @@ const ahPrevBtn = document.getElementById("ah-prev");
 const ahNextBtn = document.getElementById("ah-next");
 if (ahPrevBtn) ahPrevBtn.addEventListener("click", () => { if (ahPage > 1) loadAdminHistory(ahPage - 1); });
 if (ahNextBtn) ahNextBtn.addEventListener("click", () => { if (ahPage < ahPages) loadAdminHistory(ahPage + 1); });
+
+const ahExportBtn = document.getElementById("ah-export");
+if (ahExportBtn) {
+  ahExportBtn.addEventListener("click", async () => {
+    const msg = document.getElementById("ah-message");
+    try {
+      const params = new URLSearchParams();
+      if (ahStatus) params.set("status", ahStatus);
+      if (ahEmail) params.set("email", ahEmail);
+      const qs = params.toString();
+      const response = await fetch(`/api/admin/history.csv${qs ? `?${qs}` : ""}`, { headers: adminHeaders() });
+      if (!response.ok) throw new Error("Không xuất được CSV.");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "lich_su_he_thong.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      if (msg) { msg.textContent = error.message; msg.classList.add("is-error"); }
+    }
+  });
+}
 
 initTheme();
 updateCharCount();

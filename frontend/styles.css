@@ -1927,3 +1927,13 @@ input:focus {
   background: #fee2e2;
   color: #b91c1c;
 }
+.history-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.data-table td.ah-notes {
+  max-width: 320px;
+  white-space: normal;
+  color: var(--muted);
+}

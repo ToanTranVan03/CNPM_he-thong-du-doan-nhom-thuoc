@@ -732,7 +732,13 @@
               <h1 id="ah-title">Lịch sử dự đoán toàn hệ thống</h1>
               <p class="lead">Xem mọi lượt dự đoán của tất cả người dùng, kèm email, hướng xử trí và nhóm thuốc.</p>
             </div>
-            <span class="status-pill status-secondary" id="ah-total-pill">0 lượt</span>
+            <div class="history-head-actions">
+              <span class="status-pill status-secondary" id="ah-total-pill">0 lượt</span>
+              <button class="secondary-button compact" type="button" id="ah-export">
+                <span class="material-symbols-outlined" aria-hidden="true">download</span>
+                <span>Xuất CSV</span>
+              </button>
+            </div>
           </div>
 
           <div class="fb-filter">
@@ -755,6 +761,7 @@
                   <th>Hướng xử trí</th>
                   <th>Nhóm thuốc</th>
                   <th>Độ tin cậy</th>
+                  <th>Câu nhập</th>
                 </tr>
               </thead>
               <tbody id="ah-rows"></tbody>

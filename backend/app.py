@@ -3056,6 +3056,7 @@ def admin_history():
         "status": r.trang_thai,
         "group": r.nhom_thuoc_du_doan,
         "confidence": r.do_tin_cay,
+        "notes": r.mo_ta_benh_an.noi_dung if r.mo_ta_benh_an else None,
     } for r in rows]
     return jsonify({
         "items": items,
@@ -3065,6 +3066,52 @@ def admin_history():
         "pages": (total + page_size - 1) // page_size if total else 1,
         "source": "postgres",
     })
+
+
+@app.get("/api/admin/history.csv")
+def admin_history_csv():
+    """Xuất lịch sử dự đoán toàn hệ thống ra CSV (theo bộ lọc hiện tại). Admin-only, DB-only."""
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    from sqlalchemy import Date, cast
+    KQ = db_models.KetQuaDuDoan
+
+    q = db.session.query(KQ)
+    email = (request.args.get("email") or "").strip().lower()
+    status = (request.args.get("status") or "").strip()
+    date_from = _valid_date_param(request.args.get("from"))
+    date_to = _valid_date_param(request.args.get("to"))
+    if email:
+        q = q.filter(KQ.user_email.ilike(f"%{email}%"))
+    if status in ("suggest", "emergency", "safety_block"):
+        q = q.filter(KQ.trang_thai == status)
+    if date_from:
+        q = q.filter(cast(KQ.created_at, Date) >= date_from)
+    if date_to:
+        q = q.filter(cast(KQ.created_at, Date) <= date_to)
+
+    rows = q.order_by(KQ.created_at.desc()).limit(5000).all()
+    buffer = io.StringIO()
+    buffer.write("﻿")  # BOM để Excel đọc đúng UTF-8
+    writer = csv.writer(buffer)
+    writer.writerow(["thoi_gian", "email", "huong_xu_tri", "nhom_thuoc", "do_tin_cay", "cau_nhap"])
+    labels = {"suggest": "Gợi ý OTC", "safety_block": "Né an toàn", "emergency": "Cấp cứu"}
+    for r in rows:
+        writer.writerow([
+            iso_utc(r.created_at) if r.created_at else "",
+            r.user_email or "guest",
+            labels.get(r.trang_thai, r.trang_thai or ""),
+            r.nhom_thuoc_du_doan or "",
+            f"{round(r.do_tin_cay * 100)}%" if isinstance(r.do_tin_cay, (int, float)) else "",
+            (r.mo_ta_benh_an.noi_dung if r.mo_ta_benh_an else "") or "",
+        ])
+    from flask import Response
+    return Response(
+        buffer.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=lich_su_he_thong.csv"},
+    )
 
 
 # ── DB-BACKED: đọc danh mục đã seed từ Postgres (admin) ───────────────────────
@@ -3626,14 +3673,20 @@ def _group_from_body(body: dict) -> str | None:
     return group.strip()
 
 
-def _db_log_prediction(status: str, group: str | None, email: str, confidence) -> None:
-    """US15 DB: tạo KetQuaDuDoan (+LichSuDuDoan) cho mỗi lần dự đoán."""
+def _db_log_prediction(status: str, group: str | None, email: str, confidence,
+                       notes: str | None = None) -> None:
+    """US15 DB: tạo KetQuaDuDoan (+LichSuDuDoan) cho mỗi lần dự đoán.
+
+    Nếu có câu người dùng nhập (notes) -> lưu kèm MoTaBenhAn để admin xem chi tiết về sau.
+    """
     kq = db_models.KetQuaDuDoan(
         trang_thai=status,
         nhom_thuoc_du_doan=group,
         user_email=email,
         do_tin_cay=confidence,
     )
+    if isinstance(notes, str) and notes.strip():
+        kq.mo_ta_benh_an = db_models.MoTaBenhAn(noi_dung=notes.strip()[:2000], ngon_ngu="vi")
     kq.lich_su = db_models.LichSuDuDoan(ket_qua_tom_tat=f"{status}: {group or '—'}")
     db.session.add(kq)
     db.session.commit()
@@ -3653,9 +3706,10 @@ def log_prediction_after_request(response):
         email = (user or {}).get("email") or "guest"
         conf = body.get("confidence")
         conf = float(conf) if isinstance(conf, (int, float)) else None
+        notes = (request.get_json(silent=True) or {}).get("notes")
         if DB_ENABLED:
             try:
-                _db_log_prediction(status, group, email, conf)
+                _db_log_prediction(status, group, email, conf, notes)
                 return response
             except Exception:
                 db.session.rollback()
