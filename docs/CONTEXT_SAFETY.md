@@ -30,6 +30,6 @@ LLM_MODEL=llama-3.3-70b-versatile
 Cài: `pip install openai`. Mặc định TẮT -> chỉ lexicon + learned (không gọi mạng).
 
 ## Kiểm chứng (2026-06-16)
-- `scripts/test_context_safety.py`: 14/14 PASS. Kiểm thử UI v9: 12/12 PASS.
+- `scripts/test_context_safety.py`: 14/14 PASS. Kiểm thử UI: 12/12 PASS.
 - LLM off (mặc định) + learned: benchmark 100/100/92.5%, safety_recall 100%, stress 459/500.
 - Vòng học: "đau bao tử" -> peptic_ulcer, "Ông nội" -> elderly tự bắt sau khi học.

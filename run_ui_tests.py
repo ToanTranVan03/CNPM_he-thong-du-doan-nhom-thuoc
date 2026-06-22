@@ -36,7 +36,7 @@ async def run_test():
             await page.wait_for_selector("div[data-auth-view='register']:not(.is-hidden)", timeout=3000)
             
             # Fill form
-            await page.fill("#register-name", "Kiểm thử UI Test")
+            await page.fill("#register-name", "UI Test")
             await page.fill("#register-email", "uitest@test.com")
             await page.fill("#register-password", "test123456")
             
