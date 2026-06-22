@@ -141,8 +141,17 @@ function initialsForName(name, email) {
   return source.slice(0, 2).toUpperCase();
 }
 
+function getCurrentUserDisplayName() {
+  return (
+    currentUser?.fullName ||
+    currentUser?.full_name ||
+    currentUser?.name ||
+    (currentUser?.email ? currentUser.email.split("@")[0] : "Người dùng")
+  );
+}
+
 function updateUserUi() {
-  const displayName = currentUser?.name || "Người dùng";
+  const displayName = getCurrentUserDisplayName();
   const displayEmail = currentUser?.email || "";
   userName.textContent = displayName;
   userEmail.textContent = displayEmail;
@@ -248,8 +257,17 @@ async function saveProfileData(event) {
       throw new Error(data.error || data.message || "Không thể cập nhật hồ sơ.");
     }
     
-    // Update local user data
-    currentUser = data;
+    // Update local user data consistently for sidebar/profile
+    const updatedProfile = data.user || data;
+    currentUser = {
+      ...(currentUser || {}),
+      ...updatedProfile,
+      name: updatedProfile.name || updatedProfile.fullName || profileFullname.value.trim(),
+      fullName: updatedProfile.fullName || updatedProfile.name || profileFullname.value.trim(),
+      email: updatedProfile.email || currentUser?.email || profileEmail.value.trim(),
+      phoneNumber: updatedProfile.phoneNumber ?? profilePhone.value.trim(),
+      specialty: updatedProfile.specialty ?? profileSpecialty.value.trim(),
+    };
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(currentUser));
     updateUserUi();
     
@@ -1444,13 +1462,7 @@ loginForm.addEventListener("submit", async (event) => {
     });
     
     setAuthMessage(loginMessage, "");
-    
-    const authData = {
-        token: data.token,
-        user: { name: "Bác sĩ", email: inputEmail } 
-    };
-    
-    handleAuthSuccess(authData);
+    handleAuthSuccess(data);
     
   } catch (error) {
     setAuthMessage(loginMessage, formatError(error), true);

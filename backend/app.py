@@ -3332,17 +3332,48 @@ def register():
 # --- BẮT ĐẦU: BỘ API XÁC THỰC, TÀI KHOẢN & HỒ SƠ ---
 @app.route('/api/login', methods=['POST'])
 def login():
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip()
+    password = data.get('password') or ''
+
     if email == "admin@gmail.com" and password == "123456":
-        token = jwt.encode({'user': email, 'role': 'Admin', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)}, app.config['SECRET_KEY'], algorithm="HS256")
-        return jsonify({'message': 'Đăng nhập thành công', 'token': token, 'user': {'name': 'Bác sĩ Toàn (Admin)', 'email': email}}), 200
-    
+        token = jwt.encode(
+            {'user': email, 'role': 'Admin', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)},
+            app.config['SECRET_KEY'],
+            algorithm="HS256"
+        )
+        return jsonify({
+            'message': 'Đăng nhập thành công',
+            'token': token,
+            'user': {
+                'name': 'Bác sĩ Trần Văn Toàn',
+                'fullName': 'Bác sĩ Trần Văn Toàn',
+                'email': email,
+                'role': 'Admin',
+                'specialty': 'Quản trị hệ thống'
+            }
+        }), 200
+
     user = User.query.filter_by(email=email).first()
     if user and user.check_password(password):
-        token = jwt.encode({'user': email, 'role': 'User', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)}, app.config['SECRET_KEY'], algorithm="HS256")
-        return jsonify({'message': 'Đăng nhập thành công', 'token': token, 'user': {'name': user.full_name, 'email': email}}), 200
+        display_name = user.full_name or email.split("@")[0]
+        token = jwt.encode(
+            {'user': email, 'role': 'User', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)},
+            app.config['SECRET_KEY'],
+            algorithm="HS256"
+        )
+        return jsonify({
+            'message': 'Đăng nhập thành công',
+            'token': token,
+            'user': {
+                'name': display_name,
+                'fullName': display_name,
+                'email': email,
+                'role': 'User',
+                'phoneNumber': user.phone_number,
+                'specialty': user.specialty
+            }
+        }), 200
 
     return jsonify({'message': 'Sai email hoặc mật khẩu'}), 401
 
@@ -3354,14 +3385,43 @@ def logout():
 
 @app.route('/api/auth/me', methods=['GET'])
 def auth_me():
-
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "): 
         return jsonify({"error": "Chưa đăng nhập"}), 401
+
     token = auth_header.split(" ")[1]
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        return jsonify({"user": {"email": payload['user'], "name": "Người dùng hệ thống"}})
+        email = payload.get('user')
+        role = payload.get('role', 'User')
+
+        if email == "admin@gmail.com":
+            return jsonify({"user": {
+                "email": email,
+                "name": "Bác sĩ Trần Văn Toàn",
+                "fullName": "Bác sĩ Trần Văn Toàn",
+                "role": "Admin",
+                "specialty": "Quản trị hệ thống"
+            }}), 200
+
+        user = User.query.filter_by(email=email).first()
+        if user:
+            display_name = user.full_name or email.split("@")[0]
+            return jsonify({"user": {
+                "email": email,
+                "name": display_name,
+                "fullName": display_name,
+                "role": role,
+                "phoneNumber": user.phone_number,
+                "specialty": user.specialty
+            }}), 200
+
+        return jsonify({"user": {
+            "email": email,
+            "name": email.split("@")[0] if email else "Người dùng",
+            "fullName": email.split("@")[0] if email else "Người dùng",
+            "role": role
+        }}), 200
     except Exception:
         return jsonify({"error": "Token hết hạn"}), 401
 
@@ -3409,21 +3469,55 @@ def profile():
     
     if request.method == 'GET':
         if email == "admin@gmail.com":
-            return jsonify({"fullName": "Bác sĩ Trần Văn Toàn", "email": email, "phoneNumber": "0901234567", "specialty": "Quản trị hệ thống"}), 200
+            return jsonify({
+                "name": "Bác sĩ Trần Văn Toàn",
+                "fullName": "Bác sĩ Trần Văn Toàn",
+                "email": email,
+                "phoneNumber": "0901234567",
+                "specialty": "Quản trị hệ thống",
+                "role": "Admin"
+            }), 200
         if user:
-            return jsonify({"fullName": user.full_name, "email": email, "phoneNumber": user.phone_number, "specialty": user.specialty}), 200
-        return jsonify({"fullName": "Người dùng", "email": email}), 200
+            display_name = user.full_name or email.split("@")[0]
+            return jsonify({
+                "name": display_name,
+                "fullName": display_name,
+                "email": email,
+                "phoneNumber": user.phone_number,
+                "specialty": user.specialty,
+                "role": "User"
+            }), 200
+        fallback_name = email.split("@")[0] if email else "Người dùng"
+        return jsonify({"name": fallback_name, "fullName": fallback_name, "email": email, "role": "User"}), 200
 
     if request.method == 'PUT':
-        data = request.get_json()
+        data = request.get_json() or {}
         if email == "admin@gmail.com":
-            return jsonify({"message": "Cập nhật hồ sơ Admin thành công!"}), 200
+            admin_profile = {
+                "name": data.get("fullName") or "Bác sĩ Trần Văn Toàn",
+                "fullName": data.get("fullName") or "Bác sĩ Trần Văn Toàn",
+                "email": email,
+                "phoneNumber": data.get("phoneNumber") or "0901234567",
+                "specialty": data.get("specialty") or "Quản trị hệ thống",
+                "role": "Admin"
+            }
+            return jsonify({"message": "Cập nhật hồ sơ Admin thành công!", "user": admin_profile, **admin_profile}), 200
+
         if user:
             user.full_name = data.get("fullName", user.full_name)
             user.phone_number = data.get("phoneNumber", user.phone_number)
             user.specialty = data.get("specialty", user.specialty)
             db.session.commit()
-            return jsonify({"message": "Cập nhật hồ sơ thành công!"}), 200
+            display_name = user.full_name or email.split("@")[0]
+            updated_user = {
+                "name": display_name,
+                "fullName": display_name,
+                "email": email,
+                "phoneNumber": user.phone_number,
+                "specialty": user.specialty,
+                "role": "User"
+            }
+            return jsonify({"message": "Cập nhật hồ sơ thành công!", "user": updated_user, **updated_user}), 200
         return jsonify({"error": "Không tìm thấy tài khoản trong DB"}), 404
 # --- KẾT THÚC: BỘ API XÁC THỰC, TÀI KHOẢN & HỒ SƠ ---
 
