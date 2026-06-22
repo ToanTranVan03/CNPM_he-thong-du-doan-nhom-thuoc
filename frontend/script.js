@@ -454,7 +454,21 @@ function appendSymptomToTextarea(symptomLabel) {
   
   return true;
 }
+function removeSymptomFromTextarea(symptomLabel) {
+  if (!symptomLabel || !textarea) return;
 
+  const label = symptomLabel.trim();
+  let parts = textarea.value
+    .split(",")
+    .map(x => x.trim())
+    .filter(Boolean);
+
+  parts = parts.filter(x => x.toLowerCase() !== label.toLowerCase());
+
+  textarea.value = parts.join(", ");
+  updateCharCount();
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
 /**
  * Thêm triệu chứng vào danh sách vừa dùng
  */
@@ -847,6 +861,7 @@ function renderSymptomChips(symptomsData) {
         // Bỏ chọn
         selectedSymptoms.delete(symptom.id);
         selectedSymptomLabels.delete(symptom.id);
+        removeSymptomFromTextarea(symptom.label_vi || symptom.label || symptom.label_en);
       } else {
         // Chọn (nếu chưa đạt giới hạn)
         if (canSelectMore()) {

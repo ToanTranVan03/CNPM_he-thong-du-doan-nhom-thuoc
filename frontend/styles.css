@@ -3861,3 +3861,35 @@ input:focus {
   line-height: 1.6;
   margin: 10px 0 20px;
 }
+/* Khóa chiều cao bảng quản trị, chỉ cuộn trong khung */
+.admin-table-scroll,
+.table-scroll,
+#drug-table-wrap,
+#dictionary-table-wrap,
+#drug-group-table-wrap {
+  max-height: 560px;
+  overflow-y: auto;
+  overflow-x: auto;
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+}
+
+.admin-table-scroll table,
+.table-scroll table,
+#drug-table-wrap table,
+#dictionary-table-wrap table,
+#drug-group-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin-table-scroll thead,
+.table-scroll thead,
+#drug-table-wrap thead,
+#dictionary-table-wrap thead,
+#drug-group-table-wrap thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--surface-low);
+}
