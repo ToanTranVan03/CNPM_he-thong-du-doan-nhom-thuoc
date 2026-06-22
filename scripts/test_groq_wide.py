@@ -64,6 +64,17 @@ CASES = [
     ("Tiêu chảy nhiều lần, khát nhiều, tiểu ít, người lừ đừ", EMERGENCY, "Mất nước nặng"),
     ("Sốt nhẹ thôi, không ho, không khó thở, không đau họng", OTC, "Phủ định nhiều - sốt đơn thuần OTC"),
     ("Người mệt mệt khó tả, không rõ triệu chứng gì", (SAFETY, INSUFFICIENT), "Mơ hồ - cần hỏi thêm/đi khám"),
+    # ── Mở rộng: ca KHÓ (khẩu ngữ/viết tắt, phủ định bẫy, ngữ cảnh, nhi/lão, từ dọa) ──
+    ("Bị sốt với đau mỏi ng, hắt xì liên tục, chảy nc mũi 2 hôm nay", OTC, "Khẩu ngữ/viết tắt - cảm OTC"),
+    ("Không phải đau ngực đâu, chỉ hơi tức nhẹ lúc hít sâu thôi", (OTC, SAFETY, INSUFFICIENT), "Phủ định đau ngực - KHÔNG được báo cấp cứu giả"),
+    ("Sau khi uống thuốc kháng sinh xong nổi mẩn ngứa khắp người, không khó thở", (OTC, SAFETY), "Dị ứng thuốc nhẹ"),
+    ("Bé 8 tháng tuổi sốt cao 39 độ, lên cơn co giật", EMERGENCY, "Sốt cao co giật trẻ nhỏ"),
+    ("Ông tôi tự nhiên khó thở dữ dội, tím môi tím tái", EMERGENCY, "Suy hô hấp/tím tái"),
+    ("Đầu đau như búa bổ, đột ngột, nặng nhất từ trước tới nay", EMERGENCY, "Đau đầu sét đánh"),
+    ("Tiêu chảy 2 hôm nhưng vẫn ăn uống bình thường, người không mệt", OTC, "Tiêu chảy nhẹ - ORS OTC"),
+    ("Đau lưng âm ỉ mấy hôm, mà em đang mang thai 5 tháng", SAFETY, "Thai kỳ - thận trọng thuốc"),
+    ("Bị bỏng nước sôi ở cẳng tay, phồng rộp lên", (EMERGENCY, SAFETY), "Bỏng - cần xử trí y tế"),
+    ("Tôi thấy hơi mệt với chán ăn, chắc bị ung thư rồi", (INSUFFICIENT, SAFETY), "Lo âu/mơ hồ - cần hỏi thêm"),
 ]
 
 

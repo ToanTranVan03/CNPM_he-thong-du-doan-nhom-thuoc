@@ -1950,12 +1950,20 @@ def respiratory_rule_drug_group(active_symptoms: set[str]) -> str | None:
     has_fever = has_any_symptom(active_symptoms, ["fever", "mild fever", "high fever"])
     has_lower_airway_warning = has_any_symptom(active_symptoms, ["breathlessness", "chest pain", "blood in sputum"])
     has_phlegm = has_any_symptom(active_symptoms, ["phlegm", "mucoid sputum", "rusty sputum"])
-    has_rhinitis_pattern = has_any_symptom(active_symptoms, ["continuous sneezing", "coryza", "runny nose", "congestion", "watering from eyes"])
+    # Dấu hiệu DỊ ỨNG thật (hắt hơi/chảy nước mắt/ngứa) -> kháng histamin mới hợp lý.
+    has_allergic_pattern = has_any_symptom(active_symptoms, ["continuous sneezing", "watering from eyes", "itching"])
+    has_rhinitis_pattern = has_any_symptom(active_symptoms, ["coryza", "runny nose", "congestion"])
+    has_sore_throat = has_any_symptom(active_symptoms, ["sore throat", "throat irritation", "throat pain", "pain in the throat"])
 
     if has_lower_airway_warning:
         return None
     if has_phlegm:
         return "thuốc long đờm / giảm ho"
+    if has_allergic_pattern and not has_fever:
+        return "thuốc kháng histamin"
+    # Đau/rát họng (không sốt, không kèm dị ứng rõ) -> giảm đau hạ sốt OTC, KHÔNG ép kháng histamin.
+    if has_sore_throat and not has_fever:
+        return "thuốc giảm đau hạ sốt"
     if has_rhinitis_pattern and not has_fever:
         return "thuốc kháng histamin"
     if has_fever:
@@ -2201,6 +2209,13 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
            "yeu nua nguoi", "liet nua nguoi", "te nua nguoi", "yeu mot ben nguoi", "liet mot ben nguoi") \
        or (aff("noi kho", "noi ngong", "kho noi", "noi dap") and has("dot ngot")):
         return "Dấu hiệu nghi ĐỘT QUỴ (méo miệng, yếu/liệt nửa người, nói khó)." + GO
+
+    # 10b) Co giật ĐANG/VỪA lên cơn (kể cả sốt cao co giật ở trẻ -> vẫn CẤP CỨU, ưu tiên trước
+    #      mọi luật né an toàn theo bệnh nền/lứa tuổi). CHỈ bắt cơn cấp, KHÔNG bắt tiền sử
+    #      "từng co giật"/"không co giật" (giữ aff cho phủ định + chọn cụm cấp tính).
+    if aff("len con co giat", "len con giat", "vua co giat", "vua len con giat", "dang co giat",
+           "co giat toan than", "giat toan than", "sui bot mep", "co giat lien tuc", "co giat ca nguoi"):
+        return "Nghi CO GIẬT/động kinh đang lên cơn." + GO
 
     # 11) Chèn ép tủy/đuôi ngựa: yếu liệt 2 chân + bí tiểu / tê vùng yên ngựa
     saddle = aff("te yen ngua", "te vung yen ngua", "te bo phan sinh duc", "mat cam giac yen ngua", "te hau mon")
