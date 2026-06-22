@@ -23,5 +23,9 @@ data/learned_context.jsonl
 data/prediction_log.jsonl
 data/feedback.jsonl
 
-# Ảnh so sánh UI tạm (sinh khi đối chiếu giao diện) — không phải artifact chính thức
-screenshots/compare_*.png
+# Ảnh chụp UI/test (nặng, tái tạo được khi chạy lại test) — không track để repo gọn.
+# Vẫn giữ trên máy local; ai cần xem chạy lại script test tương ứng.
+# Riêng báo cáo .md/.txt trong screenshots/ VẪN track làm hồ sơ QA.
+screenshots/*
+!screenshots/*.md
+!screenshots/*.txt
