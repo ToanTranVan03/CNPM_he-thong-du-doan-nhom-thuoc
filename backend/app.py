@@ -1963,11 +1963,39 @@ def respiratory_rule_drug_group(active_symptoms: set[str]) -> str | None:
     return None
 
 
+def bacterial_respiratory_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
+    """Nghi NHIỄM KHUẨN hô hấp: sốt cao KÈM đờm mủ (vàng/xanh/đặc) -> nhóm kháng sinh (kê đơn,
+    sẽ bị né an toàn). Bắt MÀU đờm từ notes vì feature 'phlegm' không phân biệt màu/độ đặc."""
+    t = normalize(notes or "")
+    def has(*ps): return any(p in t for p in ps)
+    high_fever = has_any_symptom(active_symptoms, ["high fever"]) or \
+        affirmative_mention(t, ("sot cao", "sot 38", "sot 39", "sot 40", "sot tren 38", "sot tren 39", "sot gan 40"))
+    purulent_sputum = has("dom vang", "dam vang", "dom xanh", "dam xanh", "dom mu", "dam mu",
+                          "dom dac", "dam dac", "khac dom vang", "khac dom xanh", "ho dom vang", "ho dom xanh")
+    if high_fever and purulent_sputum:
+        return "thuốc kháng sinh"
+    return None
+
+
 def general_fever_pain_rule_drug_group(active_symptoms: set[str]) -> str | None:
     # Sốt kèm đau mỏi người, đau đầu hoặc đau khớp nhưng không có yếu tố dịch tễ vùng sốt rét
     has_fever = has_any_symptom(active_symptoms, ["fever", "mild fever", "high fever"])
     has_pain = has_any_symptom(active_symptoms, ["muscle_pain", "headache", "joint_pain", "back_pain"])
     if has_fever and has_pain:
+        return "thuốc giảm đau hạ sốt"
+    return None
+
+
+_FEVER_FEATURES = {"fever", "mild fever", "high fever"}
+
+
+def isolated_fever_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    """Sốt NHẸ ĐƠN THUẦN (là triệu chứng duy nhất còn lại, KHÔNG phải sốt cao) -> hạ sốt OTC.
+    Vá over-triage: trước đây ca 'sốt nhẹ, không ho/khó thở/đau họng' bị chặn 'cần bác sĩ'."""
+    has_fever = has_any_symptom(active_symptoms, list(_FEVER_FEATURES))
+    has_high = has_any_symptom(active_symptoms, ["high fever"])
+    non_fever = {s for s in active_symptoms if normalize(s) not in {normalize(x) for x in _FEVER_FEATURES}}
+    if has_fever and not has_high and not non_fever:
         return "thuốc giảm đau hạ sốt"
     return None
 
@@ -2202,6 +2230,16 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
     if aff("bong nuoc soi", "bong lua", "bong dien", "bong hoa chat", "bong axit", "bong po xe", "bong xang") \
        or (aff("bi bong") and aff("dien rong", "ca mang", "nhieu vung", "phong rop", "lan rong", "nang", "sau")):
         return "Bỏng (đặc biệt diện rộng/sâu hoặc ở mặt/tay/bộ phận sinh dục) cần được xử trí y tế." + SEE
+
+    # 16) Mất nước NẶNG: tiêu chảy/nôn nhiều KÈM dấu hiệu NẶNG THẬT (rối loạn tri giác / không
+    #     uống được). CHỈ "tiểu ít/môi khô" là mất nước VỪA -> để ORS (OTC) xử lý, không chặn.
+    gi_fluid_loss = aff("tieu chay", "di ngoai nhieu lan", "di ngoai phan long", "di ngoai lien tuc",
+                        "non nhieu", "non lien tuc", "oi nhieu", "non oi nhieu")
+    severe_dehydr_sign = aff("lu du", "li bi", "lo mo", "kiet suc", "khong uong duoc nuoc",
+                             "uong vao non het", "mat nuoc nang", "kho danh thuc", "ngu li bi", "met la di")
+    if gi_fluid_loss and severe_dehydr_sign:
+        return ("Nghi MẤT NƯỚC NẶNG (tiêu chảy/nôn kèm tiểu ít hoặc lừ đừ/li bì). Cần bù dịch và "
+                "ĐI KHÁM NGAY, KHÔNG tự dùng thuốc theo gợi ý.") + ""
 
     return None
 
@@ -4189,6 +4227,7 @@ def predict():
         or thyroid_rule_drug_group(notes, active_symptoms)
         or psych_rule_drug_group(active_symptoms)
         or cardiac_rule_drug_group(active_symptoms)
+        or bacterial_respiratory_rule_drug_group(notes, active_symptoms)
         or bronchodilator_rule_drug_group(active_symptoms)
         or wound_infection_rule_drug_group(active_symptoms)
         or infectious_bloody_diarrhea_rule_drug_group(active_symptoms)
@@ -4204,6 +4243,7 @@ def predict():
         or dermatology_rule_drug_group(active_symptoms)
         or respiratory_rule_drug_group(active_symptoms)
         or general_fever_pain_rule_drug_group(active_symptoms)
+        or isolated_fever_rule_drug_group(active_symptoms)
     )
     score_type = metadata.get("score_type", "probability")
     if rule_group:
