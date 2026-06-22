@@ -1932,8 +1932,33 @@ input:focus {
   align-items: center;
   gap: 10px;
 }
-.data-table td.ah-notes {
-  max-width: 320px;
-  white-space: normal;
+.ah-row {
+  cursor: pointer;
+}
+.ah-row:hover {
+  background: rgba(127, 127, 127, 0.08);
+}
+.data-table td.ah-chevron {
+  width: 1%;
+  text-align: right;
   color: var(--muted);
+}
+.data-table td.ah-chevron .material-symbols-outlined {
+  font-size: 20px;
+  vertical-align: middle;
+}
+.detail-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 20px;
+  margin: 8px 0 0;
+}
+.detail-list dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.detail-list dd {
+  margin: 0;
+  word-break: break-word;
 }

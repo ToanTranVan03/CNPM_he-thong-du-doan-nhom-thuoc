@@ -760,8 +760,7 @@
                   <th>Người dùng</th>
                   <th>Hướng xử trí</th>
                   <th>Nhóm thuốc</th>
-                  <th>Độ tin cậy</th>
-                  <th>Câu nhập</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody id="ah-rows"></tbody>
@@ -901,6 +900,22 @@
         <p class="muted-text" id="mapping-modal-sub">Các nhóm thuốc liên quan tới triệu chứng (theo dữ liệu huấn luyện).</p>
         <p class="form-message" id="mapping-modal-message" role="status"></p>
         <ul class="top-predictions" id="mapping-modal-groups"></ul>
+      </div>
+    </div>
+
+    <!-- Chi tiết một lượt dự đoán (master–detail của Lịch Sử Hệ Thống) -->
+    <div class="modal-overlay is-hidden" id="ah-detail-modal" role="dialog" aria-modal="true" aria-labelledby="ah-detail-title">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Lịch sử hệ thống</p>
+            <h2 id="ah-detail-title">Chi tiết lượt dự đoán</h2>
+          </div>
+          <button class="icon-button" type="button" id="ah-detail-close" aria-label="Đóng">
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <dl class="detail-list" id="ah-detail-body"></dl>
       </div>
     </div>
 

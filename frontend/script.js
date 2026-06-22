@@ -1912,14 +1912,14 @@ async function loadAdminHistory(page = 1) {
       const tr = document.createElement("tr");
       const time = it.time ? new Date(it.time).toLocaleString("vi-VN") : "—";
       const label = AH_STATUS_LABELS[it.status] || it.status || "—";
-      const conf = (typeof it.confidence === "number") ? `${Math.round(it.confidence * 100)}%` : "—";
+      tr.className = "ah-row";
       tr.innerHTML =
         `<td>${ahEscape(time)}</td>` +
         `<td>${ahEscape(it.email || "guest")}</td>` +
         `<td><span class="ah-status ah-${ahEscape(it.status || "")}">${ahEscape(label)}</span></td>` +
         `<td>${ahEscape(it.group || "—")}</td>` +
-        `<td>${conf}</td>` +
-        `<td class="ah-notes">${ahEscape(it.notes || "—")}</td>`;
+        `<td class="ah-chevron"><span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></td>`;
+      tr.addEventListener("click", () => openAhDetail(it));
       rows.appendChild(tr);
     });
     const isEmpty = (data.items || []).length === 0;
@@ -1974,6 +1974,46 @@ if (ahExportBtn) {
     }
   });
 }
+
+// Master–detail: bấm 1 dòng để xem chi tiết đầy đủ.
+const ahDetailModal = document.getElementById("ah-detail-modal");
+const ahDetailBody = document.getElementById("ah-detail-body");
+const ahDetailClose = document.getElementById("ah-detail-close");
+
+function closeAhDetail() {
+  if (ahDetailModal) ahDetailModal.classList.add("is-hidden");
+}
+
+function openAhDetail(it) {
+  if (!ahDetailModal || !ahDetailBody) return;
+  const time = it.time ? new Date(it.time).toLocaleString("vi-VN") : "—";
+  const label = AH_STATUS_LABELS[it.status] || it.status || "—";
+  const conf = (typeof it.confidence === "number") ? `${Math.round(it.confidence * 100)}%` : "—";
+  const fields = [
+    ["Thời gian", time],
+    ["Người dùng", it.email || "guest"],
+    ["Hướng xử trí", label],
+    ["Nhóm thuốc", it.group || "—"],
+    ["Độ tin cậy", conf],
+    ["Câu người dùng nhập", it.notes || "(không lưu cho ca này)"],
+  ];
+  ahDetailBody.innerHTML = fields
+    .map(([k, v]) => `<dt>${ahEscape(k)}</dt><dd>${ahEscape(v)}</dd>`)
+    .join("");
+  ahDetailModal.classList.remove("is-hidden");
+}
+
+if (ahDetailClose) ahDetailClose.addEventListener("click", closeAhDetail);
+if (ahDetailModal) {
+  ahDetailModal.addEventListener("click", (e) => {
+    if (e.target === ahDetailModal) closeAhDetail();
+  });
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && ahDetailModal && !ahDetailModal.classList.contains("is-hidden")) {
+    closeAhDetail();
+  }
+});
 
 initTheme();
 updateCharCount();
