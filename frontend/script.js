@@ -1284,6 +1284,7 @@ function renderDangerWarning(dangerWarning) {
 }
 function renderPrediction(result) {
   const isRuleBased = result.score_type === "rule";
+  const isSymptomOverlap = result.score_type === "symptom_overlap";
   const confidence = result.confidence === null || result.confidence === undefined ? "0.0" : (result.confidence * 100).toFixed(1);
   const isUncertain = Boolean(result.needs_more_input);
   const matchedCount = (result.matched_symptoms_vi || result.matched_symptoms || []).length;
@@ -1295,7 +1296,7 @@ function renderPrediction(result) {
   renderCaseSummary(result);
   renderSuggestedSymptoms(result);
   if (scoreLabel) {
-    scoreLabel.textContent = isRuleBased ? "Cơ chế gợi ý" : scoreText;
+    scoreLabel.textContent = isRuleBased ? "Cơ chế gợi ý" : (isSymptomOverlap ? "Điểm phù hợp" : scoreText);
   }
   // P1: rule là heuristic, KHÔNG phải xác suất -> không hiển thị 100%, không thanh phần trăm.
   confidenceValue.textContent = isRuleBased ? "Quy tắc" : `${confidence}%`;
@@ -1348,9 +1349,11 @@ function renderPrediction(result) {
   topPredictionsTitle.textContent =
     result.score_type === "rule"
       ? "Kết quả theo rule triệu chứng"
-      : result.score_type === "cosine_similarity"
-        ? "Độ tương đồng từ mô hình"
-        : "Xác suất từ mô hình";
+      : result.score_type === "symptom_overlap"
+        ? "Top nhóm theo triệu chứng khớp"
+        : result.score_type === "cosine_similarity"
+          ? "Độ tương đồng từ mô hình"
+          : "Xác suất từ mô hình";
   topPredictions.innerHTML = "";
   if (result.score_type === "rule") {
     const li = document.createElement("li");
@@ -1366,7 +1369,10 @@ function renderPrediction(result) {
 
     const name = document.createElement("span");
     name.className = "prediction-name";
-    name.textContent = prediction.disease_vi || prediction.disease;
+    const matchedText = (prediction.matched_symptoms_vi || []).length
+      ? ` · Khớp: ${(prediction.matched_symptoms_vi || []).slice(0, 3).join(", ")}`
+      : "";
+    name.textContent = `${prediction.disease_vi || prediction.disease}${matchedText}`;
 
     const value = document.createElement("span");
     value.className = "prediction-value";
