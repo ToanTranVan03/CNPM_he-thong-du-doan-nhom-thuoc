@@ -22,3 +22,6 @@ data/learned_context.jsonl
 # US15/US18: log lịch sử dự đoán + feedback (runtime, sinh khi chạy) — KHÔNG đẩy lên
 data/prediction_log.jsonl
 data/feedback.jsonl
+
+# Ảnh so sánh UI tạm (sinh khi đối chiếu giao diện) — không phải artifact chính thức
+screenshots/compare_*.png
