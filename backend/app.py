@@ -1978,7 +1978,8 @@ def bacterial_respiratory_rule_drug_group(notes: str, active_symptoms: set[str])
     t = normalize(notes or "")
     def has(*ps): return any(p in t for p in ps)
     high_fever = has_any_symptom(active_symptoms, ["high fever"]) or \
-        affirmative_mention(t, ("sot cao", "sot 38", "sot 39", "sot 40", "sot tren 38", "sot tren 39", "sot gan 40"))
+        affirmative_mention(t, ("sot cao", "sot 38", "sot 39", "sot 40", "sot tren 38", "sot tren 39", "sot gan 40",
+                                "sot ret run", "ret run", "run lanh", "lanh run", "soc lanh", "sot lanh run"))
     purulent_sputum = has("dom vang", "dam vang", "dom xanh", "dam xanh", "dom mu", "dam mu",
                           "dom dac", "dam dac", "khac dom vang", "khac dom xanh", "ho dom vang", "ho dom xanh")
     if high_fever and purulent_sputum:
@@ -2006,6 +2007,36 @@ def isolated_fever_rule_drug_group(active_symptoms: set[str]) -> str | None:
     non_fever = {s for s in active_symptoms if normalize(s) not in {normalize(x) for x in _FEVER_FEATURES}}
     if has_fever and not has_high and not non_fever:
         return "thuốc giảm đau hạ sốt"
+    return None
+
+
+def insect_bite_rule_drug_group(notes: str) -> str | None:
+    """Côn trùng (muỗi/kiến) đốt khu trú: sưng/ngứa 1 vùng, KHÔNG dấu hiệu toàn thân nặng
+    -> kháng histamin OTC (vá over-triage 'né an toàn' cho 1 nốt muỗi đốt)."""
+    t = normalize(notes or "")
+    def has(*ps): return any(p in t for p in ps)
+    bite = has("muoi dot", "muoi can", "con trung dot", "con trung can", "kien dot", "kien can",
+               "bo chet dot", "ve dot")
+    if not bite:
+        return None
+    # Có dấu hiệu phản vệ/toàn thân -> KHÔNG hạ OTC (để cổng cấp cứu/né lo).
+    if has("kho tho", "sung moi", "sung luoi", "sung hong", "choang", "ngat", "tut huyet ap",
+           "lan khap nguoi", "noi khap nguoi", "sot cao"):
+        return None
+    return "thuốc kháng histamin"
+
+
+def heat_exhaustion_rule_drug_group(notes: str) -> str | None:
+    """Gắng sức/nắng nóng (chạy bộ/ngoài nắng) + chóng mặt/mệt lả/khát, KHÔNG rối loạn tri giác
+    -> bù dịch & điện giải (ORS) OTC. Pin kết quả ổn định cho ca say nắng nhẹ."""
+    t = normalize(notes or "")
+    def has(*ps): return any(p in t for p in ps)
+    heat_ctx = has("ngoai nang", "duoi nang", "troi nang", "chay bo", "gang suc", "tap the thao",
+                   "lao dong nang", "di nang ve", "phoi nang", "nang nong")
+    sx = has("chong mat", "met la", "met lu", "khat nuoc", "hoa mat", "met lai", "uon oai", "met moi")
+    severe = has("lu du", "li bi", "lo mo", "ngat", "xiu", "co giat", "kho tho", "dau nguc")
+    if heat_ctx and sx and not severe:
+        return "bù dịch và điện giải"
     return None
 
 
@@ -2263,6 +2294,19 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
     if aff("bong nuoc soi", "bong lua", "bong dien", "bong hoa chat", "bong axit", "bong po xe", "bong xang") \
        or (aff("bi bong") and aff("dien rong", "ca mang", "nhieu vung", "phong rop", "lan rong", "nang", "sau")):
         return "Bỏng (đặc biệt diện rộng/sâu hoặc ở mặt/tay/bộ phận sinh dục) cần được xử trí y tế." + SEE
+
+    # 15b) Đau thượng vị/bụng trên DỮ DỘI lan ra sau lưng -> nghi viêm tụy cấp / bụng ngoại khoa.
+    if (has("dau bung tren", "dau thuong vi", "dau vung tren ron", "dau bung vung tren", "dau ham vi")
+        or (has("dau bung") and has("tren ron", "thuong vi"))) \
+       and has("du doi", "quan tham", "dau nhieu", "dau quan") \
+       and has("lan ra sau lung", "lan sau lung", "xuyen ra sau lung", "ra sau lung", "lan ra lung"):
+        return "Đau thượng vị dữ dội lan ra sau lưng — nghi viêm tụy cấp, cần đi khám/cấp cứu ngay." + GO
+
+    # 15c) Cờ đỏ NUỐT: nuốt nghẹn/khó nuốt tăng dần kèm sụt cân -> tầm soát thực quản/dạ dày.
+    if aff("nuot nghen", "kho nuot", "nuot vuong", "nghen khi nuot", "nuot kho", "nuot dau tang dan") \
+       and aff("sut can", "giam can", "gay sut", "sut ki"):
+        return ("Nuốt nghẹn/khó nuốt kèm sụt cân — dấu hiệu CẢNH BÁO, cần đi khám tầm soát "
+                "(thực quản/dạ dày) sớm.") + SEE
 
     # 16) Mất nước NẶNG: tiêu chảy/nôn nhiều KÈM dấu hiệu NẶNG THẬT (rối loạn tri giác / không
     #     uống được). CHỈ "tiểu ít/môi khô" là mất nước VỪA -> để ORS (OTC) xử lý, không chặn.
@@ -4261,6 +4305,8 @@ def predict():
         or psych_rule_drug_group(active_symptoms)
         or cardiac_rule_drug_group(active_symptoms)
         or bacterial_respiratory_rule_drug_group(notes, active_symptoms)
+        or heat_exhaustion_rule_drug_group(notes)
+        or insect_bite_rule_drug_group(notes)
         or bronchodilator_rule_drug_group(active_symptoms)
         or wound_infection_rule_drug_group(active_symptoms)
         or infectious_bloody_diarrhea_rule_drug_group(active_symptoms)
