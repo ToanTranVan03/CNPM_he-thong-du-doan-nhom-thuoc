@@ -3008,6 +3008,65 @@ def admin_group_stats():
     })
 
 
+@app.get("/api/admin/history")
+def admin_history():
+    """Admin xem TOÀN BỘ lịch sử dự đoán của mọi người dùng (đọc ket_qua_du_doan).
+
+    Admin-only, DB-only (lịch sử đầy đủ chỉ có trong Postgres). Lọc ?email=&status=&from=&to=,
+    phân trang ?page=&page_size=. Trả từng ca kèm email người dùng, trạng thái, nhóm thuốc, thời gian.
+    """
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    from sqlalchemy import Date, cast
+    KQ = db_models.KetQuaDuDoan
+
+    q = db.session.query(KQ)
+    email = (request.args.get("email") or "").strip().lower()
+    status = (request.args.get("status") or "").strip()
+    date_from = _valid_date_param(request.args.get("from"))
+    date_to = _valid_date_param(request.args.get("to"))
+    if email:
+        q = q.filter(KQ.user_email.ilike(f"%{email}%"))
+    if status in ("suggest", "emergency", "safety_block"):
+        q = q.filter(KQ.trang_thai == status)
+    if date_from:
+        q = q.filter(cast(KQ.created_at, Date) >= date_from)
+    if date_to:
+        q = q.filter(cast(KQ.created_at, Date) <= date_to)
+
+    total = q.count()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = max(1, min(100, int(request.args.get("page_size", 20))))
+    except (TypeError, ValueError):
+        page_size = 20
+
+    rows = (
+        q.order_by(KQ.created_at.desc())
+        .offset((page - 1) * page_size).limit(page_size).all()
+    )
+    items = [{
+        "id": r.ma_ket_qua,
+        "time": iso_utc(r.created_at) if r.created_at else None,
+        "email": r.user_email or "guest",
+        "status": r.trang_thai,
+        "group": r.nhom_thuoc_du_doan,
+        "confidence": r.do_tin_cay,
+    } for r in rows]
+    return jsonify({
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 1,
+        "source": "postgres",
+    })
+
+
 # ── DB-BACKED: đọc danh mục đã seed từ Postgres (admin) ───────────────────────
 # Tích hợp SQLAlchemy vào Flask app: các endpoint sau ĐỌC trực tiếp từ Postgres
 # (nhom_thuoc/thuoc_tham_khao/trieu_chung) — phục vụ QuanLyNhomThuoc() của Admin.

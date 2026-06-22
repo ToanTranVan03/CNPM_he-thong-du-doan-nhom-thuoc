@@ -155,6 +155,10 @@
             <span class="material-symbols-outlined" aria-hidden="true">monitoring</span>
             <span>Dashboard</span>
           </button>
+          <button class="nav-link admin-only is-hidden" type="button" data-page="admin-history">
+            <span class="material-symbols-outlined" aria-hidden="true">manage_search</span>
+            <span>Lịch Sử Hệ Thống</span>
+          </button>
           <button class="nav-link admin-only is-hidden" type="button" data-page="dictionary">
             <span class="material-symbols-outlined" aria-hidden="true">menu_book</span>
             <span>Từ Điển Triệu Chứng</span>
@@ -715,6 +719,56 @@
               </div>
               <p class="form-message" id="import-th-msg" role="status"></p>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- Admin: lịch sử dự đoán toàn hệ thống (đọc từ Postgres) -->
+      <section class="page" id="page-admin-history" aria-labelledby="ah-title">
+        <div class="container">
+          <div class="history-head">
+            <div>
+              <p class="eyebrow">Quản trị · Toàn hệ thống</p>
+              <h1 id="ah-title">Lịch sử dự đoán toàn hệ thống</h1>
+              <p class="lead">Xem mọi lượt dự đoán của tất cả người dùng, kèm email, hướng xử trí và nhóm thuốc.</p>
+            </div>
+            <span class="status-pill status-secondary" id="ah-total-pill">0 lượt</span>
+          </div>
+
+          <div class="fb-filter">
+            <button class="secondary-button compact is-active" type="button" data-ah-status="">Tất cả</button>
+            <button class="secondary-button compact" type="button" data-ah-status="suggest">Gợi ý OTC</button>
+            <button class="secondary-button compact" type="button" data-ah-status="safety_block">Né an toàn</button>
+            <button class="secondary-button compact" type="button" data-ah-status="emergency">Cấp cứu</button>
+          </div>
+          <div class="ah-search">
+            <input type="search" id="ah-email" class="text-input" placeholder="Lọc theo email người dùng…" />
+          </div>
+
+          <p class="form-message" id="ah-message" role="status"></p>
+          <div class="table-wrap">
+            <table class="data-table" id="ah-table">
+              <thead>
+                <tr>
+                  <th>Thời gian</th>
+                  <th>Người dùng</th>
+                  <th>Hướng xử trí</th>
+                  <th>Nhóm thuốc</th>
+                  <th>Độ tin cậy</th>
+                </tr>
+              </thead>
+              <tbody id="ah-rows"></tbody>
+            </table>
+          </div>
+          <div class="empty-state is-hidden" id="ah-empty">
+            <span class="empty-icon material-symbols-outlined" aria-hidden="true">inbox</span>
+            <h2>Chưa có dữ liệu</h2>
+            <p>Không có lượt dự đoán nào khớp bộ lọc.</p>
+          </div>
+          <div class="dict-pagination">
+            <button class="secondary-button compact" type="button" id="ah-prev">Trước</button>
+            <span id="ah-page-info">Trang 1</span>
+            <button class="secondary-button compact" type="button" id="ah-next">Sau</button>
           </div>
         </div>
       </section>

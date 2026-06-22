@@ -196,7 +196,7 @@ function updateAdminUi() {
   });
 }
 
-const ADMIN_PAGES = new Set(["dashboard", "dictionary", "samples", "drug-admin", "feedback-admin"]);
+const ADMIN_PAGES = new Set(["dashboard", "admin-history", "dictionary", "samples", "drug-admin", "feedback-admin"]);
 
 function showPage(pageName) {
   // US19/US27: chặn trang admin nếu không phải admin (kể cả khi gọi trực tiếp).
@@ -214,6 +214,8 @@ function showPage(pageName) {
 
   if (pageName === "dashboard") {
     loadDashboard();
+  } else if (pageName === "admin-history") {
+    loadAdminHistory(1);
   } else if (pageName === "dictionary") {
     loadDictionary(1);
   } else if (pageName === "samples") {
@@ -1874,6 +1876,77 @@ themeToggles.forEach((button) => {
     applyTheme(next);
   });
 });
+
+// ── Admin: lịch sử dự đoán toàn hệ thống (đọc từ Postgres) ───────────────────
+let ahPage = 1, ahPages = 1, ahStatus = "", ahEmail = "", ahDebounce = null;
+const AH_STATUS_LABELS = { suggest: "Gợi ý OTC", safety_block: "Né an toàn", emergency: "Cấp cứu" };
+
+function ahEscape(value) {
+  const div = document.createElement("div");
+  div.textContent = value == null ? "" : String(value);
+  return div.innerHTML;
+}
+
+async function loadAdminHistory(page = 1) {
+  ahPage = page;
+  const rows = document.getElementById("ah-rows");
+  const table = document.getElementById("ah-table");
+  const empty = document.getElementById("ah-empty");
+  const msg = document.getElementById("ah-message");
+  const pill = document.getElementById("ah-total-pill");
+  const info = document.getElementById("ah-page-info");
+  if (!rows) return;
+  if (msg) { msg.textContent = ""; msg.classList.remove("is-error"); }
+  try {
+    const params = new URLSearchParams({ page: String(page), page_size: "20" });
+    if (ahStatus) params.set("status", ahStatus);
+    if (ahEmail) params.set("email", ahEmail);
+    const response = await fetch(`/api/admin/history?${params.toString()}`, { headers: adminHeaders() });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Không tải được lịch sử hệ thống.");
+    ahPages = data.pages || 1;
+    if (pill) pill.textContent = `${data.total} lượt`;
+    if (info) info.textContent = `Trang ${data.page} / ${data.pages}`;
+    rows.innerHTML = "";
+    (data.items || []).forEach((it) => {
+      const tr = document.createElement("tr");
+      const time = it.time ? new Date(it.time).toLocaleString("vi-VN") : "—";
+      const label = AH_STATUS_LABELS[it.status] || it.status || "—";
+      const conf = (typeof it.confidence === "number") ? `${Math.round(it.confidence * 100)}%` : "—";
+      tr.innerHTML =
+        `<td>${ahEscape(time)}</td>` +
+        `<td>${ahEscape(it.email || "guest")}</td>` +
+        `<td><span class="ah-status ah-${ahEscape(it.status || "")}">${ahEscape(label)}</span></td>` +
+        `<td>${ahEscape(it.group || "—")}</td>` +
+        `<td>${conf}</td>`;
+      rows.appendChild(tr);
+    });
+    const isEmpty = (data.items || []).length === 0;
+    if (empty) empty.classList.toggle("is-hidden", !isEmpty);
+    if (table) table.classList.toggle("is-hidden", isEmpty);
+  } catch (error) {
+    if (msg) { msg.textContent = error.message; msg.classList.add("is-error"); }
+  }
+}
+
+document.querySelectorAll("[data-ah-status]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-ah-status]").forEach((b) => b.classList.toggle("is-active", b === btn));
+    ahStatus = btn.dataset.ahStatus || "";
+    loadAdminHistory(1);
+  });
+});
+const ahEmailInput = document.getElementById("ah-email");
+if (ahEmailInput) {
+  ahEmailInput.addEventListener("input", () => {
+    clearTimeout(ahDebounce);
+    ahDebounce = setTimeout(() => { ahEmail = ahEmailInput.value.trim(); loadAdminHistory(1); }, 300);
+  });
+}
+const ahPrevBtn = document.getElementById("ah-prev");
+const ahNextBtn = document.getElementById("ah-next");
+if (ahPrevBtn) ahPrevBtn.addEventListener("click", () => { if (ahPage > 1) loadAdminHistory(ahPage - 1); });
+if (ahNextBtn) ahNextBtn.addEventListener("click", () => { if (ahPage < ahPages) loadAdminHistory(ahPage + 1); });
 
 initTheme();
 updateCharCount();
