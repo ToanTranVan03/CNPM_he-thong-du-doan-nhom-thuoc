@@ -26,7 +26,7 @@ from backend import models as db_models
 # import stats_source  # US19: lớp ĐỌC dữ liệu cho Dashboard thống kê (adapter, chỉ đọc)
 # import models as db_models  # Tích hợp SQLAlchemy: models domain (Postgres)
 from sqlalchemy import text as _sql_text
-from lexicon import (
+from backend.lexicon import (
     AUTO_BODY_PARTS,
     AUTO_EXACT_SYMPTOM_KEYWORDS,
     DIAGNOSIS_VI,
