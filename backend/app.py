@@ -3604,57 +3604,6 @@ def admin_symptom_mapping():
     })
 
 
-# ── US29 (SCRUM-116): quản lý BỆNH ÁN MẪU + nạp nhanh cho bác sĩ ──────────────
-@app.get("/api/benh-an-mau")
-def list_benh_an_mau():
-    """SCRUM-118: danh sách bệnh án mẫu để bác sĩ nạp vào ô nhập. Cần đăng nhập.
-    DB tắt -> trả danh sách rỗng (graceful, không chặn Trang Chủ)."""
-    store = load_user_store()
-    if not current_user_from_request(store):
-        return jsonify({"error": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."}), 401
-    if not DB_ENABLED:
-        return jsonify({"benh_an_mau": []})
-    rows = (
-        db.session.query(db_models.BenhAnMau)
-        .order_by(db_models.BenhAnMau.tieu_de).all()
-    )
-    return jsonify({"benh_an_mau": [r.to_dict() for r in rows]})
-
-
-@app.post("/api/admin/benh-an-mau")
-def create_benh_an_mau():
-    """SCRUM-116: Admin thêm bệnh án mẫu."""
-    _admin, error = _require_admin_db()
-    if error:
-        return error
-    payload = request.get_json(silent=True) or {}
-    tieu_de = str(payload.get("tieu_de") or "").strip()
-    noi_dung = str(payload.get("noi_dung") or "").strip()
-    mo_ta = str(payload.get("mo_ta") or "").strip() or None
-    if not tieu_de or not noi_dung:
-        return jsonify({"error": "Cần tiêu đề và nội dung bệnh án mẫu."}), 400
-    if len(noi_dung) > MAX_NOTES_LENGTH:
-        return jsonify({"error": f"Nội dung không được vượt quá {MAX_NOTES_LENGTH} ký tự."}), 400
-    row = db_models.BenhAnMau(tieu_de=tieu_de[:255], noi_dung=noi_dung, mo_ta=mo_ta and mo_ta[:500])
-    db.session.add(row)
-    db.session.commit()
-    return jsonify({"ok": True, "benh_an_mau": row.to_dict()}), 201
-
-
-@app.delete("/api/admin/benh-an-mau/<int:ma>")
-def delete_benh_an_mau(ma):
-    """SCRUM-116: Admin xóa bệnh án mẫu."""
-    _admin, error = _require_admin_db()
-    if error:
-        return error
-    row = db.session.get(db_models.BenhAnMau, ma)
-    if not row:
-        return jsonify({"error": "Không tìm thấy bệnh án mẫu."}), 404
-    db.session.delete(row)
-    db.session.commit()
-    return jsonify({"ok": True}), 200
-
-
 # ── US15 (port): tự động lưu lịch sử mỗi lần dự đoán ──────────────────────────
 # Ghi vào prediction_log.jsonl — đúng nguồn mà US19 (stats_source) đọc. Port theo hook
 # @app.after_request của nhánh toan/tu, nhưng dùng kiến trúc file-JSON + Bearer của nhánh này.
