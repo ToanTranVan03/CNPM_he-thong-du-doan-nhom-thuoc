@@ -291,25 +291,6 @@ class MoHinhDuDoan(db.Model):
     ket_qua_list = db.relationship("KetQuaDuDoan", back_populates="mo_hinh")
 
 
-# US29 (SCRUM-117): bệnh án mẫu — Admin quản lý, bác sĩ nạp nhanh vào ô nhập liệu.
-# [hạ tầng] không có trên class diagram gốc.
-class BenhAnMau(db.Model):
-    __tablename__ = "benh_an_mau"
-    ma_benh_an_mau = db.Column(db.Integer, primary_key=True)
-    tieu_de = db.Column(db.String(255), nullable=False)
-    noi_dung = db.Column(db.Text, nullable=False)       # nội dung bệnh án để nạp vào ô nhập
-    mo_ta = db.Column(db.String(500))                   # ghi chú ngắn (tùy chọn)
-    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
-    def to_dict(self):
-        return {
-            "ma": self.ma_benh_an_mau,
-            "tieu_de": self.tieu_de,
-            "noi_dung": self.noi_dung,
-            "mo_ta": self.mo_ta,
-        }
-
-
 # Danh sách bảng kỳ vọng (dùng cho test đối chiếu).
 EXPECTED_TABLES = {
     "nguoi_dung", "tai_khoan", "quan_tri_vien", "bac_si_duoc_si",
@@ -317,7 +298,6 @@ EXPECTED_TABLES = {
     "nhom_thuoc", "thuoc_tham_khao", "luu_y_an_toan",
     "ket_qua_du_doan", "lich_su_du_doan", "phan_hoi",
     "thong_ke_bao_cao", "du_lieu_huan_luyen", "mo_hinh_du_doan",
-    "benh_an_mau",
     # bảng nối N-N
     "mo_ta_trieu_chung", "ket_qua_trieu_chung", "ket_qua_nhom_thuoc",
     "ket_qua_thuoc", "ket_qua_luu_y", "nhom_thuoc_thuoc",

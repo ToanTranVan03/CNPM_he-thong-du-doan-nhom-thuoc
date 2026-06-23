@@ -85,6 +85,7 @@ def main():
         tables = set(sa.inspect(db.engine).get_table_names())
         missing = EXPECTED_TABLES - tables
         check(f"tạo đủ {len(EXPECTED_TABLES)} bảng kỳ vọng", not missing, f"thiếu: {missing}")
+        check("không tạo lại bảng benh_an_mau", "benh_an_mau" not in tables)
 
         # 2) Người dùng + tài khoản (1-1) + admin (kế thừa 1-1)
         admin_u = NguoiDung(ho_ten="Quản Trị", email="admin@cnpm.vn", vai_tro="admin")
