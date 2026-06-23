@@ -70,7 +70,6 @@ DATABASE_URL=postgresql+psycopg2://<user>:<password>@localhost:5432/cnpm
 python scripts/init_db.py          # tạo toàn bộ bảng theo backend/models.py
 python scripts/migrate_users.py    # chuyển tài khoản từ JSON sang DB (nếu có)
 python scripts/seed_db.py          # nạp dữ liệu nền
-python scripts/seed_benh_an_mau.py # nạp bệnh án mẫu
 python scripts/seed_drugs_expand.py# nạp kho thuốc mở rộng
 ```
 
