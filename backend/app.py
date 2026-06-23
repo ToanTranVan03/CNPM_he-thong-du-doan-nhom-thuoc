@@ -16,13 +16,15 @@ import joblib
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
-from translations import (
+from backend.translations import (
     disease_description_vi,
     disease_name_vi,
     translate_items,
 )
-import stats_source  # US19: lớp ĐỌC dữ liệu cho Dashboard thống kê (adapter, chỉ đọc)
-import models as db_models  # Tích hợp SQLAlchemy: models domain (Postgres)
+from backend import stats_source
+from backend import models as db_models
+# import stats_source  # US19: lớp ĐỌC dữ liệu cho Dashboard thống kê (adapter, chỉ đọc)
+# import models as db_models  # Tích hợp SQLAlchemy: models domain (Postgres)
 from sqlalchemy import text as _sql_text
 from lexicon import (
     AUTO_BODY_PARTS,
