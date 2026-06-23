@@ -4,6 +4,7 @@ KHÔNG xóa dữ liệu cũ (create_all chỉ tạo bảng còn THIẾU). Dùng 
 trên Postgres CNPM. Chạy:  python scripts/init_db.py
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -16,7 +17,15 @@ from models import db, EXPECTED_TABLES  # noqa: E402
 
 
 def load_env_url():
+    # Tren Render, DATABASE_URL duoc cung cap truc tiep qua Environment Variables.
+    # O may local, tiep tuc ho tro file .env nhu truoc.
+    url = os.environ.get("DATABASE_URL")
+    if url:
+        return url
+
     p = ROOT / ".env"
+    if not p.exists():
+        return None
     for line in p.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line.startswith("DATABASE_URL") and "=" in line:
