@@ -105,17 +105,24 @@ CORS(
 db = db_models.db
 
 
+def _normalize_db_url(url: str | None) -> str | None:
+    # Render/Heroku cấp DATABASE_URL dạng postgres://... nhưng SQLAlchemy cần postgresql://...
+    if url and url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    return url
+
+
 def _resolve_database_url() -> str | None:
     if os.environ.get("DB_DISABLED"):
         return None
     if os.environ.get("DATABASE_URL"):
-        return os.environ["DATABASE_URL"]
+        return _normalize_db_url(os.environ["DATABASE_URL"])
     env_path = PROJECT_ROOT / ".env"
     if env_path.exists():
         for line in env_path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line.startswith("DATABASE_URL") and "=" in line:
-                return line.split("=", 1)[1].strip().strip('"').strip("'")
+                return _normalize_db_url(line.split("=", 1)[1].strip().strip('"').strip("'"))
     return None
 
 
@@ -128,11 +135,12 @@ if _database_url:
         db.init_app(app)
         with app.app_context():
             db.session.execute(_sql_text("SELECT 1"))
+            db.create_all()  # tạo bảng nếu DB mới/thiếu (idempotent, không xóa dữ liệu)
         DB_ENABLED = True
-        app.logger.info("SQLAlchemy: DB Postgres ĐÃ BẬT")
-    except Exception:
+        app.logger.info("SQLAlchemy: DB Postgres ĐÃ BẬT (bảng đã đảm bảo tồn tại)")
+    except Exception as exc:
         DB_ENABLED = False
-        app.logger.warning("SQLAlchemy: không kết nối được DB -> chạy chế độ JSON")
+        app.logger.warning("SQLAlchemy: không kết nối được DB (%s: %s) -> chạy chế độ JSON", type(exc).__name__, exc)
 
 
 @app.after_request
