@@ -157,4 +157,4 @@ Dùng cho gauge/progress trên trang Kết quả:
 Token mới phần lớn **đổi tên** so với `styles.css` cũ (vd `--surface-lowest` → `--surface`). Khi code redesign:
 1. Khai báo toàn bộ token §2–§4 trong `:root` và khối `[data-theme="dark"]`.
 2. Refactor `styles.css` dùng token mới; giữ class name HTML nếu có thể để giảm rủi ro.
-3. Antigravity verify từng trang khớp Figma trước khi merge.
+3. Kiểm thử UI verify từng trang khớp thiết kế trước khi merge.

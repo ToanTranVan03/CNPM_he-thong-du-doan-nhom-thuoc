@@ -3,11 +3,14 @@ scikit-learn>=1.9    # model models/ đã retrain trên 1.9.x (2026-06-08)
 joblib
 flask
 flask-cors
-flask-sqlalchemy      # Database ORM cho Flask
+
+# Cơ sở dữ liệu PostgreSQL (tích hợp SQLAlchemy vào Flask app)
+psycopg2-binary>=2.9   # driver Postgres
+SQLAlchemy>=2.0
+Flask-SQLAlchemy>=3.1
 
 # Xử lý dữ liệu
 pandas
-openpyxl                 # đọc file Excel (.xlsx, .xls)
 pyarrow               # đọc file .parquet (dataset HuggingFace)
 
 # Hiểu ngữ nghĩa tiếng Việt (khớp triệu chứng câu lạ cùng nghĩa)

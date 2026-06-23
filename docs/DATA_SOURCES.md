@@ -22,12 +22,12 @@ nhiên + làm sạch mapping trước khi crawl thêm.
 
 ### Kết quả Bước 1 (2026-06-08): sửa mapping + bơm data tự nhiên + retrain
 
-| Đo trên gretel TEST (212 câu, held-out) | Model cũ `models/` | Model mới `models_v2/` |
+| Đo trên gretel TEST (212 câu, held-out) | Model cũ | Model mới (bản retrain → đang dùng ở `models/`) |
 |---|---|---|
 | **Accuracy THẬT trên mô tả tự nhiên** | **26,2%** | **92,6%** |
 
 - Pipeline: `fix_mappings.py` → `build_natural_dataset.py` → `build_combined_dataset.py` →
-  `train_model.py --out models_v2` → `eval_natural_descriptions.py --model models_v2`.
+  `train_model.py` (bản retrain đã được đưa vào `models/`).
 - Đã sửa: dengue (kháng sinh→giảm đau hạ sốt), typhoid (vắc-xin→kháng sinh); loại `varicose veins`
   (không nhóm thuốc phù hợp). Khử trùng + cap 3000/lớp + nhân bản data tự nhiên x3.
 - **Lưu ý trung thực:** gretel test cùng văn phong với gretel train, nên 92,6% phản ánh khả năng

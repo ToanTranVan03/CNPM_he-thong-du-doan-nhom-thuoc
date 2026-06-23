@@ -1,7 +1,7 @@
 # Baseline chất lượng/an toàn chẩn đoán — TRƯỚC cải thiện
 
 > Đo bằng `scripts/independent_probe.py` (bộ ĐỘC LẬP 37 ca, in-process). Ngày: 2026-06-15.
-> Dùng làm mốc so sánh sau khi thực thi `docs/CODEX_QUALITY_PLAN.md`.
+> Dùng làm mốc so sánh chất lượng giữa các vòng cải tiến.
 
 ## Kết quả tổng
 | Loại | Đạt |

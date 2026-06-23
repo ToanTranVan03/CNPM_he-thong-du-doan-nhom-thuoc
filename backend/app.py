@@ -7,16 +7,12 @@ import re
 import secrets
 import unicodedata
 import zipfile
-import jwt
-import datetime
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from itertools import permutations
 from pathlib import Path
-from difflib import SequenceMatcher
 
 import joblib
-from models import db, User, NhomThuoc, Thuoc, TrieuChung, Feedback
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -25,13 +21,47 @@ from translations import (
     disease_name_vi,
     translate_items,
 )
-from route_bulk_import import bulk_import_bp
-from flask import request, jsonify
-from models import db, DanhGiaDuDoan
+import stats_source  # US19: lớp ĐỌC dữ liệu cho Dashboard thống kê (adapter, chỉ đọc)
+import models as db_models  # Tích hợp SQLAlchemy: models domain (Postgres)
+from sqlalchemy import text as _sql_text
+from lexicon import (
+    AUTO_BODY_PARTS,
+    AUTO_EXACT_SYMPTOM_KEYWORDS,
+    DIAGNOSIS_VI,
+    DRUG_GROUP_GUIDANCE,
+    RULE_MEDICATION_NAMES,
+    UNSUPPORTED_SYMPTOM_KEYWORDS,
+    VI_SYMPTOM_KEYWORDS,
+)
+
 
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
+
+
+def _load_dotenv(path: Path) -> None:
+    """Nạp KEY=VALUE từ .env vào os.environ (KHÔNG ghi đè biến môi trường sẵn có).
+
+    Cho phép cấu hình cố định qua .env (vd ADMIN_EMAILS) mà không cần đặt env thủ công.
+    """
+    if not path.exists():
+        return
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip()
+            if key and key not in os.environ:
+                os.environ[key] = val.strip().strip('"').strip("'")
+    except OSError:
+        pass
+
+
+_load_dotenv(PROJECT_ROOT / ".env")
+
 MODEL_DIR = Path(os.environ.get("MODEL_DIR", PROJECT_ROOT / "models"))
 MODEL_PATH = MODEL_DIR / "disease_model.joblib"
 METADATA_PATH = MODEL_DIR / "metadata.json"
@@ -39,6 +69,13 @@ DATA_SOURCE = Path(os.environ.get("DATA_SOURCE", PROJECT_ROOT / "data" / "train_
 DATA_ARCHIVE = Path(os.environ.get("DATA_ARCHIVE", DATA_SOURCE))
 GUIDANCE_PATH = Path(os.environ.get("GUIDANCE_PATH", PROJECT_ROOT / "data" / "disease_guidance.json"))
 USERS_PATH = Path(os.environ.get("USERS_PATH", PROJECT_ROOT / "data" / "users.json"))
+# US19: danh sách email được cấp quyền Admin (phân tách bằng dấu phẩy). Một user là admin nếu
+# email nằm trong danh sách này HOẶC bản ghi user có "role": "admin".
+ADMIN_EMAILS = frozenset(
+    re.sub(r"\s+", "", e).lower()
+    for e in os.environ.get("ADMIN_EMAILS", "").split(",")
+    if e.strip()
+)
 # Vòng 6: mapping nhóm -> 2-3 hoạt chất tiêu biểu (đã curate, làm sạch) cho output trọng tâm.
 DRUG_REPRESENTATIVES_PATH = Path(
     os.environ.get("DRUG_REPRESENTATIVES_PATH", PROJECT_ROOT / "data" / "drug_group_representatives.json")
@@ -55,243 +92,46 @@ CORS(
                 "http://localhost:5000",
                 "http://localhost:5001",
             ]
-            
         }
     },
 )
-app.config['SECRET_KEY'] = 'dev_key_bi_mat'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///pharma_predict.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# 3. Khởi tạo Database và tạo bảng
-db.init_app(app)
-
-def ensure_database_schema():
-    """Bổ sung cột còn thiếu cho SQLite cũ sau khi code thay đổi."""
-    from sqlalchemy import text
-
-    def table_columns(table_name):
-        rows = db.session.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
-        return {row[1] for row in rows}
-
-    # Bảng phản hồi đánh giá: thêm trạng thái xử lý nếu DB cũ chưa có.
-    if 'danh_gia_du_doan' in {r[0] for r in db.session.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}:
-        cols = table_columns('danh_gia_du_doan')
-        if 'xu_ly' not in cols:
-            db.session.execute(text("ALTER TABLE danh_gia_du_doan ADD COLUMN xu_ly VARCHAR(20) DEFAULT 'CHUA_XU_LY'"))
-            db.session.commit()
-
-with app.app_context():
-    db.create_all()
-    ensure_database_schema()
-    print("Database đã sẵn sàng!")
-
-# Đăng ký blueprint cho bulk import
-app.register_blueprint(bulk_import_bp)
 
 
-# ── API quản lý từ điển triệu chứng (Thêm / Sửa) — Yêu cầu Admin ───────────
-@app.route('/api/admin/symptoms', methods=['POST'])
-def create_symptom():
-    # Kiểm tra token Admin
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
-    token = auth_header.split(" ")[1]
+# ── TÍCH HỢP SQLAlchemy (Postgres) — GRACEFUL ────────────────────────────────
+# Bật DB khi có DATABASE_URL (env hoặc .env) và kết nối được. Thiếu/hỏng -> app vẫn
+# chạy chế độ JSON như cũ (DB_ENABLED=False). Tắt cưỡng bức bằng env DB_DISABLED=1.
+db = db_models.db
+
+
+def _resolve_database_url() -> str | None:
+    if os.environ.get("DB_DISABLED"):
+        return None
+    if os.environ.get("DATABASE_URL"):
+        return os.environ["DATABASE_URL"]
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("DATABASE_URL") and "=" in line:
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return None
+
+
+DB_ENABLED = False
+_database_url = _resolve_database_url()
+if _database_url:
     try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        if payload.get('role') != 'Admin':
-            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
-    except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token đã hết hạn.'}), 401
+        app.config["SQLALCHEMY_DATABASE_URI"] = _database_url
+        app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+        db.init_app(app)
+        with app.app_context():
+            db.session.execute(_sql_text("SELECT 1"))
+        DB_ENABLED = True
+        app.logger.info("SQLAlchemy: DB Postgres ĐÃ BẬT")
     except Exception:
-        return jsonify({'error': 'Token không hợp lệ.'}), 401
+        DB_ENABLED = False
+        app.logger.warning("SQLAlchemy: không kết nối được DB -> chạy chế độ JSON")
 
-    data = request.get_json() or {}
-    ten = data.get('ten') or data.get('name') or data.get('ten_trieu_chung')
-    if not ten or not str(ten).strip():
-        return jsonify({'error': 'Tên triệu chứng (ten) là bắt buộc.'}), 400
-    ma = data.get('ma')
-    if ma:
-        existing = TrieuChung.query.filter_by(ma=ma).first()
-        if existing:
-            return jsonify({'error': 'Mã triệu chứng đã tồn tại.'}), 400
-    ten_en = data.get('ten_en')
-    synonyms = data.get('synonyms')
-    if isinstance(synonyms, list):
-        synonyms_text = json.dumps(synonyms, ensure_ascii=False)
-    elif isinstance(synonyms, str):
-        try:
-            # nếu là JSON string
-            json.loads(synonyms)
-            synonyms_text = synonyms
-        except Exception:
-            synonyms_text = json.dumps([s.strip() for s in synonyms.split(',') if s.strip()], ensure_ascii=False)
-    else:
-        synonyms_text = None
-    mo_ta = data.get('mo_ta')
-
-    obj = TrieuChung(ma=ma, ten=ten.strip(), ten_en=ten_en, synonyms=synonyms_text, mo_ta=mo_ta)
-    db.session.add(obj)
-    db.session.commit()
-    # làm mới cache từ điển
-    global SYMPTOM_DICTIONARY_CACHE
-    SYMPTOM_DICTIONARY_CACHE = None
-    return jsonify(obj.to_dict()), 201
-
-
-
-
-
-@app.route('/api/evaluation', methods=['POST'])
-def save_evaluation():
-    try:
-        data = request.get_json()
-        
-        # Lấy dữ liệu gửi lên từ frontend
-        trieu_chung = data.get('trieu_chung_nhap', 'Không rõ')
-        trang_thai = data.get('trang_thai')  # 'APPROVE' hoặc 'REJECT'
-        ghi_chu = data.get('ghi_chu', '')
-
-        if not trang_thai:
-            return jsonify({'success': False, 'message': 'Thiếu trạng thái đánh giá!'}), 400
-
-        # Khởi tạo đối tượng và lưu vào Database
-        new_feedback = DanhGiaDuDoan(
-            trieu_chung_nhap=trieu_chung,
-            trang_thai=trang_thai,
-            ghi_chu=ghi_chu
-        )
-        
-        db.session.add(new_feedback)
-        db.session.commit()
-
-        return jsonify({
-            'success': True,
-            'message': 'Cập nhật trạng thái phản hồi vào database thành công!',
-            'data': new_feedback.to_dict()
-        }), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Lỗi hệ thống: {str(e)}'}), 500
-
-
-
-# =========================================================
-# SCRUM-77 / Task 46
-# API lấy danh sách phản hồi "Không đồng ý"
-# =========================================================
-@app.get("/api/admin/rejected-feedbacks")
-def get_rejected_feedbacks():
-    try:
-        feedbacks = (
-            DanhGiaDuDoan.query
-            .filter(DanhGiaDuDoan.trang_thai == "REJECT")
-            .order_by(DanhGiaDuDoan.created_at.desc())
-            .all()
-        )
-
-        return jsonify({
-            "success": True,
-            "total": len(feedbacks),
-            "feedbacks": [item.to_dict() for item in feedbacks]
-        }), 200
-
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Lỗi lấy danh sách phản hồi: {str(e)}",
-            "feedbacks": []
-        }), 500
-
-
-# =========================================================
-# SCRUM-78 / Task 47
-# API đánh dấu phản hồi đã xem xét
-# =========================================================
-@app.post("/api/admin/rejected-feedbacks/<int:feedback_id>/reviewed")
-def mark_feedback_reviewed(feedback_id):
-    try:
-        feedback = DanhGiaDuDoan.query.get(feedback_id)
-
-        if not feedback:
-            return jsonify({
-                "success": False,
-                "message": "Không tìm thấy phản hồi."
-            }), 404
-
-        feedback.xu_ly = "DA_XU_LY"
-        db.session.commit()
-
-        return jsonify({
-            "success": True,
-            "message": "Đã đánh dấu phản hồi là đã xử lý.",
-            "data": feedback.to_dict()
-        }), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            "success": False,
-            "message": f"Lỗi cập nhật phản hồi: {str(e)}"
-        }), 500
-
-
-@app.route('/api/admin/symptoms/<int:item_id>', methods=['PUT', 'PATCH'])
-def update_symptom(item_id):
-    # Kiểm tra token Admin
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
-    token = auth_header.split(" ")[1]
-    try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        if payload.get('role') != 'Admin':
-            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
-    except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token đã hết hạn.'}), 401
-    except Exception:
-        return jsonify({'error': 'Token không hợp lệ.'}), 401
-
-    obj = TrieuChung.query.get(item_id)
-    if not obj:
-        return jsonify({'error': 'Không tìm thấy triệu chứng.'}), 404
-    data = request.get_json() or {}
-    if 'ma' in data:
-        ma = data.get('ma')
-        if ma and ma != obj.ma and TrieuChung.query.filter_by(ma=ma).first():
-            return jsonify({'error': 'Mã triệu chứng đã tồn tại.'}), 400
-        obj.ma = ma
-    if 'ten' in data:
-        ten = data.get('ten')
-        if ten and str(ten).strip():
-            obj.ten = ten.strip()
-    if 'ten_en' in data:
-        obj.ten_en = data.get('ten_en')
-    if 'synonyms' in data:
-        s = data.get('synonyms')
-        if isinstance(s, list):
-            obj.synonyms = json.dumps(s, ensure_ascii=False)
-        elif isinstance(s, str):
-            try:
-                json.loads(s)
-                obj.synonyms = s
-            except Exception:
-                obj.synonyms = json.dumps([ss.strip() for ss in s.split(',') if ss.strip()], ensure_ascii=False)
-        else:
-            obj.synonyms = None
-    if 'mo_ta' in data:
-        obj.mo_ta = data.get('mo_ta')
-
-    obj.updated_at = datetime.utcnow()
-    db.session.commit()
-    # làm mới cache từ điển
-    global SYMPTOM_DICTIONARY_CACHE
-    SYMPTOM_DICTIONARY_CACHE = None
-    return jsonify(obj.to_dict())
-
-# ─────────────────────────────────────────────────────────────────────────────
 
 @app.after_request
 def add_no_cache_headers(response):
@@ -321,6 +161,7 @@ HIGH_RISK_DRUG_GROUPS = {
 HIGH_RISK_GROUP_KEYWORDS = (
     "kháng sinh", "tim mạch", "huyết áp", "tâm thần", "thần kinh", "kháng virus",
     "ung thư", "chống đông", "kháng tiểu cầu", "nội tiết", "miễn dịch", "opioid",
+    "đái tháo đường", "tiểu đường", "insulin",  # nhóm ĐTĐ là thuốc KÊ ĐƠN -> né an toàn
 )
 
 
@@ -347,7 +188,7 @@ MIN_TOPGAP = float(os.environ.get("MIN_TOPGAP", "0.12"))
 MIN_RELIABLE_SYMPTOMS = 2
 MAX_NOTES_LENGTH = 2000
 MIN_PASSWORD_LENGTH = 6
-ALLOWED_STATIC_FILES = {"index.html", "styles.css", "script.js"}
+ALLOWED_STATIC_FILES = {"index.html", "styles.css", "script.js", "vendor/chart.umd.min.js"}
 SCORE_LABEL = "Độ tương đồng" if metadata.get("model_type") == "json_symptom_search" else "Độ tin cậy"
 
 
@@ -368,7 +209,71 @@ def parse_iso_datetime(value: str | None) -> datetime | None:
         return None
 
 
+def _iso_dt(dt) -> str | None:
+    """datetime (DB, naive=UTC) -> chuỗi ISO tz-aware để khớp luồng dùng iso_utc/parse_iso_datetime."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
+def _user_dict_from_db(nd) -> dict:
+    """Map bản ghi NguoiDung(+TaiKhoan) -> dict ĐÚNG shape mà các route auth đang dùng."""
+    tk = nd.tai_khoan
+    return {
+        "id": nd.ma_nguoi_dung,
+        "name": nd.ho_ten or "",
+        "email": nd.email or "",
+        "password_hash": (tk.mat_khau_hash if tk else "") or "",
+        "created_at": _iso_dt(nd.created_at),
+        "role": nd.vai_tro or "user",
+        "session_token": tk.session_token if tk else None,
+        "session_expires_at": _iso_dt(tk.session_expires_at) if tk else None,
+        "reset_code_hash": tk.reset_code_hash if tk else None,
+        "reset_code_expires_at": _iso_dt(tk.reset_code_expires_at) if tk else None,
+        "_ma_nguoi_dung": nd.ma_nguoi_dung,
+    }
+
+
+def _upsert_user_db(u: dict) -> None:
+    """Ghi 1 user dict trở lại DB (tạo mới nếu chưa có; cập nhật field hay đổi)."""
+    email = normalize_email(u.get("email", ""))
+    nd = None
+    if u.get("_ma_nguoi_dung"):
+        nd = db.session.get(db_models.NguoiDung, u["_ma_nguoi_dung"])
+    if nd is None:
+        nd = db.session.query(db_models.NguoiDung).filter_by(email=email).first()
+    if nd is None:
+        nd = db_models.NguoiDung(email=email)
+        nd.tai_khoan = db_models.TaiKhoan(ten_dang_nhap=email, mat_khau_hash="")
+        db.session.add(nd)
+    nd.ho_ten = u.get("name", "")
+    nd.email = email
+    nd.vai_tro = u.get("role") or "user"
+    if u.get("created_at"):
+        nd.created_at = parse_iso_datetime(u["created_at"]) or nd.created_at
+    tk = nd.tai_khoan
+    if tk is None:
+        tk = db_models.TaiKhoan(ten_dang_nhap=email, mat_khau_hash="")
+        nd.tai_khoan = tk
+    tk.ten_dang_nhap = email
+    if u.get("password_hash"):
+        tk.mat_khau_hash = u["password_hash"]
+    tk.session_token = u.get("session_token")
+    tk.session_expires_at = parse_iso_datetime(u.get("session_expires_at"))
+    tk.reset_code_hash = u.get("reset_code_hash")
+    tk.reset_code_expires_at = parse_iso_datetime(u.get("reset_code_expires_at"))
+
+
 def load_user_store() -> dict:
+    # DB-backed khi bật; ngược lại đọc users.json (graceful fallback).
+    if DB_ENABLED:
+        try:
+            rows = db.session.query(db_models.NguoiDung).order_by(db_models.NguoiDung.ma_nguoi_dung).all()
+            return {"users": [_user_dict_from_db(nd) for nd in rows]}
+        except Exception:
+            app.logger.exception("load_user_store: lỗi DB -> fallback JSON")
     if not USERS_PATH.exists():
         return {"users": []}
     try:
@@ -381,10 +286,30 @@ def load_user_store() -> dict:
 
 
 def save_user_store(store: dict) -> None:
+    if DB_ENABLED:
+        try:
+            for u in store.get("users", []):
+                _upsert_user_db(u)
+            db.session.commit()
+            return
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("save_user_store: lỗi DB")
+            return
     USERS_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = USERS_PATH.with_suffix(".tmp")
     tmp_path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp_path.replace(USERS_PATH)
+
+
+def _append_jsonl(path: Path, record: dict) -> None:
+    """Ghi nối 1 bản ghi JSON xuống file JSONL (US15/US18). Lỗi I/O không làm hỏng request."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        app.logger.exception("Không ghi được %s", path)
 
 
 def normalize_email(email: str) -> str:
@@ -405,6 +330,7 @@ def user_public_view(user: dict) -> dict:
         "name": user.get("name", ""),
         "email": user.get("email", ""),
         "created_at": user.get("created_at"),
+        "role": user_role(user),
     }
 
 
@@ -442,388 +368,35 @@ def current_user_from_request(store: dict) -> dict | None:
         return user
     return None
 
-DRUG_GROUP_GUIDANCE = {
-    "thuốc điều trị sốt rét": {
-        "treatment": [
-            "Hướng xử trí tham khảo: sốt thành cơn kèm rét run sau khi tới vùng lưu hành sốt rét cần được XÉT NGHIỆM (lam máu/test nhanh) để chẩn đoán; KHÔNG tự mua thuốc điều trị sốt rét.",
-            "Thuốc điều trị sốt rét phải do bác sĩ chỉ định đúng loại/liều theo chủng ký sinh trùng; tự dùng có thể nguy hiểm và gây kháng thuốc.",
-        ],
-        "precautions": [
-            "Đi khám sớm; sốt rét có thể diễn tiến nặng (sốt rét ác tính) nếu chậm điều trị. Báo bác sĩ nơi đã đi, số ngày sốt, tính chất cơn sốt.",
-        ],
-        "care": [
-            "Bù nước, hạ sốt cơ học, theo dõi tri giác và các dấu hiệu nặng (lơ mơ, vàng da, tiểu ít, co giật) để đi cấp cứu kịp thời.",
-        ],
-        "warning": "Đây chỉ là gợi ý hướng bệnh, KHÔNG phải đơn thuốc. Nghi sốt rét cần đi khám và xét nghiệm máu sớm; không tự dùng thuốc điều trị sốt rét. Đến cơ sở y tế ngay nếu sốt cao liên tục, lơ mơ, vàng da, tiểu ít hoặc co giật.",
-    },
-    "vitamin và khoáng chất": {
-        "treatment": [
-            "Hướng xử trí tham khảo: mệt mỏi kèm da/niêm nhợt và móng giòn gợi ý thiếu máu/thiếu vi chất; cần XÉT NGHIỆM MÁU để xác định nguyên nhân (thiếu sắt, B12/folate, mất máu...) trước khi bổ sung.",
-            "Không tự ý bổ sung sắt/vitamin liều cao kéo dài khi chưa rõ nguyên nhân; bổ sung sai loại có thể che lấp bệnh nền.",
-        ],
-        "precautions": [
-            "Đi khám nếu mệt nhiều, khó thở, tim đập nhanh, ngất, phân đen hoặc kinh nguyệt ra nhiều — có thể là thiếu máu nặng hoặc đang mất máu cần xử trí.",
-        ],
-        "care": [
-            "Ăn uống đủ chất (thịt đỏ, rau xanh đậm, đậu), theo dõi mức độ mệt/chóng mặt và ghi lại để cung cấp khi đi khám.",
-        ],
-        "warning": "Đây chỉ là gợi ý hướng bệnh, KHÔNG phải đơn thuốc. Nghi thiếu máu cần đi khám và xét nghiệm máu để tìm nguyên nhân; không tự bổ sung sắt/vitamin liều cao khi chưa rõ nguyên nhân. Đi khám ngay nếu mệt nhiều, khó thở, ngất hoặc có dấu hiệu mất máu.",
-    },
-    "thuốc kháng viêm không steroid": {
-        "treatment": [
-            "Hướng xử trí tham khảo: nhóm thuốc kháng viêm không steroid thường chỉ phù hợp khi có đau/viêm rõ và cần loại trừ nguy cơ dạ dày, thận, tim mạch hoặc thuốc chống đông.",
-            "Không tự phối nhiều thuốc giảm đau/kháng viêm cùng lúc; kiểm tra hoạt chất trùng lặp trong thuốc cảm, thuốc đau đầu hoặc thuốc xương khớp.",
-        ],
-        "precautions": [
-            "Tránh tự dùng nếu từng loét/xuất huyết dạ dày, bệnh thận, bệnh tim mạch nặng, đang dùng thuốc chống đông/kháng tiểu cầu, đang mang thai hoặc dị ứng NSAID.",
-        ],
-        "care": [
-            "Nghỉ ngơi, uống đủ nước, theo dõi mức độ đau, yếu tố khởi phát và các dấu hiệu đi kèm như sốt, nôn, nhìn mờ, yếu liệt.",
-        ],
-    },
-    "thuốc giảm đau hạ sốt": {
-        "treatment": [
-            "Hướng xử trí tham khảo: nhóm giảm đau - hạ sốt có thể được cân nhắc cho đau/sốt nhẹ, nhưng cần kiểm tra bệnh gan, uống rượu nhiều hoặc thuốc đang dùng.",
-            "Không dùng nhiều sản phẩm cùng chứa hoạt chất giảm đau/hạ sốt để tránh quá liều ngoài ý muốn.",
-        ],
-        "precautions": [
-            "Đi khám nếu sốt cao kéo dài, đau dữ dội, phát ban, cứng cổ, lơ mơ, khó thở hoặc triệu chứng nặng lên nhanh.",
-        ],
-        "care": [
-            "Nghỉ ở nơi yên tĩnh, bù nước, theo dõi nhiệt độ và ghi lại thời điểm dùng thuốc nếu có dùng.",
-        ],
-    },
-    "thuốc kháng histamin": {
-        "treatment": [
-            "Hướng xử trí tham khảo: khi hắt hơi, sổ mũi/nghẹt mũi và không sốt, hệ thống ưu tiên hướng viêm mũi dị ứng hoặc cảm lạnh không sốt thay vì thuốc hạ sốt.",
-            "Nhóm kháng histamin thường phù hợp hơn với hắt hơi, sổ mũi, ngứa, nổi mề đay hoặc chảy nước mắt; nếu nghẹt mũi là triệu chứng chính, cần cân nhắc thêm chăm sóc/xịt rửa mũi hoặc nhóm thông mũi theo tư vấn dược sĩ/bác sĩ.",
-        ],
-        "precautions": [
-            "Một số thuốc kháng histamin có thể gây buồn ngủ, chóng mặt; tránh lái xe, uống rượu hoặc phối với thuốc an thần khi chưa được tư vấn.",
-            "Không tự phối nhiều thuốc cảm/dị ứng cùng lúc vì có thể trùng hoạt chất kháng histamin hoặc thông mũi.",
-        ],
-        "care": [
-            "Tránh tác nhân nghi dị ứng, rửa mũi bằng nước muối sinh lý nếu nghẹt/sổ mũi, theo dõi phát ban hoặc khó thở.",
-        ],
-    },
-    "thuốc thần kinh/tâm thần": {
-        "treatment": [
-            "Hướng xử trí tham khảo: nhóm thuốc thần kinh/tâm thần cần bác sĩ đánh giá trực tiếp, không tự dùng theo mô tả triệu chứng.",
-        ],
-        "precautions": [
-            "Đi khám sớm nếu mất ngủ kéo dài, lo âu nặng, ý nghĩ tự hại, lú lẫn, co giật, yếu/liệt hoặc đau đầu bất thường.",
-        ],
-        "care": [
-            "Giữ lịch ngủ đều, tránh caffeine/rượu trước khi ngủ, ghi lại thời gian mất ngủ và yếu tố kích hoạt.",
-        ],
-    },
-    "bù dịch và điện giải": {
-        "treatment": [
-            "Hướng xử trí tham khảo: ưu tiên bù nước và điện giải khi có tiêu chảy, nôn, sốt hoặc dấu hiệu mất nước.",
-        ],
-        "precautions": [
-            "Đi khám nếu nôn không kiểm soát, tiểu ít, khát nhiều, lừ đừ, phân máu, đau bụng dữ dội hoặc người bệnh là trẻ nhỏ/người già.",
-        ],
-        "care": [
-            "Uống từng ngụm nhỏ, ăn nhẹ, tránh rượu bia và theo dõi lượng nước tiểu.",
-        ],
-    },
-    "thuốc chống nôn": {
-        "treatment": [
-            "Hướng xử trí tham khảo: nếu buồn nôn/nôn, ưu tiên bù nước từng ngụm nhỏ và theo dõi dấu hiệu mất nước.",
-            "Nhóm thuốc chống nôn chỉ nên dùng theo tư vấn bác sĩ/dược sĩ, đặc biệt ở trẻ em, người già, phụ nữ mang thai hoặc người có bệnh tim mạch.",
-        ],
-        "precautions": [
-            "Đi khám nếu nôn liên tục, không uống được nước, đau bụng dữ dội, lừ đừ, sốt cao, phân máu hoặc dấu hiệu mất nước.",
-        ],
-        "care": [
-            "Ăn nhẹ, chia nhỏ bữa, tránh rượu bia và thức ăn nhiều dầu mỡ trong giai đoạn còn nôn/buồn nôn.",
-        ],
-    },
-    "thuốc điều trị dạ dày": {
-        "treatment": [
-            "Hướng xử trí tham khảo: đau thượng vị/ợ chua/nóng rát dạ dày có thể liên quan rối loạn dạ dày - trào ngược; cần đánh giá thêm bữa ăn, thuốc đang dùng và dấu hiệu cảnh báo.",
-        ],
-        "precautions": [
-            "Đi khám nếu đau bụng dữ dội, nôn ra máu, đi ngoài phân đen, sụt cân, nuốt nghẹn hoặc đau kéo dài/tái diễn.",
-        ],
-        "care": [
-            "Ăn nhẹ, tránh rượu bia, cà phê, đồ cay/chua nhiều và không nằm ngay sau ăn.",
-        ],
-    },
-    "thuốc long đờm / giảm ho": {
-        "treatment": [
-            "Hướng xử trí tham khảo: nếu ho có đờm, ưu tiên uống đủ nước, làm ẩm không khí và chỉ cân nhắc nhóm long đờm/giảm ho theo tư vấn dược sĩ hoặc bác sĩ.",
-            "Không tự phối nhiều thuốc ho/cảm cùng lúc vì dễ trùng hoạt chất hoặc làm nặng buồn ngủ, chóng mặt.",
-        ],
-        "precautions": [
-            "Không tự dùng thuốc ức chế ho nếu ho có nhiều đờm, khó thở, đau ngực, sốt cao hoặc nghi nhiễm trùng hô hấp dưới.",
-        ],
-        "care": [
-            "Theo dõi màu đờm, lượng đờm, sốt, khó thở và thời gian ho kéo dài.",
-        ],
-    },
-    "thuốc giảm đau nha khoa": {
-        "treatment": [
-            "Hướng xử trí tham khảo: đau răng/sưng nướu thường cần khám nha khoa để tìm nguyên nhân như sâu răng, viêm nướu hoặc áp-xe răng.",
-            "Có thể cân nhắc nhóm giảm đau thông thường theo tư vấn dược sĩ/bác sĩ; không tự dùng kháng sinh nếu chưa được chỉ định.",
-        ],
-        "precautions": [
-            "Không chườm nóng vùng sưng, không tự chích/rạch nướu và không tự dùng kháng sinh còn dư.",
-            "Đi khám nha khoa sớm nếu sưng nướu/mặt, đau tăng, khó há miệng, sốt, hôi miệng nặng hoặc nuốt/ thở khó.",
-        ],
-        "care": [
-            "Súc miệng nhẹ bằng nước ấm, vệ sinh răng miệng, tránh nhai bên đau và tránh thức ăn quá nóng/lạnh/ngọt nếu làm đau tăng.",
-        ],
-        "warning": "Đau răng kèm sưng nướu cần khám nha khoa để xử lý nguyên nhân. Đi khám sớm nếu sưng mặt, sốt, chảy mủ, khó há miệng, nuốt khó, thở khó hoặc đau tăng nhanh.",
-    },
-}
 
-RULE_MEDICATION_NAMES = {
-    "thuốc giảm đau hạ sốt": "Acetaminophen/Paracetamol; Ibuprofen (tham khảo, cần kiểm tra chống chỉ định)",
-    "thuốc long đờm / giảm ho": "Thuốc long đờm hoặc giảm ho phù hợp loại ho (cần dược sĩ/bác sĩ tư vấn)",
-    "bù dịch và điện giải": "Dung dịch bù nước điện giải; Oral rehydration salts (ORS)",
-    "thuốc chống nôn": "Thuốc chống nôn theo chỉ định/tư vấn y tế",
-    "thuốc điều trị dạ dày": "Thuốc dạ dày/kháng acid theo tư vấn y tế",
-    "thuốc giảm đau nha khoa": "Thuốc giảm đau thông thường theo tư vấn; cần khám nha khoa để xử lý nguyên nhân",
-}
+# ── US19: PHÂN QUYỀN ADMIN ────────────────────────────────────────────────────
+def user_role(user: dict | None) -> str:
+    """Vai trò của user: 'admin' nếu role lưu trong store là admin, hoặc email thuộc ADMIN_EMAILS."""
+    if not user:
+        return "user"
+    if str(user.get("role", "")).lower() == "admin":
+        return "admin"
+    if normalize_email(user.get("email", "")) in ADMIN_EMAILS:
+        return "admin"
+    return "user"
 
-DIAGNOSIS_VI = {
-    "injury to the leg": "Chấn thương/viêm vùng chân (tham khảo)",
-    "otitis media": "Viêm tai giữa (tham khảo)",
-    "dental caries": "Sâu răng (tham khảo)",
-    "gum disease": "Bệnh nướu/viêm nướu (tham khảo)",
-}
 
-VI_SYMPTOM_KEYWORDS = {
-    "itching": ["ngứa", "ngứa da"],
-    "skin_rash": ["phát ban", "nổi ban", "mẩn đỏ", "nổi mẩn", "ban đỏ"],
-    "nodal_skin_eruptions": ["nổi nốt trên da", "sẩn da", "nốt da"],
-    "continuous_sneezing": ["hắt hơi", "hắt hơi liên tục", "nhảy mũi", "nhảy mũi liên tục"],
-    "shivering": ["run rẩy", "rét run", "run lạnh"],
-    "chills": ["ớn lạnh", "lạnh run", "rét"],
-    "joint_pain": ["đau khớp", "nhức khớp"],
-    "stomach_pain": ["đau dạ dày", "đau bao tử", "đau thượng vị"],
-    "acidity": ["ợ chua", "trào ngược", "nóng rát dạ dày"],
-    "ulcers_on_tongue": ["loét lưỡi", "lở lưỡi"],
-    "muscle_wasting": ["teo cơ", "mất cơ"],
-    "vomiting": ["nôn", "nôn ói", "buồn nôn và nôn"],
-    "burning_micturition": ["tiểu buốt", "tiểu rát", "đái buốt"],
-    "spotting_ urination": ["tiểu lắt nhắt", "đái rắt", "tiểu rắt", "tiểu nhắt"],
-    "fatigue": ["mệt mỏi", "mệt", "đuối sức"],
-    "weight_gain": ["tăng cân"],
-    "anxiety": ["lo âu", "bồn chồn", "hồi hộp lo lắng"],
-    "cold_hands_and_feets": ["tay chân lạnh", "bàn tay lạnh", "bàn chân lạnh"],
-    "mood_swings": ["thay đổi tâm trạng", "tâm trạng thất thường"],
-    "weight_loss": ["sụt cân", "giảm cân"],
-    "restlessness": ["bứt rứt", "không yên"],
-    "lethargy": ["lừ đừ", "uể oải", "li bì nhẹ"],
-    "patches_in_throat": ["mảng trong họng", "đốm trong họng"],
-    "irregular_sugar_level": ["đường huyết bất thường", "đường máu bất thường"],
-    "cough": ["ho", "ho khan", "ho nhiều"],
-    "high_fever": ["sốt cao", "sốt 39", "sốt 40", "sốt trên 39"],
-    "mild_fever": ["sốt nhẹ", "sốt 37", "sốt 38"],
-    "sunken_eyes": ["mắt trũng"],
-    "breathlessness": ["khó thở", "hụt hơi", "thở gấp"],
-    "sweating": ["đổ mồ hôi", "vã mồ hôi"],
-    "dehydration": ["mất nước", "khô môi", "khát nước nhiều"],
-    "indigestion": ["khó tiêu", "đầy bụng"],
-    "headache": ["đau đầu", "nhức đầu"],
-    "yellowish_skin": ["vàng da"],
-    "dark_urine": ["nước tiểu sẫm", "tiểu sẫm màu", "nước tiểu đậm"],
-    "nausea": ["buồn nôn", "nôn nao"],
-    "loss_of_appetite": ["chán ăn", "ăn kém"],
-    "pain_behind_the_eyes": ["đau sau mắt", "đau hốc mắt"],
-    "back_pain": ["đau lưng"],
-    "constipation": ["táo bón", "không đi cầu được", "không đi đại tiện được", "khó đi đại tiện",
-                     "phân khô cứng", "phân cứng", "rặn khó", "nhiều ngày không đi ngoài", "mấy ngày không đi cầu"],
-    "abdominal_pain": ["đau bụng", "bụng đau", "đau vùng bụng", "đau quặn bụng", "bụng đau quặn"],
-    "diarrhoea": ["tiêu chảy", "đi ngoài phân lỏng", "đi ngoài lỏng", "đi phân lỏng"],
-    "yellow_urine": ["nước tiểu vàng", "tiểu vàng"],
-    "yellowing_of_eyes": ["vàng mắt", "mắt vàng"],
-    "acute_liver_failure": ["suy gan cấp"],
-    "fluid_overload": ["quá tải dịch", "ứ dịch"],
-    "fluid_overload.1": ["quá tải dịch", "ứ dịch"],
-    "swelling_of_stomach": ["bụng sưng", "bụng chướng"],
-    "swelled_lymph_nodes": ["sưng hạch", "nổi hạch"],
-    "malaise": ["khó chịu", "mệt lả"],
-    "blurred_and_distorted_vision": ["nhìn mờ", "mờ mắt"],
-    "phlegm": ["đờm", "có đờm", "ho đờm"],
-    "throat_irritation": ["rát họng", "ngứa họng"],
-    "sore throat": ["đau họng", "rát họng", "viêm họng"],
-    "throat pain": ["đau họng"],
-    "pain in the throat": ["đau họng"],
-    "dry sore throat": ["khô họng", "đau họng khô"],
-    "severe throat pain": ["đau họng nặng", "đau họng dữ dội"],
-    "significant throat pain": ["đau họng nhiều"],
-    "throat discomfort": ["khó chịu họng"],
-    "irritation in the throat": ["rát họng", "ngứa họng"],
-    "itching in the throat": ["ngứa họng"],
-    "itchy throat": ["ngứa họng"],
-    "redness_of_eyes": ["đỏ mắt", "mắt đỏ"],
-    "sinus_pressure": ["đau xoang", "tức xoang"],
-    "runny_nose": ["sổ mũi", "chảy nước mũi"],
-    "congestion": ["nghẹt mũi", "tắc mũi"],
-    "chest_pain": ["đau ngực", "tức ngực"],
-    "weakness_in_limbs": ["yếu tay chân", "yếu chi"],
-    "fast_heart_rate": ["tim đập nhanh", "mạch nhanh"],
-    "pain_during_bowel_movements": ["đau khi đi ngoài", "đau khi đại tiện"],
-    "pain_in_anal_region": ["đau hậu môn"],
-    "bloody_stool": ["đi ngoài ra máu", "phân máu"],
-    "irritation_in_anus": ["ngứa hậu môn", "kích ứng hậu môn"],
-    "neck_pain": ["đau cổ", "đau gáy"],
-    "dizziness": ["chóng mặt", "hoa mắt", "choáng", "choáng váng"],
-    "cramps": ["chuột rút", "co rút cơ"],
-    "bruising": ["bầm tím", "vết bầm"],
-    "obesity": ["béo phì", "thừa cân"],
-    "swollen_legs": ["sưng chân", "phù chân"],
-    "swollen_blood_vessels": ["mạch máu sưng", "tĩnh mạch sưng"],
-    "puffy_face_and_eyes": ["mặt phù", "mắt phù", "sưng mặt"],
-    "enlarged_thyroid": ["bướu cổ", "tuyến giáp to"],
-    "brittle_nails": ["móng giòn", "móng dễ gãy", "móng tay giòn", "móng tay dễ gãy", "móng giòn dễ gãy", "móng tay giòn dễ gãy"],
-    "swollen_extremeties": ["sưng tay chân", "phù chi"],
-    "excessive_hunger": ["đói nhiều", "ăn nhiều"],
-    "extra_marital_contacts": ["quan hệ ngoài luồng", "quan hệ tình dục nguy cơ"],
-    "drying_and_tingling_lips": ["khô môi", "tê môi"],
-    "slurred_speech": ["nói khó", "nói líu", "nói đớ"],
-    "knee_pain": ["đau gối", "đau khớp gối"],
-    "hip_joint_pain": ["đau khớp háng", "đau hông"],
-    "muscle_weakness": ["yếu cơ"],
-    "stiff_neck": ["cứng cổ", "cứng gáy"],
-    "swelling_joints": ["sưng khớp"],
-    "movement_stiffness": ["cứng khi vận động", "cứng vận động"],
-    "spinning_movements": ["chóng mặt xoay", "cảm giác quay cuồng"],
-    "loss_of_balance": ["mất thăng bằng"],
-    "unsteadiness": ["đi không vững", "loạng choạng"],
-    "weakness_of_one_body_side": ["yếu nửa người", "liệt nửa người"],
-    "loss_of_smell": ["mất khứu giác", "mất mùi"],
-    "bladder_discomfort": ["khó chịu bàng quang", "đau bàng quang"],
-    "foul_smell_of urine": ["nước tiểu hôi", "tiểu hôi"],
-    "continuous_feel_of_urine": ["cảm giác muốn tiểu liên tục", "mắc tiểu liên tục"],
-    "passage_of_gases": ["xì hơi nhiều", "đầy hơi"],
-    "internal_itching": ["ngứa bên trong"],
-    "toxic_look_(typhos)": ["vẻ nhiễm độc", "nhiễm độc"],
-    "depression": ["trầm cảm", "buồn bã kéo dài"],
-    "irritability": ["dễ cáu", "cáu gắt"],
-    "muscle_pain": ["đau cơ", "nhức mỏi cơ"],
-    "altered_sensorium": ["rối loạn ý thức", "lơ mơ"],
-    "red_spots_over_body": ["đốm đỏ toàn thân", "chấm đỏ trên da"],
-    "belly_pain": ["đau bụng dưới"],
-    "abnormal_menstruation": ["kinh nguyệt bất thường", "rối loạn kinh nguyệt"],
-    "dischromic _patches": ["mảng đổi màu da", "da đổi màu"],
-    "dischromic patches": ["mảng đổi màu da", "da đổi màu"],
-    "watering_from_eyes": ["chảy nước mắt", "mắt chảy nước"],
-    "increased_appetite": ["tăng cảm giác thèm ăn", "ăn nhiều"],
-    "polyuria": ["tiểu nhiều", "đái nhiều"],
-    "family_history": ["tiền sử gia đình"],
-    "mucoid_sputum": ["đờm nhầy", "đàm nhầy"],
-    "rusty_sputum": ["đờm màu gỉ sắt", "đàm gỉ sắt"],
-    "lack_of_concentration": ["kém tập trung", "giảm tập trung"],
-    "visual_disturbances": ["rối loạn thị giác", "nhìn bất thường", "sợ ánh sáng", "nhạy cảm ánh sáng", "sợ tiếng ồn", "nhạy cảm tiếng ồn"],
-    "receiving_blood_transfusion": ["truyền máu"],
-    "receiving_unsterile_injections": ["tiêm không vô trùng", "tiêm bẩn"],
-    "coma": ["hôn mê"],
-    "stomach_bleeding": ["xuất huyết dạ dày", "chảy máu dạ dày"],
-    "distention_of_abdomen": ["chướng bụng", "bụng căng"],
-    "history_of_alcohol_consumption": ["uống rượu", "nghiện rượu", "tiền sử rượu"],
-    "blood_in_sputum": ["ho ra máu", "đờm có máu"],
-    "prominent_veins_on_calf": ["tĩnh mạch nổi ở bắp chân", "gân xanh bắp chân"],
-    "palpitations": ["đánh trống ngực", "hồi hộp"],
-    "painful_walking": ["đau khi đi bộ", "đi lại đau"],
-    "pus_filled_pimples": ["mụn mủ"],
-    "blackheads": ["mụn đầu đen"],
-    "scurring": ["sẹo", "sẹo mụn"],
-    "skin_peeling": ["bong tróc da", "da bong tróc", "tróc da", "da tróc"],
-    "silver_like_dusting": ["vảy bạc", "vảy trắng bạc"],
-    "small_dents_in_nails": ["lõm móng", "rỗ móng"],
-    "inflammatory_nails": ["viêm móng"],
-    "blister": ["mụn nước", "bọng nước"],
-    "red_sore_around_nose": ["loét đỏ quanh mũi", "đỏ đau quanh mũi"],
-    "yellow_crust_ooze": ["chảy dịch vàng", "đóng vảy vàng"],
-    "fever": ["sốt"],
-    "insomnia": ["mất ngủ", "khó ngủ", "ngủ không được", "ngủ kém", "trằn trọc", "thức giấc nhiều"],
-    "toothache": ["đau răng", "nhức răng", "răng đau"],
-    "gum pain": ["đau nướu", "đau lợi", "nướu đau", "lợi đau"],
-    "pain in gums": ["đau nướu", "đau lợi", "nướu đau", "lợi đau"],
-    "jaw swelling": ["sưng hàm", "sưng vùng hàm", "sưng mặt do răng"],
-    "bleeding gums": ["chảy máu nướu", "chảy máu lợi", "nướu chảy máu", "lợi chảy máu"],
-    # Bổ sung 2026-06-08: tăng độ phủ hô hấp / tiêu hóa / tiết niệu (feature có thật trong model)
-    "wheezing": ["khò khè", "thở rít", "thở khò khè"],
-    "chest tightness": ["tức ngực", "nặng ngực", "đè nặng ngực"],
-    "heartburn": ["ợ nóng", "nóng rát thượng vị", "nóng rát sau xương ức"],
-    "melena": ["phân đen", "đi ngoài phân đen", "phân hắc ín"],
-    "vomiting blood": ["nôn ra máu", "ói ra máu", "nôn ra máu tươi"],
-    "painful urination": ["tiểu đau", "đau khi đi tiểu", "đau khi tiểu"],
-    "retention of urine": ["bí tiểu", "không tiểu được"],
-    "low urine output": ["tiểu ít", "lượng nước tiểu ít"],
-    "frontal headache": ["đau đầu vùng trán", "đau trán"],
-}
+def is_admin(user: dict | None) -> bool:
+    return user_role(user) == "admin"
 
-# Bổ sung 2026-06-09 (robust hoá tiếng Việt): các cụm tiếng Việt phổ biến còn thiếu,
-# map sang feature CÓ THẬT trong model. Merge để không trùng/đè key cũ.
-_VI_SYMPTOM_KEYWORDS_EXTRA = {
-    "headache": ["đau nửa đầu", "đau nửa đầu từng cơn", "nhức nửa đầu", "nhức một bên đầu",
-                 "đau nhức nửa đầu", "nhức đầu theo nhịp mạch", "đau đầu theo nhịp mạch"],
-    "stomach_pain": ["đau thượng vị lúc đói", "đau vùng thượng vị"],
-    "heartburn": ["nóng rát thượng vị", "nóng rát vùng thượng vị", "ợ nóng"],
-    "acidity": ["hay ợ chua", "ợ hơi"],
-    "vomiting": ["nôn nhiều", "nôn nhiều lần", "nôn liên tục"],
-    "diarrhoea": ["đi ngoài liên tục", "đi ngoài cả ngày", "đi ngoài nhiều lần", "đi ngoài phân lỏng nước",
-                  "đi ngoài tóe nước", "tiêu chảy tóe nước", "đi ngoài nhiều nước", "đi ngoài như nước", "tiêu chảy nhiều lần"],
-    "dehydration": ["khát nước nhiều", "khát nhiều"],
-    "neck_pain": ["đau vai gáy", "đau cổ gáy", "nhức vai gáy"],
-    "back_pain": ["đau lưng dưới", "đau thắt lưng"],
-    "painful menstruation": ["đau bụng kinh", "đau bụng kinh dữ dội", "đau quặn kỳ kinh", "thống kinh"],
-    "skin_rash": ["mề đay", "nổi mề đay", "mẩn ngứa"],
-    "itching": ["ngứa khắp người", "ngứa nhiều"],
-    "dischromic patches": ["mảng đỏ hình tròn", "mảng đỏ tròn"],
-    "skin_peeling": ["bong vảy", "bong vảy dày", "bong tróc vảy"],
-    "blister": ["mụn nước thành chùm", "nổi bóng nước", "bóng nước"],
-    "sinus_pressure": ["đau nhức xoang", "đau xoang má", "nhức xoang"],
-    "wheezing": ["khò khè khi gắng sức", "thở khò khè"],
-    "breathlessness": ["lên cơn khó thở", "khó thở khi gắng sức", "khó thở khi gặp lạnh"],
-    "enlarged_thyroid": ["bướu cổ to", "bướu giáp", "cổ to", "cổ phình", "cổ bạnh", "mắt lồi", "lồi mắt"],
-    "excessive_urination_at_night": ["tiểu đêm", "tiểu đêm nhiều lần"],
-    "excessive_hunger": ["đói nhiều"],
-    "chills": ["rét run", "sốt thành cơn"],
-    "sweating": ["vã mồ hôi", "ra nhiều mồ hôi", "đổ mồ hôi nhiều"],
-    "bloody_stool": ["phân có máu", "đi ngoài ra máu", "đi ngoài máu nhầy", "phân máu nhầy"],
-    # An toàn / thần kinh:
-    "seizures": ["co giật", "co giật sùi bọt mép", "lên cơn co giật"],
-    "altered_sensorium": ["mất ý thức", "lơ mơ", "rối loạn ý thức", "lú lẫn"],
-    "stiff_neck": ["cổ cứng", "gáy cứng"],
-    "weakness_of_one_body_side": ["méo miệng", "yếu một bên", "yếu nửa người", "liệt nửa người",
-                                   "tay chân một bên yếu", "liệt một bên", "yếu hẳn một bên người", "tê yếu một bên"],
-    "slurred_speech": ["nói ngọng", "nói khó", "líu lưỡi"],
-    "paresthesia": ["tê bì", "châm chích", "tê rần"],
-    "muscle_pain": ["đau mỏi toàn thân", "đau nhức toàn thân", "đau người", "đau mỏi người"],
-    "Redness, swelling, discharge from the wound": ["chảy mủ", "vết thương chảy mủ", "vết thương sưng đỏ", "mưng mủ", "có mủ"],
-    "Shooting or burning pain, tingling or numbness": ["đau rát bỏng lan dọc dây thần kinh", "đau lan dọc dây thần kinh", "đau rát bỏng lan"],
-    # Batch 3: cơ-xương-khớp / lo âu / tim mạch
-    "joint_pain": ["khớp sưng đau", "sưng đau khớp", "viêm khớp", "viêm gân", "đau gân", "ngón chân sưng đau", "sưng đỏ đau khớp"],
-    "anxiety": ["sợ hãi vô cớ", "hoảng sợ", "lo lắng quá mức", "căng thẳng", "lo âu kéo dài"],
-    "chest_pain": ["đau thắt ngực", "đau ngực khi gắng sức", "đau ngực bóp nghẹt"],
-    "palpitations": ["tim đập nhanh", "tim đập mạnh", "tim đập không đều", "loạn nhịp", "trống ngực"],
-    "High blood pressure, chest pain or discomfort, shortness of breath, fatigue":
-        ["huyết áp cao", "cao huyết áp", "tăng huyết áp", "huyết áp 160", "huyết áp lên cao"],
-}
-for _k, _v in _VI_SYMPTOM_KEYWORDS_EXTRA.items():
-    VI_SYMPTOM_KEYWORDS[_k] = list(dict.fromkeys(VI_SYMPTOM_KEYWORDS.get(_k, []) + _v))
 
-UNSUPPORTED_SYMPTOM_KEYWORDS = {
-    "sleep_problem": {
-        "label_vi": "Mất ngủ/khó ngủ",
-        "phrases": [
-            "mất ngủ",
-            "khó ngủ",
-            "ngủ không được",
-            "ngủ kém",
-            "trằn trọc",
-            "thức giấc nhiều",
-        ],
-    }
-}
+def current_admin_from_request(store: dict) -> tuple[dict | None, tuple | None]:
+    """Trả (user, None) nếu là admin hợp lệ; ngược lại (None, (json, status)) để route trả thẳng.
 
+    - Chưa đăng nhập / token sai/hết hạn -> 401.
+    - Đã đăng nhập nhưng không phải admin -> 403.
+    """
+    user = current_user_from_request(store)
+    if not user:
+        return None, (jsonify({"error": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."}), 401)
+    if not is_admin(user):
+        return None, (jsonify({"error": "Bạn không có quyền truy cập trang quản trị."}), 403)
+    return user, None
 
 def normalize(value: str) -> str:
     text = value.replace("_", " ").lower()
@@ -842,127 +415,6 @@ def normalize_exact(value: str) -> str:
 
 def symptom_lookup_key(symptom: str) -> str:
     return normalize(symptom).replace(" ", "_")
-
-
-AUTO_EXACT_SYMPTOM_KEYWORDS = {
-    "chest tightness": ["tức ngực", "nặng ngực", "căng tức ngực"],
-    "diarrhea": ["tiêu chảy", "đi ngoài phân lỏng"],
-    "difficulty breathing": ["khó thở", "thở khó", "hụt hơi"],
-    "shortness of breath": ["khó thở", "hụt hơi"],
-    "breathing fast": ["thở nhanh"],
-    "abnormal breathing sounds": ["tiếng thở bất thường", "khò khè"],
-    "wheezing": ["khò khè", "thở rít"],
-    "coughing up sputum": ["ho có đờm", "khạc đờm"],
-    "coryza": ["sổ mũi", "chảy nước mũi"],
-    "hoarse voice": ["khàn tiếng"],
-    "difficulty in swallowing": ["khó nuốt", "nuốt khó"],
-    "difficulty swallowing": ["khó nuốt", "nuốt khó"],
-    "heartburn": ["ợ nóng", "nóng rát sau xương ức"],
-    "acidic taste": ["vị chua trong miệng"],
-    "decreased appetite": ["chán ăn", "ăn kém"],
-    "excessive thirst": ["khát nhiều"],
-    "frequent urination": ["tiểu nhiều", "đi tiểu thường xuyên"],
-    "blood in urine": ["tiểu ra máu", "nước tiểu có máu"],
-    "blood in stool": ["đi ngoài ra máu", "phân có máu", "phân nhầy máu", "phân có nhầy máu", "đi ngoài phân nhầy máu"],
-    "changes in stool appearance": ["thay đổi tính chất phân", "phân bất thường"],
-    "diminished hearing": ["giảm thính lực", "nghe kém"],
-    "diminished vision": ["giảm thị lực", "nhìn kém"],
-    "double vision": ["nhìn đôi"],
-    "blindness": ["mù", "mất thị lực"],
-    "eye redness": ["đỏ mắt", "mắt đỏ"],
-    "foreign body sensation in eye": ["cộm mắt", "cảm giác dị vật trong mắt"],
-    "fluid in ear": ["dịch trong tai", "chảy dịch tai"],
-    "fainting": ["ngất", "xỉu"],
-    "delusions or hallucinations": ["hoang tưởng", "ảo giác"],
-    "disturbance of memory": ["rối loạn trí nhớ", "giảm trí nhớ"],
-    "drug abuse": ["lạm dụng thuốc", "lạm dụng chất"],
-    "abusing alcohol": ["lạm dụng rượu", "uống rượu nhiều"],
-    "ache all over": ["đau nhức toàn thân", "đau mỏi toàn thân"],
-    "allergic reaction": ["dị ứng", "phản ứng dị ứng"],
-    "abnormal appearing skin": ["da bất thường", "bất thường trên da"],
-    "abnormal involuntary movements": ["cử động không tự chủ", "vận động bất thường"],
-    "abnormal movement of eyelid": ["mí mắt co giật", "cử động mí mắt bất thường"],
-    "acne or pimples": ["mụn trứng cá", "mụn bọc", "mụn mủ"],
-    "back cramps or spasms": ["co thắt lưng", "chuột rút lưng"],
-    "blood clots during menstrual periods": ["máu cục khi hành kinh", "kinh nguyệt có máu cục"],
-    "diaper rash": ["hăm tã"],
-    "dischromic patches": ["mảng đổi màu da", "da đổi màu", "mảng trắng loang", "da loang màu", "loang da"],
-    "easy bruising": ["dễ bầm tím", "dễ xuất hiện vết bầm"],
-    "elevated intraocular pressure": ["tăng nhãn áp", "áp lực mắt tăng"],
-    "excessive anger": ["dễ tức giận", "giận dữ quá mức"],
-    "excessive body weight": ["thừa cân", "béo phì"],
-    "excessive daytime sleepiness": ["buồn ngủ ban ngày nhiều", "ngủ gà ban ngày"],
-    "excessive sweating": ["đổ mồ hôi nhiều", "tăng tiết mồ hôi"],
-    "excessive urination at night": ["tiểu đêm nhiều", "đi tiểu nhiều ban đêm"],
-    "excessive worrying": ["lo lắng quá mức", "lo âu nhiều"],
-    "eyelid lesion or rash": ["tổn thương mí mắt", "phát ban mí mắt"],
-    "feeling ill": ["cảm thấy mệt", "khó chịu trong người"],
-    "flu-like syndrome": ["triệu chứng giống cúm", "hội chứng giống cúm"],
-    "fluid retention": ["giữ nước", "ứ dịch", "phù"],
-    "focal weakness": ["yếu khu trú", "yếu một vùng cơ thể"],
-    "frontal headache": ["đau đầu vùng trán", "đau trán"],
-    "hemoptysis": ["ho ra máu"],
-    "hot flashes": ["bốc hỏa"],
-    "foul smell of urine": ["nước tiểu hôi", "tiểu hôi"],
-    "hurts to breath": ["đau khi thở", "thở đau"],
-    "increased heart rate": ["tim đập nhanh", "mạch nhanh"],
-    "infant feeding problem": ["trẻ bú kém", "vấn đề ăn bú ở trẻ"],
-    "infertility": ["vô sinh", "hiếm muộn"],
-    "intermenstrual bleeding": ["ra máu giữa kỳ kinh", "chảy máu giữa chu kỳ"],
-    "involuntary urination": ["tiểu không tự chủ", "són tiểu"],
-    "irregular heartbeat": ["nhịp tim không đều", "loạn nhịp"],
-    "itchiness of eye": ["ngứa mắt"],
-    "itching of skin": ["ngứa da"],
-    "itching of the anus": ["ngứa hậu môn"],
-    "itchy ear(s)": ["ngứa tai"],
-    "itchy scalp": ["ngứa da đầu"],
-    "jaundice": ["vàng da", "vàng mắt"],
-    "lacrimation": ["chảy nước mắt"],
-    "lip swelling": ["sưng môi"],
-    "loss of sensation": ["mất cảm giác", "giảm cảm giác"],
-    "low self-esteem": ["tự ti", "mặc cảm"],
-    "low urine output": ["tiểu ít", "lượng nước tiểu ít"],
-    "melena": ["đi ngoài phân đen", "phân đen"],
-    "mouth ulcer": ["loét miệng", "lở miệng"],
-}
-
-AUTO_BODY_PARTS = {
-    "abdomen": ["bụng"],
-    "abdominal": ["bụng"],
-    "belly": ["bụng"],
-    "stomach": ["dạ dày"],
-    "back": ["lưng"],
-    "chest": ["ngực"],
-    "ribcage": ["lồng ngực"],
-    "head": ["đầu"],
-    "ear": ["tai"],
-    "eye": ["mắt"],
-    "eyelid": ["mí mắt"],
-    "face": ["mặt"],
-    "facial": ["mặt"],
-    "jaw": ["hàm"],
-    "mouth": ["miệng"],
-    "gum": ["nướu", "lợi"],
-    "gums": ["nướu", "lợi"],
-    "tooth": ["răng"],
-    "throat": ["họng"],
-    "neck": ["cổ", "gáy"],
-    "arm": ["tay", "cánh tay"],
-    "elbow": ["khuỷu tay"],
-    "hand": ["bàn tay"],
-    "finger": ["ngón tay"],
-    "hip": ["hông"],
-    "knee": ["gối"],
-    "ankle": ["cổ chân", "mắt cá chân"],
-    "foot": ["bàn chân"],
-    "toe": ["ngón chân"],
-    "leg": ["chân"],
-    "shoulder": ["vai"],
-    "breast": ["vú"],
-    "pelvic": ["vùng chậu"],
-    "groin": ["bẹn"],
-    "flank": ["hông lưng"],
-}
 
 
 def unique_list(values: list[str]) -> list[str]:
@@ -1289,97 +741,6 @@ def symptom_text(active_symptoms: set[str]) -> str:
 def has_any_symptom(active_symptoms: set[str], keywords: list[str]) -> bool:
     haystack = symptom_text(active_symptoms)
     return any(normalize(keyword) in haystack for keyword in keywords)
-
-
-# ── Clinical priority rules: tránh model/dataset kéo sai nhóm thuốc ─────────────
-def clinical_priority_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
-    """Quy tắc ưu tiên theo cụm triệu chứng lâm sàng.
-
-    Rule này đặt TRƯỚC model và trước rule tổng hợp cũ để các ca test phổ biến
-    trả về nhóm thuốc hợp ngữ cảnh nhất. Mục tiêu của đồ án là hệ thống hỗ trợ
-    gợi ý nhóm thuốc tham khảo, không phải kê đơn.
-    """
-    t = normalize(notes or "")
-
-    def has_text(*phrases: str) -> bool:
-        return any(phrase and normalize(phrase) in t for phrase in phrases)
-
-    def has_sym(*items: str) -> bool:
-        return has_any_symptom(active_symptoms, list(items))
-
-    # Tiết niệu: tiểu buốt/tiểu rắt/tiểu đau là tín hiệu rất đặc hiệu.
-    if has_text(
-        "tiểu buốt", "đái buốt", "tiểu rắt", "đái rắt", "đau khi tiểu",
-        "tiểu đau", "nước tiểu hôi", "tiểu nhiều lần", "đau hạ vị khi tiểu"
-    ) or has_sym(
-        "burning micturition", "painful urination", "bladder discomfort",
-        "foul smell of urine", "continuous feel of urine", "spotting urination",
-        "frequent urination"
-    ):
-        return "thuốc kháng sinh"
-
-    # Cơ-xương-khớp: đặt trước hô hấp/model để tránh đau khớp/sưng khớp bị kéo sai.
-    musculo_hits = 0
-    musculo_signals = [
-        ("đau khớp", "joint pain"),
-        ("sưng khớp", "swelling joints"),
-        ("xưng khớp", "swelling joints"),  # bắt lỗi gõ thường gặp
-        ("viêm khớp", "joint pain"),
-        ("cứng khớp", "movement stiffness"),
-        ("đau gối", "knee pain"),
-        ("đau lưng", "back pain"),
-        ("đau vai", "neck pain"),
-        ("đau cơ", "muscle pain"),
-        ("bầm tím", "bruising"),
-        ("chấn thương", "bruising"),
-        ("bong gân", "ankle pain"),
-    ]
-    for vi, en in musculo_signals:
-        if has_text(vi) or has_sym(en):
-            musculo_hits += 1
-    if musculo_hits >= 1 and not has_text("ho", "đờm", "khó thở", "tiểu buốt", "tiêu chảy", "nôn"):
-        return "thuốc kháng viêm không steroid"
-    if musculo_hits >= 2:
-        return "thuốc kháng viêm không steroid"
-
-    # Hô hấp: ưu tiên nhóm hô hấp khi có ho/đờm/khó thở/sốt.
-    cough = has_text("ho", "ho khan", "ho có đờm", "ho co dom", "khạc đờm") or has_sym("cough")
-    phlegm = has_text("đờm", "dom", "đàm", "dam", "ho có đờm", "khạc đờm") or has_sym("phlegm", "mucoid sputum", "rusty sputum", "coughing up sputum")
-    dyspnea = has_text("khó thở", "kho tho", "khò khè", "tức ngực", "đau ngực") or has_sym("breathlessness", "shortness of breath", "difficulty breathing", "wheezing", "chest pain")
-    fever = has_text("sốt", "sốt cao", "sốt nhẹ") or has_sym("fever", "high fever", "mild fever")
-    sore = has_text("đau họng", "rát họng", "viêm họng") or has_sym("sore throat", "throat irritation")
-    if cough and dyspnea:
-        return "thuốc giãn phế quản"
-    if cough and phlegm:
-        return "thuốc long đờm / giảm ho"
-    if fever and (cough or sore):
-        return "thuốc giảm đau hạ sốt"
-    if cough or sore:
-        return "thuốc long đờm / giảm ho"
-
-    # Tiêu hóa.
-    if has_text("táo bón", "khó đi ngoài", "nhiều ngày không đi ngoài") or has_sym("constipation"):
-        return "thuốc nhuận tràng"
-    if has_text("tiêu chảy", "đi ngoài lỏng", "phân lỏng", "mất nước") or has_sym("diarrhea", "diarrhoea", "dehydration"):
-        return "bù dịch và điện giải"
-    if has_text("nôn", "nôn ói", "buồn nôn") or has_sym("vomiting", "nausea"):
-        return "thuốc chống nôn"
-    if has_text("đau bụng", "đau dạ dày", "đau bao tử", "ợ chua", "ợ nóng", "khó tiêu") or has_sym("stomach pain", "abdominal pain", "belly pain", "heartburn", "acidity", "indigestion"):
-        return "thuốc điều trị dạ dày"
-
-    # Da liễu/dị ứng/nấm.
-    if has_text("nấm da", "nấm kẽ chân", "lang ben", "hắc lào", "bong tróc da", "nấm móng") or has_sym("dischromic patches", "skin peeling", "abnormal appearing skin"):
-        return "thuốc kháng nấm/ký sinh trùng ngoài da"
-    if has_text("dị ứng", "nổi mẩn", "mẩn đỏ", "phát ban", "ngứa da", "mề đay") or has_sym("itching", "itching of skin", "skin rash", "nodal skin eruptions"):
-        return "thuốc kháng histamin"
-
-    # Đau đầu/chóng mặt/sốt chung.
-    if has_text("đau đầu", "nhức đầu", "đau nửa đầu", "chóng mặt") or has_sym("headache", "frontal headache", "dizziness"):
-        return "thuốc giảm đau hạ sốt"
-    if fever:
-        return "thuốc giảm đau hạ sốt"
-
-    return None
 
 
 def extend_unique(target: list[str], values: list[str]) -> None:
@@ -1712,320 +1073,6 @@ def load_reference_data():
 
 
 references = load_reference_data()
-
-
-def build_group_case_profiles() -> dict[str, list[dict]]:
-    """Tạo hồ sơ triệu chứng theo từng nhóm thuốc từ file train.
-
-    Mục tiêu: ngoài model ML, hệ thống có một lớp xếp hạng minh bạch theo triệu chứng.
-    Lớp này giúp giải thích được: người dùng nhập triệu chứng nào, khớp với nhóm thuốc nào,
-    khớp bao nhiêu triệu chứng và vì sao trả Top 3.
-    """
-    profiles: dict[str, list[dict]] = {}
-    if not DATA_SOURCE.exists() or DATA_SOURCE.suffix.lower() != ".csv":
-        return profiles
-
-    try:
-        rows = read_csv_source(DATA_SOURCE)
-    except Exception:
-        return profiles
-
-    seen_profiles = set()
-    for row in rows:
-        group = str(row.get("nhom_thuoc", "")).strip()
-        raw_symptoms = str(row.get("trieu_chung", "")).strip()
-        if not group or not raw_symptoms:
-            continue
-
-        symptoms = []
-        for part in raw_symptoms.split(";"):
-            item = " ".join(part.strip().split())
-            if item:
-                symptoms.append(item)
-
-        normalized_symptoms = []
-        seen_normalized = set()
-        for item in symptoms:
-            normalized_item = normalize(item)
-            if normalized_item and normalized_item not in seen_normalized:
-                seen_normalized.add(normalized_item)
-                normalized_symptoms.append(normalized_item)
-        if not normalized_symptoms:
-            continue
-
-        profile_key = (group.lower(), tuple(sorted(normalized_symptoms)))
-        if profile_key in seen_profiles:
-            continue
-        seen_profiles.add(profile_key)
-
-        profiles.setdefault(group, []).append({
-            "symptoms": normalized_symptoms,
-            "labels": symptoms,
-            "diagnosis": str(row.get("chan_doan_du_kien", "")).strip(),
-            "medication": str(row.get("ten_thuoc", "")).strip(),
-        })
-
-    return profiles
-
-
-GROUP_CASE_PROFILES = build_group_case_profiles()
-
-
-HIGH_VALUE_SYMPTOM_KEYWORDS = (
-    "breath", "dysp", "chest pain", "blood", "seiz", "coma", "faint", "weakness",
-    "paralysis", "stiff neck", "dehydrat", "jaundice", "urine", "wound", "infection",
-)
-
-
-def symptom_match_weight(symptom: str) -> float:
-    text = str(symptom).lower()
-    if any(keyword in text for keyword in HIGH_VALUE_SYMPTOM_KEYWORDS):
-        return 1.45
-    return 1.0
-
-
-def weighted_sum(symptoms: set[str]) -> float:
-    return sum(symptom_match_weight(symptom) for symptom in symptoms)
-
-
-def group_allowed_by_clinical_context(group: str | None, active_symptoms: set[str]) -> bool:
-    """Chặn các nhóm thuốc lệch ngữ cảnh lâm sàng khi dataset có ca nhiễu.
-
-    Ví dụ lỗi trước đây: sốt + ho + khó thở + đau ngực vẫn bị kéo sang
-    "thuốc nhuận tràng" chỉ vì một ca mẫu trong tập train có trùng vài token.
-    Hàm này đóng vai trò bộ lọc nghiệp vụ trước khi đưa nhóm vào Top dự đoán.
-    """
-    if not group:
-        return False
-
-    name = normalize(group)
-
-    respiratory = has_any_symptom(
-        active_symptoms,
-        [
-            "cough", "phlegm", "mucoid sputum", "rusty sputum", "coughing up sputum",
-            "sore throat", "throat irritation", "runny nose", "coryza", "congestion",
-            "breathlessness", "shortness of breath", "difficulty breathing", "chest pain",
-            "wheezing", "fever", "mild fever", "high fever",
-        ],
-    )
-    constipation = has_any_symptom(active_symptoms, ["constipation", "hard stool", "straining", "passage of gases"])
-    gi = has_any_symptom(active_symptoms, ["diarrhea", "diarrhoea", "vomiting", "nausea", "abdominal pain", "stomach pain", "acidity", "indigestion"])
-    urinary = has_any_symptom(active_symptoms, ["burning micturition", "bladder discomfort", "foul smell of urine", "continuous feel of urine", "spotting urination"])
-    skin = has_any_symptom(active_symptoms, ["itching", "skin rash", "nodal skin eruptions", "dischromic patches", "blister", "pus filled pimples"])
-    musculo = has_any_symptom(active_symptoms, ["joint pain", "swelling joints", "movement stiffness", "knee pain", "back pain", "neck pain", "hip joint pain", "ankle pain", "muscle pain", "bruising"])
-
-    # Nhóm nhuận tràng chỉ hợp lý khi có táo bón/đầy hơi rõ. Không cho thắng chỉ vì trùng token nhiễu.
-    if "nhuan trang" in name:
-        return constipation
-
-    # Nhóm tiết niệu cần có triệu chứng tiết niệu.
-    if "tiet nieu" in name:
-        return urinary
-
-    # Nhóm da liễu/nấm/kháng virus ngoài da cần triệu chứng da.
-    if any(token in name for token in ["da lieu", "khang nam", "khang virus"]):
-        return skin
-
-    # Nhóm tiêu hóa không nên thắng ca hô hấp/cơ-xương rõ, trừ khi có triệu chứng tiêu hóa thật.
-    if any(token in name for token in ["tieu hoa", "da day", "chong non"]):
-        return gi or constipation
-
-    # Ca cơ-xương-khớp rõ chỉ cho phép nhóm giảm đau/kháng viêm hoặc nhóm liên quan.
-    if musculo and not (respiratory or gi or constipation or urinary or skin):
-        allowed_musculo = any(token in name for token in [
-            "khang viem", "giam dau", "co xuong", "xuong khop", "nsaid"
-        ])
-        if not allowed_musculo:
-            return False
-
-    # Với ca hô hấp rõ, ưu tiên các nhóm hô hấp/sốt; các nhóm khác vẫn có thể do rule khác quyết định.
-    if respiratory and not (gi or constipation or urinary or skin):
-        allowed_resp = any(token in name for token in [
-            "long dom", "giam ho", "gian phe quan",
-            "khang histamin", "giam dau ha sot",
-            "khang sinh", "ho hap",
-        ])
-        if not allowed_resp:
-            return False
-
-    return True
-
-
-def preferred_predictions_for_rule(rule_group: str, ranking: list[dict], active_symptoms: set[str]) -> list[dict]:
-    """Tạo Top dự đoán nhất quán với rule lâm sàng đang thắng."""
-    result = [{
-        "disease": rule_group,
-        "disease_vi": predicted_label_vi(rule_group),
-        "probability": 0.86,
-        "similarity_score": 0.86,
-        "matched_count": len(active_symptoms),
-        "input_count": len(active_symptoms),
-        "case_coverage_ratio": 1,
-        "matched_symptoms_vi": unique_values([symptom_label_vi(symptom) for symptom in active_symptoms]),
-        "source": "clinical_rule",
-    }]
-
-    # Bổ sung vài nhóm liên quan cho ca hô hấp để bảng Top 3 không còn nhảy sang nhóm vô lý.
-    if has_any_symptom(active_symptoms, ["cough", "phlegm", "breathlessness", "chest pain", "fever", "high fever", "mild fever"]):
-        related = []
-        if rule_group != "thuốc long đờm / giảm ho" and has_any_symptom(active_symptoms, ["cough", "phlegm", "coughing up sputum"]):
-            related.append(("thuốc long đờm / giảm ho", 0.78))
-        if rule_group != "thuốc giảm đau hạ sốt" and has_any_symptom(active_symptoms, ["fever", "high fever", "mild fever"]):
-            related.append(("thuốc giảm đau hạ sốt", 0.72))
-        if rule_group != "thuốc giãn phế quản" and has_any_symptom(active_symptoms, ["breathlessness", "shortness of breath", "difficulty breathing", "wheezing", "chest pain"]):
-            related.append(("thuốc giãn phế quản", 0.68))
-        for group, score in related:
-            if group not in {item["disease"] for item in result}:
-                result.append({
-                    "disease": group,
-                    "disease_vi": predicted_label_vi(group),
-                    "probability": score,
-                    "similarity_score": score,
-                    "matched_count": len(active_symptoms),
-                    "input_count": len(active_symptoms),
-                    "case_coverage_ratio": score,
-                    "matched_symptoms_vi": unique_values([symptom_label_vi(symptom) for symptom in active_symptoms]),
-                    "source": "related_rule",
-                })
-
-    if has_any_symptom(active_symptoms, ["joint pain", "swelling joints", "movement stiffness", "knee pain", "back pain", "neck pain", "hip joint pain", "ankle pain", "muscle pain", "bruising"]):
-        for group, score in [("thuốc kháng viêm không steroid", 0.86), ("thuốc giảm đau hạ sốt", 0.62)]:
-            if group not in {item["disease"] for item in result}:
-                result.append({
-                    "disease": group,
-                    "disease_vi": predicted_label_vi(group),
-                    "probability": score,
-                    "similarity_score": score,
-                    "matched_count": len(active_symptoms),
-                    "input_count": len(active_symptoms),
-                    "case_coverage_ratio": score,
-                    "matched_symptoms_vi": unique_values([symptom_label_vi(symptom) for symptom in active_symptoms]),
-                    "source": "related_musculoskeletal_rule",
-                })
-
-    existing = {item["disease"] for item in result}
-    for item in ranking_to_top_predictions(ranking):
-        if item.get("disease") in existing:
-            continue
-        if not group_allowed_by_clinical_context(item.get("disease"), active_symptoms):
-            continue
-        result.append(item)
-        existing.add(item.get("disease"))
-        if len(result) >= 5:
-            break
-    return result[:5]
-
-
-def rank_drug_groups_by_symptoms(active_symptoms_order: list[str], limit: int = 5) -> list[dict]:
-    """Xếp hạng nhóm thuốc bằng công thức có thể giải thích.
-
-    Công thức dùng case-level matching:
-    - input_match_ratio: phần triệu chứng người dùng đã được giải thích bởi một ca mẫu.
-    - case_coverage_ratio: phần triệu chứng của ca mẫu được người dùng cung cấp.
-    - final_score = 0.72 * input_match_ratio + 0.28 * case_coverage_ratio.
-
-    Lý do không dùng 100% khi chỉ nhập 1 triệu chứng: nếu ca mẫu có 4 triệu chứng mà người dùng
-    chỉ nhập 1 triệu chứng chung, case_coverage sẽ thấp, nên điểm cuối không bị ảo.
-    """
-    input_norms = unique_values([normalize(symptom) for symptom in active_symptoms_order if normalize(symptom)])
-    input_set = set(input_norms)
-    if not input_set:
-        return []
-
-    input_weight = weighted_sum(input_set) or 1.0
-    ranked = []
-
-    for group, profiles in GROUP_CASE_PROFILES.items():
-        best = None
-        for profile in profiles:
-            case_set = set(profile.get("symptoms") or [])
-            if not case_set:
-                continue
-            matched = input_set & case_set
-            if not matched:
-                continue
-
-            matched_weight = weighted_sum(matched)
-            case_weight = weighted_sum(case_set) or 1.0
-            input_match_ratio = matched_weight / input_weight
-            case_coverage_ratio = matched_weight / case_weight
-            score = round((0.72 * input_match_ratio + 0.28 * case_coverage_ratio) * 100, 2)
-
-            candidate = {
-                "group": group,
-                "score": score,
-                "matched_count": len(matched),
-                "input_count": len(input_set),
-                "case_symptom_count": len(case_set),
-                "input_match_ratio": round(input_match_ratio, 4),
-                "case_coverage_ratio": round(case_coverage_ratio, 4),
-                "matched_symptoms": sorted(matched),
-                "matched_symptoms_vi": unique_values([symptom_label_vi(symptom) for symptom in sorted(matched)]),
-                "case_symptoms_vi": unique_values([symptom_label_vi(symptom) for symptom in profile.get("labels", [])])[:8],
-                "diagnosis": profile.get("diagnosis") or "",
-                "medication": profile.get("medication") or "",
-            }
-
-            if best is None or (
-                candidate["score"], candidate["matched_count"], candidate["case_coverage_ratio"]
-            ) > (
-                best["score"], best["matched_count"], best["case_coverage_ratio"]
-            ):
-                best = candidate
-
-        if best and group_allowed_by_clinical_context(group, input_set):
-            ranked.append(best)
-
-    ranked.sort(
-        key=lambda item: (
-            item["score"],
-            item["matched_count"],
-            item["case_coverage_ratio"],
-            -item["case_symptom_count"],
-        ),
-        reverse=True,
-    )
-    return ranked[:limit]
-
-
-def should_use_symptom_overlap_ranking(ranking: list[dict], confidence) -> bool:
-    """Quyết định khi nào cho lớp symptom-overlap thắng model.
-
-    Dùng khi Top 1 đủ mạnh hoặc model không tự tin. Không áp dụng cho rule lâm sàng vì rule có
-    độ ưu tiên cao hơn và đã được viết để xử lý các cụm đặc hiệu/an toàn.
-    """
-    if not ranking:
-        return False
-    top = ranking[0]
-    second_score = ranking[1]["score"] if len(ranking) > 1 else 0
-    gap = top["score"] - second_score
-
-    if top["matched_count"] >= 3 and top["score"] >= 58:
-        return True
-    if top["matched_count"] >= 2 and top["score"] >= 68 and gap >= 8:
-        return True
-    if confidence is not None and confidence < MIN_RELIABLE_CONFIDENCE and top["score"] >= 55:
-        return True
-    return False
-
-
-def ranking_to_top_predictions(ranking: list[dict]) -> list[dict]:
-    items = []
-    for item in ranking[:5]:
-        probability = round(float(item.get("score", 0)) / 100, 4)
-        items.append({
-            "disease": item["group"],
-            "disease_vi": predicted_label_vi(item["group"]),
-            "probability": probability,
-            "similarity_score": probability,
-            "matched_count": item.get("matched_count", 0),
-            "input_count": item.get("input_count", 0),
-            "case_coverage_ratio": item.get("case_coverage_ratio", 0),
-            "matched_symptoms_vi": item.get("matched_symptoms_vi", []),
-        })
-    return items
-
 
 
 def load_drug_representatives() -> dict[str, dict]:
@@ -2426,27 +1473,46 @@ def drug_group_guidance(group: str, active_symptoms: set[str] | None = None) -> 
 
 
 def respiratory_rule_drug_group(active_symptoms: set[str]) -> str | None:
-    has_respiratory = has_any_symptom(active_symptoms, ["cough", "sore throat", "throat irritation", "runny nose", "coryza", "congestion", "continuous sneezing", "phlegm", "breathlessness", "chest pain"])
+    has_respiratory = has_any_symptom(active_symptoms, ["cough", "sore throat", "throat irritation", "runny nose", "coryza", "congestion", "continuous sneezing"])
     if not has_respiratory:
         return None
 
     has_fever = has_any_symptom(active_symptoms, ["fever", "mild fever", "high fever"])
-    has_lower_airway_warning = has_any_symptom(active_symptoms, ["breathlessness", "shortness of breath", "difficulty breathing", "chest pain", "blood in sputum"])
-    has_phlegm = has_any_symptom(active_symptoms, ["phlegm", "mucoid sputum", "rusty sputum", "coughing up sputum"])
-    has_cough = has_any_symptom(active_symptoms, ["cough"])
-    has_rhinitis_pattern = has_any_symptom(active_symptoms, ["continuous sneezing", "coryza", "runny nose", "congestion", "watering from eyes"])
+    has_lower_airway_warning = has_any_symptom(active_symptoms, ["breathlessness", "chest pain", "blood in sputum"])
+    has_phlegm = has_any_symptom(active_symptoms, ["phlegm", "mucoid sputum", "rusty sputum"])
+    # Dấu hiệu DỊ ỨNG thật (hắt hơi/chảy nước mắt/ngứa) -> kháng histamin mới hợp lý.
+    has_allergic_pattern = has_any_symptom(active_symptoms, ["continuous sneezing", "watering from eyes", "itching"])
+    has_rhinitis_pattern = has_any_symptom(active_symptoms, ["coryza", "runny nose", "congestion"])
+    has_sore_throat = has_any_symptom(active_symptoms, ["sore throat", "throat irritation", "throat pain", "pain in the throat"])
 
-    # Ca hô hấp dưới như sốt + ho đờm + khó thở/đau ngực trước đây bị model kéo sai sang
-    # nhóm nhuận tràng. Rule này ưu tiên nhóm hô hấp có thể giải thích được; cảnh báo đi khám
-    # vẫn được thêm ở tầng triage phía dưới khi có khó thở/đau ngực.
-    if has_cough and has_phlegm:
+    if has_lower_airway_warning:
+        return None
+    if has_phlegm:
         return "thuốc long đờm / giảm ho"
-    if has_lower_airway_warning and (has_cough or has_fever):
-        return "thuốc giãn phế quản"
+    if has_allergic_pattern and not has_fever:
+        return "thuốc kháng histamin"
+    # Đau/rát họng (không sốt, không kèm dị ứng rõ) -> giảm đau hạ sốt OTC, KHÔNG ép kháng histamin.
+    if has_sore_throat and not has_fever:
+        return "thuốc giảm đau hạ sốt"
     if has_rhinitis_pattern and not has_fever:
         return "thuốc kháng histamin"
     if has_fever:
         return "thuốc giảm đau hạ sốt"
+    return None
+
+
+def bacterial_respiratory_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
+    """Nghi NHIỄM KHUẨN hô hấp: sốt cao KÈM đờm mủ (vàng/xanh/đặc) -> nhóm kháng sinh (kê đơn,
+    sẽ bị né an toàn). Bắt MÀU đờm từ notes vì feature 'phlegm' không phân biệt màu/độ đặc."""
+    t = normalize(notes or "")
+    def has(*ps): return any(p in t for p in ps)
+    high_fever = has_any_symptom(active_symptoms, ["high fever"]) or \
+        affirmative_mention(t, ("sot cao", "sot 38", "sot 39", "sot 40", "sot tren 38", "sot tren 39", "sot gan 40",
+                                "sot ret run", "ret run", "run lanh", "lanh run", "soc lanh", "sot lanh run"))
+    purulent_sputum = has("dom vang", "dam vang", "dom xanh", "dam xanh", "dom mu", "dam mu",
+                          "dom dac", "dam dac", "khac dom vang", "khac dom xanh", "ho dom vang", "ho dom xanh")
+    if high_fever and purulent_sputum:
+        return "thuốc kháng sinh"
     return None
 
 
@@ -2459,77 +1525,47 @@ def general_fever_pain_rule_drug_group(active_symptoms: set[str]) -> str | None:
     return None
 
 
-def robust_notes_rule_drug_group(notes: str, active_symptoms: set[str]) -> str | None:
-    """Rule tổng hợp theo mô tả tiếng Việt + feature đã trích.
-    Mục tiêu: các ca test phổ biến luôn ra nhóm thuốc hợp ngữ cảnh, không để model kéo sang nhóm vô lý.
-    Đây là lớp hỗ trợ quyết định tham khảo, KHÔNG thay thế chỉ định của bác sĩ.
-    """
+_FEVER_FEATURES = {"fever", "mild fever", "high fever"}
+
+
+def isolated_fever_rule_drug_group(active_symptoms: set[str]) -> str | None:
+    """Sốt NHẸ ĐƠN THUẦN (là triệu chứng duy nhất còn lại, KHÔNG phải sốt cao) -> hạ sốt OTC.
+    Vá over-triage: trước đây ca 'sốt nhẹ, không ho/khó thở/đau họng' bị chặn 'cần bác sĩ'."""
+    has_fever = has_any_symptom(active_symptoms, list(_FEVER_FEATURES))
+    has_high = has_any_symptom(active_symptoms, ["high fever"])
+    non_fever = {s for s in active_symptoms if normalize(s) not in {normalize(x) for x in _FEVER_FEATURES}}
+    if has_fever and not has_high and not non_fever:
+        return "thuốc giảm đau hạ sốt"
+    return None
+
+
+def insect_bite_rule_drug_group(notes: str) -> str | None:
+    """Côn trùng (muỗi/kiến) đốt khu trú: sưng/ngứa 1 vùng, KHÔNG dấu hiệu toàn thân nặng
+    -> kháng histamin OTC (vá over-triage 'né an toàn' cho 1 nốt muỗi đốt)."""
     t = normalize(notes or "")
+    def has(*ps): return any(p in t for p in ps)
+    bite = has("muoi dot", "muoi can", "con trung dot", "con trung can", "kien dot", "kien can",
+               "bo chet dot", "ve dot")
+    if not bite:
+        return None
+    # Có dấu hiệu phản vệ/toàn thân -> KHÔNG hạ OTC (để cổng cấp cứu/né lo).
+    if has("kho tho", "sung moi", "sung luoi", "sung hong", "choang", "ngat", "tut huyet ap",
+           "lan khap nguoi", "noi khap nguoi", "sot cao"):
+        return None
+    return "thuốc kháng histamin"
 
-    def has_text(*phrases: str) -> bool:
-        return any(p and p in t for p in phrases)
 
-    def has_sym(*items: str) -> bool:
-        return has_any_symptom(active_symptoms, list(items))
-
-    # 1) Tiết niệu: tiểu buốt/tiểu rắt/đau khi tiểu -> nhóm kháng sinh (cần bác sĩ).
-    if has_text("tieu buot", "dai buot", "tieu rat", "dai rat", "tieu rat", "tieu dau", "dau khi tieu", "tieu nhieu lan", "tieu lat nhat", "tieu rat", "nuoc tieu hoi") or has_sym(
-        "burning micturition", "painful urination", "bladder discomfort",
-        "foul smell of urine", "continuous feel of urine", "spotting urination",
-        "polyuria", "frequent urination",
-    ):
-        return "thuốc kháng sinh"
-
-    # 2) Hô hấp dưới: ho/đờm + khó thở/khò khè/tức ngực -> ưu tiên giãn phế quản hoặc long đờm.
-    cough = has_text("ho", "ho khan", "ho co dom", "ho co dam") or has_sym("cough")
-    phlegm = has_text("dom", "dam", "co dom", "co dam", "ho co dom", "ho co dam") or has_sym("phlegm", "mucoid sputum", "rusty sputum", "coughing up sputum")
-    dyspnea = has_text("kho tho", "tho gap", "hut hoi", "kho khe", "kho khe", "tuc nguc", "dau nguc") or has_sym("breathlessness", "shortness of breath", "difficulty breathing", "wheezing", "chest pain")
-    fever = has_text("sot", "sot cao", "sot nhe") or has_sym("fever", "mild fever", "high fever")
-    sore = has_text("dau hong", "rat hong", "viem hong") or has_sym("sore throat", "throat irritation", "throat pain")
-
-    if cough and dyspnea:
-        return "thuốc giãn phế quản"
-    if cough and phlegm:
-        return "thuốc long đờm / giảm ho"
-    if fever and (cough or sore):
-        return "thuốc giảm đau hạ sốt"
-    if cough or sore:
-        return "thuốc long đờm / giảm ho"
-
-    # 3) Tiêu hóa.
-    if has_text("tao bon", "kho di ngoai", "may ngay khong di ngoai") or has_sym("constipation"):
-        return "thuốc nhuận tràng"
-    if has_text("tieu chay", "di ngoai long", "di long", "phan long", "mat nuoc") or has_sym("diarrhea", "diarrhoea", "dehydration"):
+def heat_exhaustion_rule_drug_group(notes: str) -> str | None:
+    """Gắng sức/nắng nóng (chạy bộ/ngoài nắng) + chóng mặt/mệt lả/khát, KHÔNG rối loạn tri giác
+    -> bù dịch & điện giải (ORS) OTC. Pin kết quả ổn định cho ca say nắng nhẹ."""
+    t = normalize(notes or "")
+    def has(*ps): return any(p in t for p in ps)
+    heat_ctx = has("ngoai nang", "duoi nang", "troi nang", "chay bo", "gang suc", "tap the thao",
+                   "lao dong nang", "di nang ve", "phoi nang", "nang nong")
+    sx = has("chong mat", "met la", "met lu", "khat nuoc", "hoa mat", "met lai", "uon oai", "met moi")
+    severe = has("lu du", "li bi", "lo mo", "ngat", "xiu", "co giat", "kho tho", "dau nguc")
+    if heat_ctx and sx and not severe:
         return "bù dịch và điện giải"
-    if has_text("non oi", "buon non", "non nhieu", "oi mua") or has_sym("vomiting", "nausea"):
-        return "thuốc chống nôn"
-    if has_text("dau bung", "dau da day", "dau bao tu", "dau thuong vi", "o chua", "nong rat", "kho tieu") or has_sym("stomach pain", "abdominal pain", "belly pain", "heartburn", "acidity", "indigestion"):
-        return "thuốc điều trị dạ dày"
-
-    # 4) Da liễu / dị ứng / nấm.
-    if has_text("nam da", "nam ke chan", "lang ben", "hac lao", "bong troc da", "ngua ke chan", "nam mong") or has_sym("dischromic patches", "skin peeling", "abnormal appearing skin"):
-        return "thuốc kháng nấm/ký sinh trùng ngoài da"
-    if has_text("di ung", "noi man", "man do", "phat ban", "ngua da", "me day", "noi me day") or has_sym("itching", "itching of skin", "skin rash", "nodal skin eruptions"):
-        return "thuốc kháng histamin"
-
-    # 5) Cơ xương khớp.
-    if has_text("dau khop", "sung khop", "cung khop", "dau goi", "dau vai", "dau lung", "dau co", "dau co vai gay", "dau co chan") or has_sym(
-        "joint pain", "swelling joints", "movement stiffness", "knee pain", "back pain", "neck pain", "hip joint pain", "ankle pain", "muscle pain"
-    ):
-        return "thuốc kháng viêm không steroid"
-
-    # 6) Tim mạch/huyết áp.
-    if has_text("tang huyet ap", "huyet ap cao", "cao huyet ap", "dau that nguc", "dau nguc khi gang suc") or has_sym("High blood pressure, chest pain or discomfort, shortness of breath, fatigue"):
-        return "thuốc tim mạch/huyết áp"
-
-    # 7) Đau đầu/chóng mặt không kèm dấu đỏ: nhóm giảm đau hạ sốt tham khảo.
-    if has_text("dau dau", "nhuc dau", "dau nua dau", "chong mat") or has_sym("headache", "frontal headache", "dizziness"):
-        return "thuốc giảm đau hạ sốt"
-
-    # 8) Sốt/đau mỏi chung.
-    if fever:
-        return "thuốc giảm đau hạ sốt"
-
     return None
 
 
@@ -2641,35 +1677,53 @@ def affirmative_mention(text: str, patterns, window: int = 16) -> bool:
     return False
 
 
+# Hậu tố thông điệp cờ đỏ — DÙNG ĐỂ PHÂN LOẠI MỨC ĐỘ ở caller:
+#   GO  = CẤP CỨU thật (gọi 115/đến viện ngay) -> score_type "emergency".
+#   SEE = cần đi khám sớm để tầm soát, KHÔNG phải cấp cứu -> score_type "referral".
+# Caller (/api/predict) phân biệt 2 mức này bằng cách so hậu tố message.
+EMERGENCY_GO_SUFFIX = " Đây có thể là CẤP CỨU; gọi 115 hoặc đến cơ sở y tế ngay, KHÔNG tự dùng thuốc theo gợi ý."
+REFERRAL_SEE_SUFFIX = " Hãy đi khám bác sĩ sớm để được đánh giá, KHÔNG tự dùng thuốc theo gợi ý."
+
+
 def emergency_red_flag_from_notes(notes: str) -> str | None:
     """Dấu hiệu CẤP CỨU/khủng hoảng nhận từ mô tả thô (không phụ thuộc feature trích được).
     Trả về thông điệp cảnh báo nếu phát hiện; None nếu không. Ưu tiên AN TOÀN: thà cảnh báo thừa.
+
+    Message kết thúc bằng GO (cấp cứu) hoặc SEE (đi khám sớm) để caller phân loại mức độ.
     """
     t = normalize(notes or "")
     def has(*ps): return any(p in t for p in ps)
 
-    GO = " Đây có thể là CẤP CỨU; gọi 115 hoặc đến cơ sở y tế ngay, KHÔNG tự dùng thuốc theo gợi ý."
+    GO = EMERGENCY_GO_SUFFIX
 
     # 1) Ý định tự tử / tự hại -> thông điệp hỗ trợ khủng hoảng (ưu tiên cao nhất)
     if has("tu tu", "tu sat", "muon chet", "ket thuc cuoc doi", "tu hai", "hai ban than",
-           "cat tay cho", "khong muon song"):
+           "cat tay cho", "khong muon song", "khong thiet song", "khong con thiet song",
+           "chan song", "buong xuoi cuoc song", "song khong con y nghia", "chet cho xong"):
         return ("Bạn đang mô tả ý định tự tử/tự hại. Bạn không đơn độc — hãy liên hệ NGAY người thân "
                 "tin cậy hoặc đường dây hỗ trợ tâm lý (vd Ngày Mai 096 306 1414) hoặc gọi cấp cứu 115. "
                 "Hệ thống này KHÔNG thay thế hỗ trợ y tế/khủng hoảng.")
 
     # 2) Ngộ độc / quá liều
     if has("ngo doc", "qua lieu", "uong nham", "thuoc tru sau", "uong thuoc sau", "uong nhieu thuoc",
-           "uong hoa chat", "uong nham thuoc"):
+           "uong hoa chat", "uong nham thuoc", "uong ca vi", "uong nguyen vi", "uong het vi",
+           "uong ca lo thuoc", "uong nhieu vien", "uong vai vi", "uong ca hop thuoc", "uong qua nhieu thuoc"):
         return "Nghi ngộ độc/quá liều." + GO
 
     # 3) Phản vệ / phù mạch (dị ứng nặng)
     angioedema = has("sung moi", "sung luoi", "phu moi", "phu luoi", "phu mat", "sung mat",
                      "hong nghen", "co hong nghen", "phu mach", "sung hong")
     allergic_trigger = has("an tom", "an hai san", "ong dot", "ong chich", "uong thuoc la", "sau khi tiem",
-                           "noi me day", "man khap nguoi", "noi man khap")
-    severe_resp_or_shock = has("kho tho", "tho rit", "tut huyet ap", "choang", "ngat")
-    if (angioedema and severe_resp_or_shock) or (allergic_trigger and severe_resp_or_shock and angioedema) \
-       or (allergic_trigger and has("tut huyet ap", "ngat", "soc")):
+                           "tiem vaccine", "tiem phong", "chich ngua", "tiem thuoc", "sau tiem", "tiem xong",
+                           "noi me day", "man khap nguoi", "noi man khap", "noi man do", "noi man")
+    # Dùng affirmative_mention để câu "KHÔNG khó thở" KHÔNG kích hoạt (has() khớp nhầm chuỗi con).
+    # Nhánh phù mạch (sưng môi/lưỡi rất đặc hiệu): chấp nhận cả "choáng". Nhánh tác nhân dị ứng
+    # (đồ ăn/tiêm) chỉ nhận khó thở/thở rít/tụt HA/ngất (sốc thật) để tránh báo giả.
+    severe_resp_or_shock = affirmative_mention(t, ("kho tho", "tho rit", "tut huyet ap", "choang", "ngat"))
+    severe_resp_or_real_shock = affirmative_mention(
+        t, ("kho tho", "tho rit", "khong tho duoc", "tut huyet ap", "ngat", "soc phan ve"))
+    if (angioedema and severe_resp_or_shock) or (allergic_trigger and severe_resp_or_real_shock) \
+       or (allergic_trigger and affirmative_mention(t, ("tut huyet ap", "ngat", "soc"))):
         return "Nghi PHẢN VỆ (dị ứng nặng: sưng môi/lưỡi/họng, khó thở, tụt huyết áp)." + GO
 
     # 4) Xuất huyết nặng: nôn ra máu / phân đen (melena)
@@ -2718,15 +1772,24 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
     if has("bung cung", "cung nhu go", "bung cung nhu go", "do cung bung", "phan ung thanh bung"):
         return "Nghi bụng ngoại khoa cấp (bụng cứng, đau dữ dội)." + GO
 
-    # 9) Cấp cứu sản khoa: thai + chảy máu/đau bụng
-    if has("mang thai", "co thai", "dang bau", "co bau", "thai ", "thai nhi", "bau "):
+    # 9) Cấp cứu sản khoa: thai + chảy máu/đau bụng HOẶC dấu tiền sản giật
+    if has("mang thai", "co thai", "dang bau", "co bau", "thai ", "thai nhi", "bau ", "co bau", "bau bi"):
         if has("chay mau", "ra mau", "ra dich nau", "dau bung", "dau quan", "dau lung du doi"):
             return "Có thai kèm chảy máu/đau bụng — nguy cơ cấp cứu sản khoa (sảy thai/thai ngoài tử cung)." + GO
+        # Tiền sản giật/sản giật: đau đầu dữ dội / rối loạn thị giác / phù nhiều / co giật.
+        preeclampsia_sign = (
+            (has("dau dau") and has("du doi", "nhieu", "nang", "nhu bua bo", "khong giam"))
+            or has("nhin mo", "mo mat", "mat mo", "hoa mat", "nhin khong ro", "loa mat")
+            or has("phu mat", "phu chan", "phu hai chan", "phu toan than", "phu nhieu", "phu tay chan", "phu nang")
+        )
+        if preeclampsia_sign:
+            return ("Có thai kèm đau đầu dữ dội / nhìn mờ / phù — nghi TIỀN SẢN GIẬT, cần cấp cứu "
+                    "sản khoa ngay.") + GO
 
     # ── P0 (2026-06-15): bổ sung cờ đỏ còn lọt, đo bằng scripts/independent_probe.py.
     # Dùng affirmative_mention (aff) để phủ định "không sụt cân"/"không co giật"/"không tê"
     # KHÔNG kích hoạt cờ đỏ sai (P0.6 near-miss).
-    SEE = " Hãy đi khám bác sĩ sớm để được đánh giá, KHÔNG tự dùng thuốc theo gợi ý."
+    SEE = REFERRAL_SEE_SUFFIX
     def aff(*ps): return affirmative_mention(t, ps)
 
     # 10) Đột quỵ (FAST): méo miệng / yếu-liệt nửa người / nói khó khởi phát đột ngột
@@ -2734,6 +1797,13 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
            "yeu nua nguoi", "liet nua nguoi", "te nua nguoi", "yeu mot ben nguoi", "liet mot ben nguoi") \
        or (aff("noi kho", "noi ngong", "kho noi", "noi dap") and has("dot ngot")):
         return "Dấu hiệu nghi ĐỘT QUỴ (méo miệng, yếu/liệt nửa người, nói khó)." + GO
+
+    # 10b) Co giật ĐANG/VỪA lên cơn (kể cả sốt cao co giật ở trẻ -> vẫn CẤP CỨU, ưu tiên trước
+    #      mọi luật né an toàn theo bệnh nền/lứa tuổi). CHỈ bắt cơn cấp, KHÔNG bắt tiền sử
+    #      "từng co giật"/"không co giật" (giữ aff cho phủ định + chọn cụm cấp tính).
+    if aff("len con co giat", "len con giat", "vua co giat", "vua len con giat", "dang co giat",
+           "co giat toan than", "giat toan than", "sui bot mep", "co giat lien tuc", "co giat ca nguoi"):
+        return "Nghi CO GIẬT/động kinh đang lên cơn." + GO
 
     # 11) Chèn ép tủy/đuôi ngựa: yếu liệt 2 chân + bí tiểu / tê vùng yên ngựa
     saddle = aff("te yen ngua", "te vung yen ngua", "te bo phan sinh duc", "mat cam giac yen ngua", "te hau mon")
@@ -2763,6 +1833,29 @@ def emergency_red_flag_from_notes(notes: str) -> str | None:
     if aff("bong nuoc soi", "bong lua", "bong dien", "bong hoa chat", "bong axit", "bong po xe", "bong xang") \
        or (aff("bi bong") and aff("dien rong", "ca mang", "nhieu vung", "phong rop", "lan rong", "nang", "sau")):
         return "Bỏng (đặc biệt diện rộng/sâu hoặc ở mặt/tay/bộ phận sinh dục) cần được xử trí y tế." + SEE
+
+    # 15b) Đau thượng vị/bụng trên DỮ DỘI lan ra sau lưng -> nghi viêm tụy cấp / bụng ngoại khoa.
+    if (has("dau bung tren", "dau thuong vi", "dau vung tren ron", "dau bung vung tren", "dau ham vi")
+        or (has("dau bung") and has("tren ron", "thuong vi"))) \
+       and has("du doi", "quan tham", "dau nhieu", "dau quan") \
+       and has("lan ra sau lung", "lan sau lung", "xuyen ra sau lung", "ra sau lung", "lan ra lung"):
+        return "Đau thượng vị dữ dội lan ra sau lưng — nghi viêm tụy cấp, cần đi khám/cấp cứu ngay." + GO
+
+    # 15c) Cờ đỏ NUỐT: nuốt nghẹn/khó nuốt tăng dần kèm sụt cân -> tầm soát thực quản/dạ dày.
+    if aff("nuot nghen", "kho nuot", "nuot vuong", "nghen khi nuot", "nuot kho", "nuot dau tang dan") \
+       and aff("sut can", "giam can", "gay sut", "sut ki"):
+        return ("Nuốt nghẹn/khó nuốt kèm sụt cân — dấu hiệu CẢNH BÁO, cần đi khám tầm soát "
+                "(thực quản/dạ dày) sớm.") + SEE
+
+    # 16) Mất nước NẶNG: tiêu chảy/nôn nhiều KÈM dấu hiệu NẶNG THẬT (rối loạn tri giác / không
+    #     uống được). CHỈ "tiểu ít/môi khô" là mất nước VỪA -> để ORS (OTC) xử lý, không chặn.
+    gi_fluid_loss = aff("tieu chay", "di ngoai nhieu lan", "di ngoai phan long", "di ngoai lien tuc",
+                        "non nhieu", "non lien tuc", "oi nhieu", "non oi nhieu")
+    severe_dehydr_sign = aff("lu du", "li bi", "lo mo", "kiet suc", "khong uong duoc nuoc",
+                             "uong vao non het", "mat nuoc nang", "kho danh thuc", "ngu li bi", "met la di")
+    if gi_fluid_loss and severe_dehydr_sign:
+        return ("Nghi MẤT NƯỚC NẶNG (tiêu chảy/nôn kèm tiểu ít hoặc lừ đừ/li bì). Cần bù dịch và "
+                "ĐI KHÁM NGAY, KHÔNG tự dùng thuốc theo gợi ý.") + ""
 
     return None
 
@@ -2901,7 +1994,7 @@ def llm_safety_red_flag_message(context: dict | None, notes: str, active_symptom
     if not flags:
         return None
     t = normalize(notes or "")
-    GO = " Đây có thể là CẤP CỨU; gọi 115 hoặc đến cơ sở y tế ngay, KHÔNG tự dùng thuốc theo gợi ý."
+    GO = EMERGENCY_GO_SUFFIX
 
     # Nhóm ý định/ngộ độc/phản vệ: ưu tiên an toàn (lexicon đã bỏ sót mới tới đây).
     if "suicide_self_harm" in flags:
@@ -3032,7 +2125,7 @@ def musculoskeletal_nsaid_rule_drug_group(active_symptoms: set[str]) -> str | No
         return None
     musculo = has_any_symptom(
         active_symptoms,
-        ["neck pain", "back pain", "low back pain", "joint pain", "swelling joints", "movement stiffness", "knee pain", "hip joint pain", "ankle pain", "muscle pain", "bruising", "painful menstruation"],
+        ["neck pain", "back pain", "low back pain", "joint pain", "knee pain", "painful menstruation"],
     )
     if musculo:
         return "thuốc kháng viêm không steroid"
@@ -3481,12 +2574,6 @@ def prediction_reason(matched_labels: list[str], confidence, score_type: str, gr
     syms = ", ".join(matched_labels[:4]) if matched_labels else "các dấu hiệu đã mô tả"
     if score_type == "rule":
         return f"Triệu chứng/ngữ cảnh đặc hiệu ({syms}) khớp quy tắc lâm sàng cho nhóm {group}."
-    if score_type == "symptom_overlap":
-        pct = f"{confidence * 100:.0f}%" if confidence is not None else "cao"
-        return (
-            f"Triệu chứng đã nhận diện ({syms}) khớp trực tiếp với các ca huấn luyện của nhóm {group} "
-            f"theo lớp so khớp triệu chứng có giải thích (điểm phù hợp {pct})."
-        )
     if confidence is not None:
         return (
             f"Triệu chứng đã nhận diện ({syms}) phù hợp nhất với nhóm {group} "
@@ -3495,290 +2582,16 @@ def prediction_reason(matched_labels: list[str], confidence, score_type: str, gr
     return f"Triệu chứng đã nhận diện ({syms}) phù hợp nhất với nhóm {group}."
 
 
-# Admin-managed extra symptoms (file-backed) and dynamic symptoms endpoint
-ADMIN_SYMPTOMS_PATH = PROJECT_ROOT / "data" / "admin_symptoms.json"
-
-
-def slugify(s: str) -> str:
-    s = (s or "").strip().lower()
-    s = re.sub(r"\s+", "_", s)
-    s = re.sub(r"[^a-z0-9_\-]", "", s)
-    return s or secrets.token_urlsafe(6)
-
-
-def load_admin_symptoms() -> list:
-    try:
-        if ADMIN_SYMPTOMS_PATH.exists():
-            return json.loads(ADMIN_SYMPTOMS_PATH.read_text(encoding="utf-8")) or []
-    except Exception:
-        pass
-    return []
-
-
-def save_admin_symptoms(items: list) -> None:
-    ADMIN_SYMPTOMS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ADMIN_SYMPTOMS_PATH.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-@app.route('/api/admin/symptoms', methods=['POST'])
-def admin_add_symptom():
-    # Admin-only create -> use DB TrieuChung
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
-    token = auth_header.split(" ")[1]
-    try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        if payload.get('role') != 'Admin':
-            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
-    except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token đã hết hạn.'}), 401
-    except Exception:
-        return jsonify({'error': 'Token không hợp lệ.'}), 401
-
-    data = request.get_json(silent=True) or {}
-    # accept both label_vi/label_en (old API) and ten/ten_en (new API)
-    label_vi = (data.get('label_vi') or data.get('label') or data.get('ten') or data.get('name') or '').strip()
-    label_en = (data.get('label_en') or data.get('ten_en') or '').strip()
-    note = (data.get('note') or data.get('mo_ta') or '').strip()
-    if not label_vi or not label_en:
-        return jsonify({"error": "Vui lòng cung cấp label_vi và label_en (hoặc ten/ten_en)."}), 400
-
-    ma = (data.get('id') or data.get('ma') or slugify(label_en))
-    # ensure unique ma
-    if TrieuChung.query.filter_by(ma=ma).first():
-        ma = f"{ma}_{secrets.token_hex(3)}"
-
-    obj = TrieuChung(ma=ma, ten=label_vi, ten_en=label_en, mo_ta=note)
-    db.session.add(obj)
-    db.session.commit()
-    # invalidate cache
-    global SYMPTOM_DICTIONARY_CACHE
-    SYMPTOM_DICTIONARY_CACHE = None
-    return jsonify(obj.to_dict()), 201
-
-
-@app.route('/api/admin/symptoms/<string:item_id>', methods=['PUT'])
-def admin_update_symptom(item_id):
-    # Admin-only update -> DB
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
-    token = auth_header.split(" ")[1]
-    try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        if payload.get('role') != 'Admin':
-            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
-    except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token đã hết hạn.'}), 401
-    except Exception:
-        return jsonify({'error': 'Token không hợp lệ.'}), 401
-
-    data = request.get_json(silent=True) or {}
-    # find by numeric id or by ma
-    obj = None
-    if str(item_id).isdigit():
-        obj = TrieuChung.query.get(int(item_id))
-    if obj is None:
-        obj = TrieuChung.query.filter_by(ma=str(item_id)).first()
-    if not obj:
-        return jsonify({"error": "Không tìm thấy mục"}), 404
-
-    label_vi = (data.get('label_vi') or data.get('label') )
-    label_en = data.get('label_en')
-    note = data.get('note')
-    if label_vi:
-        obj.ten = label_vi.strip()
-    if label_en is not None:
-        obj.ten_en = label_en.strip()
-    if note is not None:
-        obj.mo_ta = note
-    obj.updated_at = datetime.utcnow()
-    db.session.commit()
-    global SYMPTOM_DICTIONARY_CACHE
-    SYMPTOM_DICTIONARY_CACHE = None
-    return jsonify(obj.to_dict()), 200
-
-
-@app.route('/api/admin/symptoms/<string:item_id>', methods=['DELETE'])
-def admin_delete_symptom(item_id):
-    # Admin-only delete -> DB
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
-    token = auth_header.split(" ")[1]
-    try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        if payload.get('role') != 'Admin':
-            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
-    except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token đã hết hạn.'}), 401
-    except Exception:
-        return jsonify({'error': 'Token không hợp lệ.'}), 401
-
-    obj = None
-    if str(item_id).isdigit():
-        obj = TrieuChung.query.get(int(item_id))
-    if obj is None:
-        obj = TrieuChung.query.filter_by(ma=str(item_id)).first()
-    if not obj:
-        return jsonify({"error": "Không tìm thấy mục"}), 404
-    db.session.delete(obj)
-    db.session.commit()
-    global SYMPTOM_DICTIONARY_CACHE
-    SYMPTOM_DICTIONARY_CACHE = None
-    return jsonify({"message": "Đã xóa"}), 200
-
-
-@app.route('/api/symptoms', methods=['GET','POST'])
-def add_symptom_public():
-    # GET: return combined dictionary from model + DB TrieuChung
-    if request.method == 'GET':
-        try:
-            base = build_readable_symptoms() or []
-        except Exception:
-            base = []
-        # append DB-managed symptoms
-        try:
-            db_items = TrieuChung.query.order_by(TrieuChung.ten).all()
-            existing_ids = {str(s.get('id')) for s in base if isinstance(s, dict) and s.get('id')}
-            for o in db_items:
-                id_val = o.ma or f"db_{o.id}"
-                if str(id_val) in existing_ids:
-                    continue
-                base.append({
-                    'id': str(id_val),
-                    'label': o.ten or o.ten_en or '',
-                    'label_vi': o.ten or '',
-                    'label_en': o.ten_en or '',
-                    'note': o.mo_ta or ''
-                })
-        except Exception:
-            pass
-        return jsonify({"symptoms": base})
-
-    # POST: require Admin token and create DB entry
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
-    token = auth_header.split(" ")[1]
-    try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        if payload.get('role') != 'Admin':
-            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
-    except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token đã hết hạn.'}), 401
-    except Exception:
-        return jsonify({'error': 'Token không hợp lệ.'}), 401
-
-    data = request.get_json(silent=True) or {}
-    # accept both label_vi/label_en and ten/ten_en
-    label_vi = (data.get('label_vi') or data.get('label') or data.get('ten') or '').strip()
-    label_en = (data.get('label_en') or data.get('ten_en') or '').strip()
-    note = (data.get('note') or data.get('mo_ta') or '').strip()
-    if not label_vi or not label_en:
-        return jsonify({"error": "Vui lòng cung cấp label_vi và label_en (hoặc ten/ten_en)."}), 400
-    ma = (data.get('id') or data.get('ma') or slugify(label_en))
-    if TrieuChung.query.filter_by(ma=ma).first():
-        ma = f"{ma}_{secrets.token_hex(3)}"
-    obj = TrieuChung(ma=ma, ten=label_vi, ten_en=label_en, mo_ta=note)
-    db.session.add(obj)
-    db.session.commit()
-    global SYMPTOM_DICTIONARY_CACHE
-    SYMPTOM_DICTIONARY_CACHE = None
-    return jsonify(obj.to_dict()), 201
-
-
-@app.route('/api/symptoms/<string:item_id>', methods=['PUT'])
-def update_symptom_public(item_id):
-    # require admin token and update DB-backed symptom
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
-    token = auth_header.split(" ")[1]
-    try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        if payload.get('role') != 'Admin':
-            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
-    except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token đã hết hạn.'}), 401
-    except Exception:
-        return jsonify({'error': 'Token không hợp lệ.'}), 401
-
-    data = request.get_json(silent=True) or {}
-    obj = None
-    if str(item_id).isdigit():
-        obj = TrieuChung.query.get(int(item_id))
-    if obj is None:
-        obj = TrieuChung.query.filter_by(ma=str(item_id)).first()
-    if not obj:
-        return jsonify({"error": "Không tìm thấy mục"}), 404
-    label_vi = (data.get('label_vi') or data.get('label'))
-    label_en = data.get('label_en')
-    note = data.get('note')
-    if label_vi:
-        obj.ten = label_vi.strip()
-    if label_en is not None:
-        obj.ten_en = label_en.strip()
-    if note is not None:
-        obj.mo_ta = note
-    obj.updated_at = datetime.utcnow()
-    db.session.commit()
-    global SYMPTOM_DICTIONARY_CACHE
-    SYMPTOM_DICTIONARY_CACHE = None
-    return jsonify(obj.to_dict()), 200
-
-
-@app.route('/api/symptoms/<string:item_id>', methods=['DELETE'])
-def delete_symptom_public(item_id):
-    admin = load_admin_symptoms()
-    new = [it for it in admin if str(it.get('id')) != str(item_id)]
-    if len(new) == len(admin):
-        return jsonify({"error": "Không tìm thấy mục"}), 404
-    save_admin_symptoms(new)
-    return jsonify({"message": "Đã xóa"}), 200
-
-
-@app.route('/api/symptoms', methods=['GET'])
-def get_symptoms():
-    # Build base readable symptoms from internal model/features if available
-    try:
-        base = build_readable_symptoms() or []
-    except Exception:
-        base = []
-    # Load admin-provided symptoms and append (avoid id duplicates)
-    admin = load_admin_symptoms()
-    existing_ids = {str(s.get('id')) for s in base if isinstance(s, dict) and s.get('id')}
-    for a in admin:
-        if str(a.get('id')) not in existing_ids:
-            base.append({
-                'id': a.get('id'),
-                'label': a.get('label_vi') or a.get('label') or a.get('label_en') or '',
-                'label_vi': a.get('label_vi') or a.get('label') or '',
-                'label_en': a.get('label_en') or '',
-                'note': a.get('note') or ''
-            })
-    return jsonify({"symptoms": base})
-
-
 @app.get("/")
 def home():
     return send_from_directory(FRONTEND_DIR, "index.html")
 
 
-@app.get('/index.html')
-def index_html():
-    return send_from_directory(FRONTEND_DIR, 'index.html')
-
-
-@app.get('/styles.css')
-def styles_css():
-    return send_from_directory(FRONTEND_DIR, 'styles.css')
-
-
-@app.get('/script.js')
-def script_js():
-    return send_from_directory(FRONTEND_DIR, 'script.js')
+@app.get("/<path:path>")
+def static_files(path):
+    if path not in ALLOWED_STATIC_FILES:
+        return jsonify({"error": "Not found"}), 404
+    return send_from_directory(FRONTEND_DIR, path)
 
 
 @app.get("/api/health")
@@ -3797,470 +2610,1172 @@ def health():
             "guidance_entries": len(guidance_data),
         }
     )
-@app.route('/api/auth/register', methods=['POST'])
+
+
+@app.post("/api/auth/register")
 def register():
-    data = request.get_json() or {}
-    name = data.get("name", "").strip()
-    email = data.get("email", "").strip().lower()
-    password = data.get("password", "")
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("name") or "").strip()
+    email = normalize_email(str(payload.get("email") or ""))
+    password = str(payload.get("password") or "")
 
-    if not name or not email or len(password) < 6:
-        return jsonify({"error": "Vui lòng nhập đủ thông tin (Mật khẩu từ 6 ký tự)"}), 400
-    if User.query.filter_by(email=email).first():
+    validation_error = validate_auth_payload(name, email, password)
+    if validation_error:
+        return jsonify({"error": validation_error}), 400
+
+    store = load_user_store()
+    if find_user_by_email(store, email):
         return jsonify({"error": "Email này đã được đăng ký."}), 409
-    new_user = User(email=email, full_name=name)
-    new_user.set_password(password)
-    
-    db.session.add(new_user)
-    db.session.commit()
 
-    token = jwt.encode({'user': email, 'role': 'User', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)}, app.config['SECRET_KEY'], algorithm="HS256")
-    
-    return jsonify({'message': 'Đăng ký thành công', 'token': token, 'user': {'name': new_user.full_name, 'email': email}}), 201
-
-# --- BẮT ĐẦU: BỘ API XÁC THỰC, TÀI KHOẢN & HỒ SƠ ---
-@app.route('/api/login', methods=['POST'])
-def login():
-    data = request.get_json() or {}
-    email = (data.get('email') or '').strip()
-    password = data.get('password') or ''
-
-    if email == "admin@gmail.com" and password == "123456":
-        token = jwt.encode(
-            {'user': email, 'role': 'Admin', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)},
-            app.config['SECRET_KEY'],
-            algorithm="HS256"
-        )
-        return jsonify({
-            'message': 'Đăng nhập thành công',
-            'token': token,
-            'user': {
-                'name': 'Bác sĩ Trần Văn Toàn',
-                'fullName': 'Bác sĩ Trần Văn Toàn',
-                'email': email,
-                'role': 'Admin',
-                'specialty': 'Quản trị hệ thống'
-            }
-        }), 200
-
-    user = User.query.filter_by(email=email).first()
-    if user and user.check_password(password):
-        display_name = user.full_name or email.split("@")[0]
-        token = jwt.encode(
-            {'user': email, 'role': 'User', 'exp': datetime.now(timezone.utc) + timedelta(hours=24)},
-            app.config['SECRET_KEY'],
-            algorithm="HS256"
-        )
-        return jsonify({
-            'message': 'Đăng nhập thành công',
-            'token': token,
-            'user': {
-                'name': display_name,
-                'fullName': display_name,
-                'email': email,
-                'role': 'User',
-                'phoneNumber': user.phone_number,
-                'specialty': user.specialty
-            }
-        }), 200
-
-    return jsonify({'message': 'Sai email hoặc mật khẩu'}), 401
-
-
-@app.route('/api/logout', methods=['POST'])
-def logout():
-    return jsonify({'message': 'Đăng xuất thành công'}), 200
-
-
-@app.route('/api/auth/me', methods=['GET'])
-def auth_me():
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "): 
-        return jsonify({"error": "Chưa đăng nhập"}), 401
-
-    token = auth_header.split(" ")[1]
-    try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        email = payload.get('user')
-        role = payload.get('role', 'User')
-
-        if email == "admin@gmail.com":
-            return jsonify({"user": {
-                "email": email,
-                "name": "Bác sĩ Trần Văn Toàn",
-                "fullName": "Bác sĩ Trần Văn Toàn",
-                "role": "Admin",
-                "specialty": "Quản trị hệ thống"
-            }}), 200
-
-        user = User.query.filter_by(email=email).first()
-        if user:
-            display_name = user.full_name or email.split("@")[0]
-            return jsonify({"user": {
-                "email": email,
-                "name": display_name,
-                "fullName": display_name,
-                "role": role,
-                "phoneNumber": user.phone_number,
-                "specialty": user.specialty
-            }}), 200
-
-        return jsonify({"user": {
-            "email": email,
-            "name": email.split("@")[0] if email else "Người dùng",
-            "fullName": email.split("@")[0] if email else "Người dùng",
-            "role": role
-        }}), 200
-    except Exception:
-        return jsonify({"error": "Token hết hạn"}), 401
-
-
-@app.route('/api/users/change-password', methods=['PUT'])
-def change_password():
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "): 
-        return jsonify({"error": "Chưa đăng nhập"}), 401
-    token = auth_header.split(" ")[1]
-    
-    try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        email = payload['user']
-    except Exception:
-        return jsonify({"error": "Token không hợp lệ"}), 401
-
-    if email == "admin@gmail.com":
-        return jsonify({"message": "Đổi mật khẩu admin thành công (giả lập)!"}), 200
-
-    user = User.query.filter_by(email=email).first()
-    if not user: return jsonify({"error": "Người dùng không tồn tại"}), 404
-    
-    data = request.get_json()
-    if not user.check_password(data.get('old_password')):
-        return jsonify({"error": "Mật khẩu cũ không chính xác!"}), 400
-
-    user.set_password(data.get('new_password'))
-    db.session.commit()
-    return jsonify({"message": "Đổi mật khẩu thành công!"}), 200
-
-
-@app.route('/api/users/profile', methods=['GET', 'PUT'])
-def profile():
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "): return jsonify({"error": "Chưa đăng nhập"}), 401
-    token = auth_header.split(" ")[1]
-    try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        email = payload['user']
-    except Exception:
-        return jsonify({"error": "Token không hợp lệ"}), 401
-
-    user = User.query.filter_by(email=email).first()
-    
-    if request.method == 'GET':
-        if email == "admin@gmail.com":
-            return jsonify({
-                "name": "Bác sĩ Trần Văn Toàn",
-                "fullName": "Bác sĩ Trần Văn Toàn",
-                "email": email,
-                "phoneNumber": "0901234567",
-                "specialty": "Quản trị hệ thống",
-                "role": "Admin"
-            }), 200
-        if user:
-            display_name = user.full_name or email.split("@")[0]
-            return jsonify({
-                "name": display_name,
-                "fullName": display_name,
-                "email": email,
-                "phoneNumber": user.phone_number,
-                "specialty": user.specialty,
-                "role": "User"
-            }), 200
-        fallback_name = email.split("@")[0] if email else "Người dùng"
-        return jsonify({"name": fallback_name, "fullName": fallback_name, "email": email, "role": "User"}), 200
-
-    if request.method == 'PUT':
-        data = request.get_json() or {}
-        if email == "admin@gmail.com":
-            admin_profile = {
-                "name": data.get("fullName") or "Bác sĩ Trần Văn Toàn",
-                "fullName": data.get("fullName") or "Bác sĩ Trần Văn Toàn",
-                "email": email,
-                "phoneNumber": data.get("phoneNumber") or "0901234567",
-                "specialty": data.get("specialty") or "Quản trị hệ thống",
-                "role": "Admin"
-            }
-            return jsonify({"message": "Cập nhật hồ sơ Admin thành công!", "user": admin_profile, **admin_profile}), 200
-
-        if user:
-            user.full_name = data.get("fullName", user.full_name)
-            user.phone_number = data.get("phoneNumber", user.phone_number)
-            user.specialty = data.get("specialty", user.specialty)
-            db.session.commit()
-            display_name = user.full_name or email.split("@")[0]
-            updated_user = {
-                "name": display_name,
-                "fullName": display_name,
-                "email": email,
-                "phoneNumber": user.phone_number,
-                "specialty": user.specialty,
-                "role": "User"
-            }
-            return jsonify({"message": "Cập nhật hồ sơ thành công!", "user": updated_user, **updated_user}), 200
-        return jsonify({"error": "Không tìm thấy tài khoản trong DB"}), 404
-# --- KẾT THÚC: BỘ API XÁC THỰC, TÀI KHOẢN & HỒ SƠ ---
-
-# =========================
-# USER STORY 11 - TASK 29, 30, 31
-# Trích xuất triệu chứng từ văn bản đã xử lý
-# =========================
-
-SYMPTOM_DICTIONARY_CACHE = None
-
-
-def get_cached_symptom_dictionary():
-    """
-    SCRUM-61 / Task 30:
-    Tối ưu danh sách từ điển triệu chứng bằng cache.
-    Không phải build lại danh sách triệu chứng mỗi lần gọi API.
-    """
-    global SYMPTOM_DICTIONARY_CACHE
-
-    if SYMPTOM_DICTIONARY_CACHE is not None:
-        return SYMPTOM_DICTIONARY_CACHE
-
-    dictionary = []
-
-    try:
-        for symptom in build_readable_symptoms() or []:
-            symptom_id = str(symptom.get("id", "")).strip()
-            label_vi = str(symptom.get("label_vi") or symptom.get("label") or "").strip()
-            label_en = str(symptom.get("label_en") or symptom_id.replace("_", " ")).strip()
-
-            if symptom_id or label_vi or label_en:
-                dictionary.append({
-                    "id": symptom_id or label_en.lower().replace(" ", "_"),
-                    "label_vi": label_vi or label_en,
-                    "label_en": label_en,
-                    "keywords": unique_values([
-                        label_vi,
-                        label_en,
-                        symptom_id.replace("_", " "),
-                    ])
-                })
-    except Exception:
-        dictionary = []
-
-    SYMPTOM_DICTIONARY_CACHE = dictionary
-    return SYMPTOM_DICTIONARY_CACHE
-
-
-def extract_symptoms_from_medical_text(text):
-    """
-    SCRUM-60 / Task 29:
-    So khớp văn bản đầu vào với từ điển triệu chứng.
-    Dùng lại pipeline hiện có của hệ thống:
-    - ordered_symptoms_from_text()
-    - symptom_label_vi()
-    - filter_negated_symptoms()
-    """
-    if not isinstance(text, str):
-        return []
-
-    cleaned_text = text.strip()
-    if not cleaned_text:
-        return []
-
-    matched_symptoms = ordered_symptoms_from_text(cleaned_text)
-    matched_symptoms = filter_negated_symptoms(matched_symptoms, cleaned_text)
-
-    result = []
-    for symptom in matched_symptoms:
-        result.append({
-            "id": symptom,
-            "label_en": symptom.replace("_", " ").replace("  ", " "),
-            "label_vi": symptom_label_vi(symptom)
-        })
-
-    return result
-
-# =========================
-# SCRUM-68, SCRUM-69, SCRUM-70
-# Cảnh báo y khoa nguy hiểm
-# =========================
-
-DANGEROUS_KEYWORDS = [
-    "khó thở cấp",
-    "khó thở nặng",
-    "thở gấp",
-    "đau ngực",
-    "tức ngực",
-    "lơ mơ",
-    "mất ý thức",
-    "co giật",
-    "nhồi máu",
-    "nhồi máu cơ tim",
-    "đột quỵ",
-    "liệt nửa người",
-    "sốt cao kéo dài",
-    "nôn ra máu",
-    "ho ra máu",
-    "đau đầu dữ dội",
-    "phát ban toàn thân",
-    "môi tím",
-    "tím tái",
-    "mất nước nặng"
-]
-
-
-def detect_dangerous_keywords(text, symptoms_vi=None):
-    """
-    SCRUM-69:
-    Kiểm tra từ khóa nguy hiểm trong mô tả bệnh án và triệu chứng đã nhận diện.
-    """
-    symptoms_vi = symptoms_vi or []
-
-    source_text = " ".join([
-        str(text or ""),
-        " ".join([str(s) for s in symptoms_vi])
-    ]).lower()
-
-    matched = []
-
-    for keyword in DANGEROUS_KEYWORDS:
-        if keyword.lower() in source_text:
-            matched.append(keyword)
-
-    return {
-        "has_danger": len(matched) > 0,
-        "danger_keywords": matched,
-        "danger_level": "HIGH" if matched else "NORMAL",
-        "warning_message": (
-            "Phát hiện dấu hiệu nguy hiểm. Người bệnh cần được thăm khám y tế sớm, "
-            "không tự ý dùng thuốc nếu có triệu chứng nặng."
-            if matched else ""
-        )
+    user = {
+        "id": secrets.token_hex(8),
+        "name": name,
+        "email": email,
+        "password_hash": generate_password_hash(password),
+        "created_at": iso_utc(now_utc()),
     }
-@app.post("/api/extract-symptoms")
-def extract_symptoms_api():
-    """
-    SCRUM-62 / Task 31:
-    API trả về danh sách triệu chứng đã nhận diện để Frontend sử dụng.
-    """
-    data = request.get_json(silent=True) or {}
-    text = data.get("text") or data.get("notes") or ""
-
-    if not isinstance(text, str):
-        return jsonify({
-            "success": False,
-            "message": "Văn bản đầu vào không hợp lệ.",
-            "symptoms": []
-        }), 400
-
-    if not text.strip():
-        return jsonify({
-            "success": False,
-            "message": "Vui lòng nhập mô tả bệnh án hoặc triệu chứng.",
-            "symptoms": []
-        }), 400
-
-    dictionary = get_cached_symptom_dictionary()
-    symptoms = extract_symptoms_from_medical_text(text)
-    # SCRUM-69
-    danger_info = detect_dangerous_keywords(
-        text,
-        [item["label_vi"] for item in symptoms]
-    )
-    return jsonify({
-        "success": True,
-        "message": "Trích xuất triệu chứng thành công.",
-        "dictionary_size": len(dictionary),
-        "total": len(symptoms),
-        "symptoms": symptoms,
-        "symptoms_vi": [item["label_vi"] for item in symptoms],
-        "symptoms_en": [item["label_en"] for item in symptoms],
-        "danger_warning": danger_info
-    }), 200
+    token = issue_session(user)
+    store["users"].append(user)
+    save_user_store(store)
+    return jsonify({"user": user_public_view(user), "token": token}), 201
 
 
-@app.post("/api/symptoms/cache/refresh")
-def refresh_symptom_cache():
-    """
-    API phụ để làm mới cache từ điển triệu chứng khi admin cập nhật từ điển.
-    """
-    global SYMPTOM_DICTIONARY_CACHE
-    SYMPTOM_DICTIONARY_CACHE = None
+@app.post("/api/auth/login")
+def login():
+    payload = request.get_json(silent=True) or {}
+    email = normalize_email(str(payload.get("email") or ""))
+    password = str(payload.get("password") or "")
 
-    return jsonify({
-        "success": True,
-        "message": "Đã làm mới cache từ điển triệu chứng.",
-        "dictionary_size": len(get_cached_symptom_dictionary())
-    }), 200
+    store = load_user_store()
+    user = find_user_by_email(store, email)
+    if not user or not check_password_hash(user.get("password_hash", ""), password):
+        return jsonify({"error": "Email hoặc mật khẩu không đúng."}), 401
+
+    token = issue_session(user)
+    save_user_store(store)
+    return jsonify({"user": user_public_view(user), "token": token})
 
 
-# ── API admin: danh sách, chi tiết, xóa từ điển triệu chứng ───────────────────────
-@app.route('/api/admin/symptoms', methods=['GET'])
-def list_symptoms():
-    q = (request.args.get('q') or '').strip()
+@app.get("/api/auth/me")
+def auth_me():
+    store = load_user_store()
+    user = current_user_from_request(store)
+    if not user:
+        return jsonify({"error": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."}), 401
+    return jsonify({"user": user_public_view(user)})
+
+
+@app.post("/api/auth/logout")
+def logout():
+    store = load_user_store()
+    user = current_user_from_request(store)
+    if user:
+        user.pop("session_token", None)
+        user.pop("session_expires_at", None)
+        save_user_store(store)
+    return jsonify({"ok": True})
+
+
+@app.post("/api/auth/forgot-password")
+def forgot_password():
+    payload = request.get_json(silent=True) or {}
+    email = normalize_email(str(payload.get("email") or ""))
+    store = load_user_store()
+    user = find_user_by_email(store, email)
+    response = {
+        "message": "Nếu email tồn tại, hệ thống đã tạo mã đặt lại mật khẩu.",
+    }
+
+    if user:
+        reset_code = f"{secrets.randbelow(1000000):06d}"
+        user["reset_code_hash"] = generate_password_hash(reset_code)
+        user["reset_code_expires_at"] = iso_utc(now_utc() + timedelta(minutes=15))
+        save_user_store(store)
+        response["reset_code"] = reset_code
+        response["message"] = "Mã đặt lại mật khẩu có hiệu lực trong 15 phút."
+
+    return jsonify(response)
+
+
+@app.post("/api/auth/reset-password")
+def reset_password():
+    payload = request.get_json(silent=True) or {}
+    email = normalize_email(str(payload.get("email") or ""))
+    reset_code = str(payload.get("reset_code") or "").strip()
+    password = str(payload.get("password") or "")
+
+    validation_error = validate_auth_payload(None, email, password)
+    if validation_error:
+        return jsonify({"error": validation_error}), 400
+
+    store = load_user_store()
+    user = find_user_by_email(store, email)
+    expires_at = parse_iso_datetime(user.get("reset_code_expires_at") if user else None)
+    code_hash = user.get("reset_code_hash", "") if user else ""
+    if not user or not expires_at or expires_at <= now_utc() or not check_password_hash(code_hash, reset_code):
+        return jsonify({"error": "Mã đặt lại mật khẩu không đúng hoặc đã hết hạn."}), 400
+
+    user["password_hash"] = generate_password_hash(password)
+    user.pop("reset_code_hash", None)
+    user.pop("reset_code_expires_at", None)
+    token = issue_session(user)
+    save_user_store(store)
+    return jsonify({"user": user_public_view(user), "token": token})
+
+
+@app.post("/api/auth/profile")
+def update_profile():
+    """Cập nhật họ tên người dùng đang đăng nhập."""
+    store = load_user_store()
+    user = current_user_from_request(store)
+    if not user:
+        return jsonify({"error": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."}), 401
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Vui lòng nhập họ tên."}), 400
+    user["name"] = name[:150]
+    save_user_store(store)
+    return jsonify({"user": user_public_view(user)})
+
+
+@app.post("/api/auth/change-password")
+def change_password():
+    """Đổi mật khẩu khi đã đăng nhập (xác thực mật khẩu hiện tại)."""
+    store = load_user_store()
+    user = current_user_from_request(store)
+    if not user:
+        return jsonify({"error": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."}), 401
+    payload = request.get_json(silent=True) or {}
+    current = str(payload.get("current_password") or "")
+    new_password = str(payload.get("new_password") or "")
+    if not check_password_hash(user.get("password_hash", ""), current):
+        return jsonify({"error": "Mật khẩu hiện tại không đúng."}), 400
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        return jsonify({"error": f"Mật khẩu mới phải có ít nhất {MIN_PASSWORD_LENGTH} ký tự."}), 400
+    user["password_hash"] = generate_password_hash(new_password)
+    token = issue_session(user)
+    save_user_store(store)
+    return jsonify({"user": user_public_view(user), "token": token})
+
+
+@app.get("/api/symptoms")
+def symptoms():
+    return jsonify({"symptoms": readable_symptoms})
+
+
+def _valid_date_param(value: str | None) -> str | None:
+    """Chấp nhận 'YYYY-MM-DD'; sai định dạng -> None (bỏ lọc thay vì báo lỗi)."""
+    if not value:
+        return None
+    value = value.strip()
     try:
-        page = max(1, int(request.args.get('page', 1)))
-    except Exception:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return None
+    return value
+
+
+def _admin_stats_from_db(date_from, date_to):
+    """US19 (DB): gộp số liệu Dashboard từ Postgres — cùng shape JSON với bản JSONL."""
+    from sqlalchemy import Date, cast, func
+
+    KQ = db_models.KetQuaDuDoan
+    PH = db_models.PhanHoi
+
+    def drange(col):
+        conds = []
+        if date_from:
+            conds.append(cast(col, Date) >= date_from)
+        if date_to:
+            conds.append(cast(col, Date) <= date_to)
+        return conds
+
+    total = db.session.query(func.count(KQ.ma_ket_qua)).filter(*drange(KQ.created_at)).scalar() or 0
+
+    by_status = {s: 0 for s in stats_source.PREDICTION_STATUSES}
+    for st, cnt in (db.session.query(KQ.trang_thai, func.count()).filter(*drange(KQ.created_at)).group_by(KQ.trang_thai)):
+        if st in by_status:
+            by_status[st] = cnt
+
+    over_time = [
+        {"date": d.isoformat(), "count": cnt}
+        for d, cnt in (
+            db.session.query(cast(KQ.created_at, Date).label("d"), func.count())
+            .filter(*drange(KQ.created_at)).group_by("d").order_by("d")
+        )
+    ]
+
+    top_groups = [
+        {"group": g, "count": cnt}
+        for g, cnt in (
+            db.session.query(KQ.nhom_thuoc_du_doan, func.count())
+            .filter(KQ.nhom_thuoc_du_doan.isnot(None), *drange(KQ.created_at))
+            .group_by(KQ.nhom_thuoc_du_doan).order_by(func.count().desc()).limit(5)
+        )
+    ]
+
+    agree = db.session.query(func.count()).filter(PH.trang_thai == "APPROVE", *drange(PH.thoi_gian_gui)).scalar() or 0
+    disagree = db.session.query(func.count()).filter(PH.trang_thai == "REJECT", *drange(PH.thoi_gian_gui)).scalar() or 0
+    feedback_total = agree + disagree
+    agree_rate = round(agree / feedback_total * 100, 1) if feedback_total else None
+
+    return jsonify({
+        "range": {"from": date_from, "to": date_to},
+        "total_predictions": total,
+        "by_status": by_status,
+        "predictions_over_time": over_time,
+        "top_groups": top_groups,
+        "feedback_total": feedback_total,
+        "agree_count": agree,
+        "disagree_count": disagree,
+        "agree_rate": agree_rate,
+        "source": "postgres",
+    })
+
+
+@app.get("/api/admin/stats")
+def admin_stats():
+    """US19: Dashboard tổng quan cho Admin — số ca dự đoán + tỷ lệ 'Đồng ý'.
+
+    CHỈ ĐỌC qua stats_source (adapter). Hỗ trợ lọc ?from=YYYY-MM-DD&to=YYYY-MM-DD.
+    """
+    store = load_user_store()
+    _admin, error = current_admin_from_request(store)
+    if error:
+        return error
+
+    date_from = _valid_date_param(request.args.get("from"))
+    date_to = _valid_date_param(request.args.get("to"))
+
+    if DB_ENABLED:
+        return _admin_stats_from_db(date_from, date_to)
+
+    predictions = stats_source.read_predictions(date_from, date_to)
+    feedback = stats_source.read_feedback(date_from, date_to)
+
+    # ── Số ca dự đoán + phân loại theo trạng thái ──
+    by_status = {status: 0 for status in stats_source.PREDICTION_STATUSES}
+    over_time: dict[str, int] = {}
+    group_counter: Counter = Counter()
+    for record in predictions:
+        status = record.get("status")
+        if status in by_status:
+            by_status[status] += 1
+        day = stats_source.record_day(record)
+        if day:
+            over_time[day] = over_time.get(day, 0) + 1
+        group = record.get("predicted_group")
+        if isinstance(group, str) and group.strip():
+            group_counter[group.strip()] += 1
+
+    predictions_over_time = [
+        {"date": day, "count": over_time[day]} for day in sorted(over_time)
+    ]
+    top_groups = [
+        {"group": group, "count": count} for group, count in group_counter.most_common(5)
+    ]
+
+    # ── Tỷ lệ đánh giá 'Đồng ý' ──
+    agree_count = sum(1 for r in feedback if str(r.get("verdict", "")).upper() == "APPROVE")
+    disagree_count = sum(1 for r in feedback if str(r.get("verdict", "")).upper() == "REJECT")
+    feedback_total = agree_count + disagree_count
+    agree_rate = round(agree_count / feedback_total * 100, 1) if feedback_total else None
+
+    return jsonify(
+        {
+            "range": {"from": date_from, "to": date_to},
+            "total_predictions": len(predictions),
+            "by_status": by_status,
+            "predictions_over_time": predictions_over_time,
+            "top_groups": top_groups,
+            "feedback_total": feedback_total,
+            "agree_count": agree_count,
+            "disagree_count": disagree_count,
+            "agree_rate": agree_rate,
+        }
+    )
+
+
+# ── US22 (SCRUM-88): thống kê lý do KHÔNG ĐỒNG Ý phổ biến ─────────────────────
+# Stopword tiếng Việt (từ ngữ pháp) — bỏ khi đếm từ khóa lý do để giữ từ có nghĩa.
+_VI_STOPWORDS = frozenset(
+    "và là của cho các có được khi này đó một những để ở ra vào thì mà với đã sẽ bị nên "
+    "cũng rất quá lại còn do vì nếu hơn như trong trên dưới theo tôi bạn mình nó họ ông bà "
+    "anh chị em không bệnh nhân thuốc bị thấy nhưng hay rồi đang tại bởi the a an is are of to "
+    "này nọ kia ấy đây đấy nhiều ít hoặc tuy dù mỗi vẫn chỉ".split()
+)
+
+
+def _top_keywords(notes, top=12):
+    """SCRUM-90: đếm từ khóa phổ biến trong ghi chú phản hồi.
+
+    Đếm cả từ đơn lẫn cụm 2 âm tiết (bigram) vì tiếng Việt nghĩa thường theo cụm
+    ('chẩn đoán', 'sai nhóm'). Bỏ stopword/số/từ ngắn.
+    """
+    counter: Counter = Counter()
+    for note in notes:
+        if not note:
+            continue
+        text = re.sub(r"[^\w\s]", " ", str(note).lower(), flags=re.UNICODE)
+        toks = [t for t in text.split() if len(t) >= 2 and not t.isdigit() and t not in _VI_STOPWORDS]
+        counter.update(toks)
+        for a, b in zip(toks, toks[1:]):
+            counter[f"{a} {b}"] += 1
+    return [{"keyword": k, "count": c} for k, c in counter.most_common(top)]
+
+
+@app.get("/api/admin/feedback-stats")
+def admin_feedback_stats():
+    """US22: thống kê phản hồi 'Không đồng ý' — số lượng theo ngày + từ khóa lý do phổ biến.
+
+    Admin-only. Lọc ?from=YYYY-MM-DD&to=YYYY-MM-DD. Chạy DB hoặc JSONL (graceful).
+    """
+    store = load_user_store()
+    _admin, error = current_admin_from_request(store)
+    if error:
+        return error
+    date_from = _valid_date_param(request.args.get("from"))
+    date_to = _valid_date_param(request.args.get("to"))
+
+    if DB_ENABLED:
+        from sqlalchemy import Date, cast, func
+        PH = db_models.PhanHoi
+
+        def drange(col):
+            conds = [PH.trang_thai == "REJECT"]
+            if date_from:
+                conds.append(cast(col, Date) >= date_from)
+            if date_to:
+                conds.append(cast(col, Date) <= date_to)
+            return conds
+
+        reject_total = db.session.query(func.count()).filter(*drange(PH.thoi_gian_gui)).scalar() or 0
+        approve_total = db.session.query(func.count()).filter(
+            PH.trang_thai == "APPROVE",
+            *([cast(PH.thoi_gian_gui, Date) >= date_from] if date_from else []),
+            *([cast(PH.thoi_gian_gui, Date) <= date_to] if date_to else []),
+        ).scalar() or 0
+        over_time = [
+            {"date": d.isoformat(), "count": cnt}
+            for d, cnt in (
+                db.session.query(cast(PH.thoi_gian_gui, Date).label("d"), func.count())
+                .filter(*drange(PH.thoi_gian_gui)).group_by("d").order_by("d")
+            )
+        ]
+        by_group = [
+            {"group": g, "count": cnt}
+            for g, cnt in (
+                db.session.query(PH.nhom_thuoc_du_doan, func.count())
+                .filter(PH.nhom_thuoc_du_doan.isnot(None), *drange(PH.thoi_gian_gui))
+                .group_by(PH.nhom_thuoc_du_doan).order_by(func.count().desc()).limit(5)
+            )
+        ]
+        notes = [n for (n,) in db.session.query(PH.noi_dung).filter(*drange(PH.thoi_gian_gui)) if n]
+        source = "postgres"
+    else:
+        rows = [r for r in stats_source.read_feedback(date_from, date_to)
+                if str(r.get("verdict", "")).upper() == "REJECT"]
+        approves = [r for r in stats_source.read_feedback(date_from, date_to)
+                    if str(r.get("verdict", "")).upper() == "APPROVE"]
+        reject_total = len(rows)
+        approve_total = len(approves)
+        ot: dict[str, int] = {}
+        grp: Counter = Counter()
+        notes = []
+        for r in rows:
+            day = stats_source.record_day(r)
+            if day:
+                ot[day] = ot.get(day, 0) + 1
+            g = r.get("predicted_group")
+            if isinstance(g, str) and g.strip():
+                grp[g.strip()] += 1
+            if r.get("note"):
+                notes.append(r["note"])
+        over_time = [{"date": d, "count": ot[d]} for d in sorted(ot)]
+        by_group = [{"group": g, "count": c} for g, c in grp.most_common(5)]
+        source = "jsonl"
+
+    total_fb = reject_total + approve_total
+    return jsonify({
+        "range": {"from": date_from, "to": date_to},
+        "reject_total": reject_total,
+        "approve_total": approve_total,
+        "reject_rate": round(reject_total / total_fb * 100, 1) if total_fb else None,
+        "reject_over_time": over_time,        # SCRUM-89
+        "top_keywords": _top_keywords(notes),  # SCRUM-90
+        "reject_by_group": by_group,
+        "source": source,
+    })
+
+
+# ── US23 (SCRUM-92): Top nhóm thuốc được dự đoán nhiều nhất ───────────────────
+@app.get("/api/admin/group-stats")
+def admin_group_stats():
+    """US23 (SCRUM-93): đếm số lần mỗi nhóm thuốc xuất hiện trong lịch sử dự đoán.
+
+    Admin-only. ?limit=N (mặc định 10), lọc ?from=&to=. Mỗi nhóm kèm count + percent.
+    Chạy DB (ket_qua_du_doan) hoặc JSONL (graceful).
+    """
+    store = load_user_store()
+    _admin, error = current_admin_from_request(store)
+    if error:
+        return error
+    date_from = _valid_date_param(request.args.get("from"))
+    date_to = _valid_date_param(request.args.get("to"))
+    try:
+        limit = max(1, min(50, int(request.args.get("limit", 10))))
+    except (TypeError, ValueError):
+        limit = 10
+
+    if DB_ENABLED:
+        from sqlalchemy import Date, cast, func
+        KQ = db_models.KetQuaDuDoan
+
+        def drange():
+            conds = [KQ.nhom_thuoc_du_doan.isnot(None)]
+            if date_from:
+                conds.append(cast(KQ.created_at, Date) >= date_from)
+            if date_to:
+                conds.append(cast(KQ.created_at, Date) <= date_to)
+            return conds
+
+        pairs = (
+            db.session.query(KQ.nhom_thuoc_du_doan, func.count())
+            .filter(*drange()).group_by(KQ.nhom_thuoc_du_doan).order_by(func.count().desc())
+        ).all()
+        source = "postgres"
+    else:
+        counter: Counter = Counter()
+        for r in stats_source.read_predictions(date_from, date_to):
+            g = r.get("predicted_group")
+            if isinstance(g, str) and g.strip():
+                counter[g.strip()] += 1
+        pairs = counter.most_common()
+        source = "jsonl"
+
+    total = sum(c for _, c in pairs)
+    groups = [
+        {"group": g, "count": c, "percent": round(c / total * 100, 1) if total else 0.0}
+        for g, c in pairs[:limit]
+    ]
+    return jsonify({
+        "range": {"from": date_from, "to": date_to},
+        "total_with_group": total,
+        "distinct_groups": len(pairs),
+        "groups": groups,
+        "source": source,
+    })
+
+
+@app.get("/api/admin/history")
+def admin_history():
+    """Admin xem TOÀN BỘ lịch sử dự đoán của mọi người dùng (đọc ket_qua_du_doan).
+
+    Admin-only, DB-only (lịch sử đầy đủ chỉ có trong Postgres). Lọc ?email=&status=&from=&to=,
+    phân trang ?page=&page_size=. Trả từng ca kèm email người dùng, trạng thái, nhóm thuốc, thời gian.
+    """
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    from sqlalchemy import Date, cast
+    KQ = db_models.KetQuaDuDoan
+
+    q = db.session.query(KQ)
+    email = (request.args.get("email") or "").strip().lower()
+    status = (request.args.get("status") or "").strip()
+    date_from = _valid_date_param(request.args.get("from"))
+    date_to = _valid_date_param(request.args.get("to"))
+    if email:
+        q = q.filter(KQ.user_email.ilike(f"%{email}%"))
+    if status in ("suggest", "emergency", "safety_block"):
+        q = q.filter(KQ.trang_thai == status)
+    if date_from:
+        q = q.filter(cast(KQ.created_at, Date) >= date_from)
+    if date_to:
+        q = q.filter(cast(KQ.created_at, Date) <= date_to)
+
+    total = q.count()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
         page = 1
     try:
-        per_page = min(100, max(1, int(request.args.get('per_page', 20))))
-    except Exception:
-        per_page = 20
+        page_size = max(1, min(100, int(request.args.get("page_size", 20))))
+    except (TypeError, ValueError):
+        page_size = 20
 
-    query = TrieuChung.query
-    if q:
-        q_like = f"%{q}%"
-        query = query.filter(
-            (TrieuChung.ten.ilike(q_like)) | (TrieuChung.ten_en.ilike(q_like)) | (TrieuChung.ma.ilike(q_like))
-        )
-
-    pagination = query.order_by(TrieuChung.ten).paginate(page=page, per_page=per_page, error_out=False)
-    items = [item.to_dict() for item in pagination.items]
+    rows = (
+        q.order_by(KQ.created_at.desc())
+        .offset((page - 1) * page_size).limit(page_size).all()
+    )
+    items = [{
+        "id": r.ma_ket_qua,
+        "time": iso_utc(r.created_at) if r.created_at else None,
+        "email": r.user_email or "guest",
+        "status": r.trang_thai,
+        "group": r.nhom_thuoc_du_doan,
+        "confidence": r.do_tin_cay,
+        "notes": r.mo_ta_benh_an.noi_dung if r.mo_ta_benh_an else None,
+    } for r in rows]
     return jsonify({
-        'total': pagination.total,
-        'page': page,
-        'per_page': per_page,
-        'items': items,
-    }), 200
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 1,
+        "source": "postgres",
+    })
 
 
-@app.route('/api/admin/symptoms/<int:item_id>', methods=['GET'])
-def get_symptom(item_id):
-    obj = TrieuChung.query.get(item_id)
-    if not obj:
-        return jsonify({'error': 'Không tìm thấy triệu chứng.'}), 404
-    return jsonify(obj.to_dict()), 200
+@app.get("/api/admin/history.csv")
+def admin_history_csv():
+    """Xuất lịch sử dự đoán toàn hệ thống ra CSV (theo bộ lọc hiện tại). Admin-only, DB-only."""
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    from sqlalchemy import Date, cast
+    KQ = db_models.KetQuaDuDoan
+
+    q = db.session.query(KQ)
+    email = (request.args.get("email") or "").strip().lower()
+    status = (request.args.get("status") or "").strip()
+    date_from = _valid_date_param(request.args.get("from"))
+    date_to = _valid_date_param(request.args.get("to"))
+    if email:
+        q = q.filter(KQ.user_email.ilike(f"%{email}%"))
+    if status in ("suggest", "emergency", "safety_block"):
+        q = q.filter(KQ.trang_thai == status)
+    if date_from:
+        q = q.filter(cast(KQ.created_at, Date) >= date_from)
+    if date_to:
+        q = q.filter(cast(KQ.created_at, Date) <= date_to)
+
+    rows = q.order_by(KQ.created_at.desc()).limit(5000).all()
+    buffer = io.StringIO()
+    buffer.write("﻿")  # BOM để Excel đọc đúng UTF-8
+    writer = csv.writer(buffer)
+    writer.writerow(["thoi_gian", "email", "huong_xu_tri", "nhom_thuoc", "do_tin_cay", "cau_nhap"])
+    labels = {"suggest": "Gợi ý OTC", "safety_block": "Né an toàn", "emergency": "Cấp cứu"}
+    for r in rows:
+        writer.writerow([
+            iso_utc(r.created_at) if r.created_at else "",
+            r.user_email or "guest",
+            labels.get(r.trang_thai, r.trang_thai or ""),
+            r.nhom_thuoc_du_doan or "",
+            f"{round(r.do_tin_cay * 100)}%" if isinstance(r.do_tin_cay, (int, float)) else "",
+            (r.mo_ta_benh_an.noi_dung if r.mo_ta_benh_an else "") or "",
+        ])
+    from flask import Response
+    return Response(
+        buffer.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=lich_su_he_thong.csv"},
+    )
 
 
-@app.route('/api/admin/symptoms/<int:item_id>', methods=['DELETE'])
-def delete_symptom(item_id):
-    # Kiểm tra token Admin
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Chưa đăng nhập hoặc thiếu token."}), 401
-    token = auth_header.split(" ")[1]
-    try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-        if payload.get('role') != 'Admin':
-            return jsonify({'error': 'Chỉ Admin mới được thực hiện thao tác này.'}), 403
-    except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token đã hết hạn.'}), 401
-    except Exception:
-        return jsonify({'error': 'Token không hợp lệ.'}), 401
+# ── DB-BACKED: đọc danh mục đã seed từ Postgres (admin) ───────────────────────
+# Tích hợp SQLAlchemy vào Flask app: các endpoint sau ĐỌC trực tiếp từ Postgres
+# (nhom_thuoc/thuoc_tham_khao/trieu_chung) — phục vụ QuanLyNhomThuoc() của Admin.
+def _require_admin_db():
+    """Guard admin + DB bật. Trả (None, response) nếu chặn; ngược lại (admin, None)."""
+    store = load_user_store()
+    admin, error = current_admin_from_request(store)
+    if error:
+        return None, error
+    if not DB_ENABLED:
+        return None, (jsonify({"error": "Cơ sở dữ liệu chưa được bật (đang chạy chế độ JSON)."}), 503)
+    return admin, None
 
-    obj = TrieuChung.query.get(item_id)
-    if not obj:
-        return jsonify({'error': 'Không tìm thấy triệu chứng.'}), 404
-    db.session.delete(obj)
+
+@app.get("/api/admin/db/health")
+def admin_db_health():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    counts = {
+        "nhom_thuoc": db.session.query(db_models.NhomThuoc).count(),
+        "thuoc_tham_khao": db.session.query(db_models.ThuocThamKhao).count(),
+        "trieu_chung": db.session.query(db_models.TrieuChung).count(),
+        "chan_doan_du_kien": db.session.query(db_models.ChanDoanDuKien).count(),
+        "mo_hinh_du_doan": db.session.query(db_models.MoHinhDuDoan).count(),
+    }
+    return jsonify({"db_enabled": True, "counts": counts})
+
+
+@app.get("/api/admin/db/nhom-thuoc")
+def admin_db_nhom_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    rows = (
+        db.session.query(db_models.NhomThuoc)
+        .order_by(db_models.NhomThuoc.ten_nhom_thuoc)
+        .all()
+    )
+    return jsonify({
+        "nhom_thuoc": [
+            {
+                "ma": n.ma_nhom_thuoc,
+                "ten": n.ten_nhom_thuoc,
+                "mo_ta": n.mo_ta,
+                "so_thuoc": len(n.thuoc_list),
+                "thuoc": [{"ma": t.ma_thuoc, "ten": t.ten_thuoc, "hoat_chat": t.hoat_chat} for t in n.thuoc_list[:50]],
+            }
+            for n in rows
+        ]
+    })
+
+
+# ── PORT toan/main: CRUD QUẢN LÝ THUỐC (nhóm thuốc + thuốc) — adapt schema huy ──
+@app.post("/api/admin/db/nhom-thuoc")
+def create_nhom_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    p = request.get_json(silent=True) or {}
+    ten = str(p.get("ten") or p.get("ten_nhom") or "").strip()
+    if not ten:
+        return jsonify({"error": "Cần tên nhóm thuốc."}), 400
+    if db.session.query(db_models.NhomThuoc).filter_by(ten_nhom_thuoc=ten).first():
+        return jsonify({"error": "Nhóm thuốc đã tồn tại."}), 409
+    n = db_models.NhomThuoc(ten_nhom_thuoc=ten[:255], mo_ta=(str(p.get("mo_ta") or "").strip() or None))
+    db.session.add(n)
     db.session.commit()
-    # làm mới cache từ điển
-    global SYMPTOM_DICTIONARY_CACHE
-    SYMPTOM_DICTIONARY_CACHE = None
-    return jsonify({'success': True}), 200
+    return jsonify({"ok": True, "ma": n.ma_nhom_thuoc}), 201
+
+
+@app.put("/api/admin/db/nhom-thuoc/<int:ma>")
+def update_nhom_thuoc(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    n = db.session.get(db_models.NhomThuoc, ma)
+    if not n:
+        return jsonify({"error": "Không tìm thấy nhóm thuốc."}), 404
+    p = request.get_json(silent=True) or {}
+    ten = str(p.get("ten") or "").strip()
+    if ten:
+        dup = db.session.query(db_models.NhomThuoc).filter_by(ten_nhom_thuoc=ten).first()
+        if dup and dup.ma_nhom_thuoc != ma:
+            return jsonify({"error": "Tên nhóm thuốc đã tồn tại."}), 409
+        n.ten_nhom_thuoc = ten[:255]
+    if "mo_ta" in p:
+        n.mo_ta = (str(p.get("mo_ta") or "").strip() or None)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+@app.delete("/api/admin/db/nhom-thuoc/<int:ma>")
+def delete_nhom_thuoc(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    n = db.session.get(db_models.NhomThuoc, ma)
+    if not n:
+        return jsonify({"error": "Không tìm thấy nhóm thuốc."}), 404
+    db.session.delete(n)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+@app.get("/api/admin/db/thuoc")
+def admin_db_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        per_page = max(1, min(100, int(request.args.get("per_page", 10))))
+    except (TypeError, ValueError):
+        page, per_page = 1, 10
+    TH = db_models.ThuocThamKhao
+    query = db.session.query(TH)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(db.or_(TH.ten_thuoc.ilike(like), TH.hoat_chat.ilike(like)))
+    total = query.count()
+    rows = query.order_by(TH.ten_thuoc).offset((page - 1) * per_page).limit(per_page).all()
+    return jsonify({
+        "total": total, "page": page, "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page if total else 0,
+        "thuoc": [
+            {"ma": t.ma_thuoc, "ten": t.ten_thuoc, "hoat_chat": t.hoat_chat, "cong_dung": t.cong_dung,
+             "nhom": [n.ten_nhom_thuoc for n in t.nhom_thuoc_list]}
+            for t in rows
+        ],
+    })
+
+
+@app.post("/api/admin/db/thuoc")
+def create_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    p = request.get_json(silent=True) or {}
+    ten = str(p.get("ten") or "").strip()
+    if not ten:
+        return jsonify({"error": "Cần tên thuốc."}), 400
+    t = db_models.ThuocThamKhao(
+        ten_thuoc=ten[:255],
+        hoat_chat=(str(p.get("hoat_chat") or "").strip() or None),
+        cong_dung=(str(p.get("cong_dung") or "").strip() or None),
+    )
+    ma_nhom = p.get("ma_nhom_thuoc")
+    if ma_nhom:
+        n = db.session.get(db_models.NhomThuoc, int(ma_nhom))
+        if n:
+            t.nhom_thuoc_list.append(n)
+    db.session.add(t)
+    db.session.commit()
+    return jsonify({"ok": True, "ma": t.ma_thuoc}), 201
+
+
+@app.put("/api/admin/db/thuoc/<int:ma>")
+def update_thuoc(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    t = db.session.get(db_models.ThuocThamKhao, ma)
+    if not t:
+        return jsonify({"error": "Không tìm thấy thuốc."}), 404
+    p = request.get_json(silent=True) or {}
+    if str(p.get("ten") or "").strip():
+        t.ten_thuoc = str(p["ten"]).strip()[:255]
+    if "hoat_chat" in p:
+        t.hoat_chat = (str(p.get("hoat_chat") or "").strip() or None)
+    if "cong_dung" in p:
+        t.cong_dung = (str(p.get("cong_dung") or "").strip() or None)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+@app.delete("/api/admin/db/thuoc/<int:ma>")
+def delete_thuoc(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    t = db.session.get(db_models.ThuocThamKhao, ma)
+    if not t:
+        return jsonify({"error": "Không tìm thấy thuốc."}), 404
+    db.session.delete(t)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+# ── PORT toan/main: BULK IMPORT CSV (nhóm thuốc / thuốc) ──────────────────────
+def _read_csv_upload():
+    """Đọc file CSV upload (field 'file') -> list[dict]. Lỗi -> (None, message)."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return None, "Chưa chọn file CSV."
+    if not f.filename.lower().endswith(".csv"):
+        return None, "Chỉ chấp nhận file .csv."
+    try:
+        text = f.read().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return None, "File phải mã hóa UTF-8."
+    return list(csv.DictReader(io.StringIO(text))), None
+
+
+@app.post("/api/admin/bulk-import/nhom-thuoc")
+def bulk_import_nhom_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    rows, msg = _read_csv_upload()
+    if rows is None:
+        return jsonify({"error": msg}), 400
+    inserted, skipped, errors = 0, 0, []
+    for i, row in enumerate(rows, start=2):
+        ten = str(row.get("ten_nhom") or row.get("ten_nhom_thuoc") or row.get("tên_nhóm") or "").strip()
+        if not ten:
+            errors.append(f"Dòng {i}: thiếu tên nhóm")
+            continue
+        if db.session.query(db_models.NhomThuoc).filter_by(ten_nhom_thuoc=ten).first():
+            skipped += 1
+            continue
+        db.session.add(db_models.NhomThuoc(ten_nhom_thuoc=ten[:255], mo_ta=(str(row.get("mo_ta") or "").strip() or None)))
+        inserted += 1
+    db.session.commit()
+    return jsonify({"ok": True, "inserted": inserted, "skipped": skipped, "errors": errors[:20]})
+
+
+@app.post("/api/admin/bulk-import/thuoc")
+def bulk_import_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    rows, msg = _read_csv_upload()
+    if rows is None:
+        return jsonify({"error": msg}), 400
+    inserted, errors = 0, []
+    for i, row in enumerate(rows, start=2):
+        ten = str(row.get("ten_thuoc") or row.get("tên_thuốc") or "").strip()
+        if not ten:
+            errors.append(f"Dòng {i}: thiếu tên thuốc")
+            continue
+        t = db_models.ThuocThamKhao(
+            ten_thuoc=ten[:255],
+            hoat_chat=(str(row.get("hoat_chat") or "").strip() or None),
+            cong_dung=(str(row.get("cong_dung") or row.get("mo_ta") or "").strip() or None),
+        )
+        nhom_name = str(row.get("nhom_thuoc") or row.get("nhom_thuoc_id") or row.get("nhóm_thuốc") or "").strip()
+        if nhom_name:
+            n = db.session.query(db_models.NhomThuoc).filter_by(ten_nhom_thuoc=nhom_name).first()
+            if n:
+                t.nhom_thuoc_list.append(n)
+            else:
+                errors.append(f"Dòng {i}: nhóm '{nhom_name}' không tồn tại (thuốc vẫn được thêm)")
+        db.session.add(t)
+        inserted += 1
+    db.session.commit()
+    return jsonify({"ok": True, "inserted": inserted, "errors": errors[:20]})
+
+
+@app.get("/api/admin/bulk-import/template/nhom-thuoc")
+def template_nhom_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    csv_data = "ten_nhom,mo_ta\nthuốc giảm đau hạ sốt,Hạ sốt giảm đau thông thường\n"
+    return app.response_class(csv_data, mimetype="text/csv",
+                              headers={"Content-Disposition": "attachment; filename=nhom_thuoc_template.csv"})
+
+
+@app.get("/api/admin/bulk-import/template/thuoc")
+def template_thuoc():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    csv_data = "ten_thuoc,hoat_chat,cong_dung,nhom_thuoc\nParacetamol,paracetamol,Hạ sốt giảm đau,thuốc giảm đau hạ sốt\n"
+    return app.response_class(csv_data, mimetype="text/csv",
+                              headers={"Content-Disposition": "attachment; filename=thuoc_template.csv"})
+
+
+# ── PORT toan/main: DUYỆT PHẢN HỒI KHÔNG ĐỒNG Ý (review workflow) ─────────────
+@app.get("/api/admin/rejected-feedbacks")
+def list_rejected_feedbacks():
+    """Danh sách phản hồi 'Không đồng ý' để admin duyệt. ?reviewed=0|1 lọc theo trạng thái
+    duyệt; ?page=&per_page= phân trang. Admin-only, DB."""
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    PH = db_models.PhanHoi
+    query = db.session.query(PH).filter(PH.trang_thai == "REJECT")
+    reviewed = request.args.get("reviewed")
+    if reviewed in ("0", "1"):
+        query = query.filter(PH.da_xu_ly.is_(reviewed == "1"))
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        per_page = max(1, min(100, int(request.args.get("per_page", 10))))
+    except (TypeError, ValueError):
+        page, per_page = 1, 10
+    total = query.count()
+    chua_xu_ly = db.session.query(PH).filter(PH.trang_thai == "REJECT", PH.da_xu_ly.isnot(True)).count()
+    rows = query.order_by(PH.thoi_gian_gui.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    return jsonify({
+        "total": total,
+        "chua_xu_ly": chua_xu_ly,
+        "page": page, "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page if total else 0,
+        "feedbacks": [
+            {
+                "ma": r.ma_phan_hoi,
+                "noi_dung": r.noi_dung,
+                "nhom_thuoc": r.nhom_thuoc_du_doan,
+                "thoi_gian": _iso_dt(r.thoi_gian_gui),
+                "da_xu_ly": bool(r.da_xu_ly),
+            }
+            for r in rows
+        ],
+    })
+
+
+@app.post("/api/admin/rejected-feedbacks/<int:ma>/reviewed")
+def mark_feedback_reviewed(ma):
+    """Đánh dấu phản hồi đã/chưa duyệt. Body {da_xu_ly: true|false} (mặc định true)."""
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    r = db.session.get(db_models.PhanHoi, ma)
+    if not r:
+        return jsonify({"error": "Không tìm thấy phản hồi."}), 404
+    p = request.get_json(silent=True) or {}
+    r.da_xu_ly = bool(p.get("da_xu_ly", True))
+    db.session.commit()
+    return jsonify({"ok": True, "da_xu_ly": r.da_xu_ly}), 200
+
+
+@app.get("/api/admin/db/trieu-chung")
+def admin_db_trieu_chung():
+    """US27 (SCRUM-109/111): tìm kiếm triệu chứng trong từ điển theo TÊN hoặc TỪ KHÓA,
+    có phân trang. ?q=&page=1&per_page=10. Admin-only, đọc Postgres.
+    """
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = max(1, min(100, int(request.args.get("per_page", 10))))
+    except (TypeError, ValueError):
+        per_page = 10
+
+    TC = db_models.TrieuChung
+    query = db.session.query(TC)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(db.or_(TC.ten_trieu_chung.ilike(like), TC.tu_khoa.ilike(like)))
+    total = query.count()
+    total_pages = (total + per_page - 1) // per_page if total else 0
+    rows = (
+        query.order_by(TC.ten_trieu_chung)
+        .offset((page - 1) * per_page).limit(per_page).all()
+    )
+    return jsonify({
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "query": q,
+        "trieu_chung": [
+            {"ma": t.ma_trieu_chung, "ten": t.ten_trieu_chung, "tu_khoa": t.tu_khoa}
+            for t in rows
+        ],
+    })
+
+
+# ── PORT toan/main: CRUD từ điển TRIỆU CHỨNG (thêm/sửa/xóa) ───────────────────
+@app.post("/api/admin/db/trieu-chung")
+def create_trieu_chung():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    p = request.get_json(silent=True) or {}
+    ten = str(p.get("ten") or "").strip()
+    if not ten:
+        return jsonify({"error": "Cần tên triệu chứng."}), 400
+    if db.session.query(db_models.TrieuChung).filter_by(ten_trieu_chung=ten).first():
+        return jsonify({"error": "Triệu chứng đã tồn tại."}), 409
+    t = db_models.TrieuChung(ten_trieu_chung=ten[:255], tu_khoa=(str(p.get("tu_khoa") or "").strip() or None))
+    db.session.add(t)
+    db.session.commit()
+    return jsonify({"ok": True, "ma": t.ma_trieu_chung}), 201
+
+
+@app.put("/api/admin/db/trieu-chung/<int:ma>")
+def update_trieu_chung(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    t = db.session.get(db_models.TrieuChung, ma)
+    if not t:
+        return jsonify({"error": "Không tìm thấy triệu chứng."}), 404
+    p = request.get_json(silent=True) or {}
+    ten = str(p.get("ten") or "").strip()
+    if ten:
+        dup = db.session.query(db_models.TrieuChung).filter_by(ten_trieu_chung=ten).first()
+        if dup and dup.ma_trieu_chung != ma:
+            return jsonify({"error": "Tên triệu chứng đã tồn tại."}), 409
+        t.ten_trieu_chung = ten[:255]
+    if "tu_khoa" in p:
+        t.tu_khoa = (str(p.get("tu_khoa") or "").strip() or None)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+@app.delete("/api/admin/db/trieu-chung/<int:ma>")
+def delete_trieu_chung(ma):
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    t = db.session.get(db_models.TrieuChung, ma)
+    if not t:
+        return jsonify({"error": "Không tìm thấy triệu chứng."}), 404
+    db.session.delete(t)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+# ── US28 (SCRUM-112): ánh xạ chi tiết TRIỆU CHỨNG ↔ NHÓM THUỐC ────────────────
+# Nguồn ánh xạ = dữ liệu TRAIN (kiểm tra dữ liệu): đếm đồng xuất hiện symptom↔nhom_thuoc
+# trong train_ready_mapped_drug_groups.csv. Lazy-cache trong biến module.
+_SYMPTOM_GROUP_INDEX = None
+
+
+def _symptom_group_index() -> dict:
+    """{symptom_lower: {nhom_thuoc: số_ca_đồng_xuất_hiện}} — dựng 1 lần từ CSV train."""
+    global _SYMPTOM_GROUP_INDEX
+    if _SYMPTOM_GROUP_INDEX is not None:
+        return _SYMPTOM_GROUP_INDEX
+    index: dict[str, Counter] = {}
+    try:
+        with DATA_SOURCE.open("r", encoding="utf-8-sig") as fh:
+            for row in csv.DictReader(fh):
+                group = (row.get("nhom_thuoc") or "").strip()
+                if not group:
+                    continue
+                for sym in (row.get("trieu_chung") or "").split(";"):
+                    sym = sym.strip().lower()
+                    if sym:
+                        index.setdefault(sym, Counter())[group] += 1
+    except OSError:
+        app.logger.exception("US28: không đọc được CSV train cho ánh xạ")
+    _SYMPTOM_GROUP_INDEX = index
+    return index
+
+
+@app.get("/api/admin/symptom-mapping")
+def admin_symptom_mapping():
+    """US28 (SCRUM-113/115): trả các NHÓM THUỐC liên quan tới một triệu chứng (theo dữ
+    liệu train), kèm số ca đồng xuất hiện + %. Admin-only. ?ma=<id> hoặc ?ten=<tên>.
+    """
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+
+    ten = (request.args.get("ten") or "").strip()
+    ma = request.args.get("ma")
+    if not ten and ma:
+        try:
+            row = db.session.get(db_models.TrieuChung, int(ma))
+            ten = row.ten_trieu_chung if row else ""
+        except (TypeError, ValueError):
+            ten = ""
+    if not ten:
+        return jsonify({"error": "Thiếu tham số ?ma hoặc ?ten."}), 400
+
+    counts = _symptom_group_index().get(ten.lower(), Counter())
+    total = sum(counts.values())
+    groups = [
+        {"group": g, "count": c, "percent": round(c / total * 100, 1) if total else 0.0}
+        for g, c in counts.most_common()
+    ]
+    return jsonify({
+        "ten": ten,
+        "total_cases": total,
+        "distinct_groups": len(groups),
+        "groups": groups,
+    })
+
+
+# ── US15 (port): tự động lưu lịch sử mỗi lần dự đoán ──────────────────────────
+# Ghi vào prediction_log.jsonl — đúng nguồn mà US19 (stats_source) đọc. Port theo hook
+# @app.after_request của nhánh toan/tu, nhưng dùng kiến trúc file-JSON + Bearer của nhánh này.
+def _prediction_status_from(response, body: dict) -> str:
+    if response.status_code == 200:
+        return "suggest"
+    if body.get("score_type") == "emergency":
+        return "emergency"
+    return "safety_block"  # các 422 còn lại: né an toàn / chưa đủ dữ liệu
+
+
+def _group_from_body(body: dict) -> str | None:
+    group = (body.get("case_summary") or {}).get("drug_group")
+    if not isinstance(group, str) or not group.strip() or group.startswith("Chưa"):
+        return None
+    return group.strip()
+
+
+def _db_log_prediction(status: str, group: str | None, email: str, confidence,
+                       notes: str | None = None) -> None:
+    """US15 DB: tạo KetQuaDuDoan (+LichSuDuDoan) cho mỗi lần dự đoán.
+
+    Nếu có câu người dùng nhập (notes) -> lưu kèm MoTaBenhAn để admin xem chi tiết về sau.
+    """
+    kq = db_models.KetQuaDuDoan(
+        trang_thai=status,
+        nhom_thuoc_du_doan=group,
+        user_email=email,
+        do_tin_cay=confidence,
+    )
+    if isinstance(notes, str) and notes.strip():
+        kq.mo_ta_benh_an = db_models.MoTaBenhAn(noi_dung=notes.strip()[:2000], ngon_ngu="vi")
+    kq.lich_su = db_models.LichSuDuDoan(ket_qua_tom_tat=f"{status}: {group or '—'}")
+    db.session.add(kq)
+    db.session.commit()
+
+
+@app.after_request
+def log_prediction_after_request(response):
+    try:
+        if request.endpoint != "predict" or request.method != "POST" or not response.is_json:
+            return response
+        if response.status_code not in (200, 422):
+            return response
+        body = response.get_json(silent=True) or {}
+        user = current_user_from_request(load_user_store())
+        status = _prediction_status_from(response, body)
+        group = _group_from_body(body)
+        email = (user or {}).get("email") or "guest"
+        conf = body.get("confidence")
+        conf = float(conf) if isinstance(conf, (int, float)) else None
+        notes = (request.get_json(silent=True) or {}).get("notes")
+        if DB_ENABLED:
+            try:
+                _db_log_prediction(status, group, email, conf, notes)
+                return response
+            except Exception:
+                db.session.rollback()
+                app.logger.exception("US15: lỗi ghi DB -> fallback JSONL")
+        _append_jsonl(
+            stats_source.PREDICTION_LOG_PATH,
+            {"ts": iso_utc(now_utc()), "status": status, "predicted_group": group, "user_email": email},
+        )
+    except Exception:
+        app.logger.exception("US15: không ghi được lịch sử dự đoán")
+    return response
+
+
+# ── US18 (port): thu phản hồi Đồng ý / Không đồng ý ───────────────────────────
+@app.post("/api/feedback")
+def submit_feedback():
+    """Lưu đánh giá của người dùng về kết quả dự đoán. verdict: APPROVE | REJECT.
+
+    Tương thích contract của nhánh toan/main: chấp nhận cả 'trang_thai' (alias verdict)
+    và 'ghi_chu' (alias note). Ghi vào feedback.jsonl — nguồn US19 đọc tính tỷ lệ 'Đồng ý'.
+    """
+    payload = request.get_json(silent=True) or {}
+    verdict = str(payload.get("verdict") or payload.get("trang_thai") or "").upper()
+    if verdict not in stats_source.FEEDBACK_VERDICTS:
+        return jsonify({"error": "verdict phải là APPROVE (Đồng ý) hoặc REJECT (Không đồng ý)."}), 400
+
+    group = payload.get("predicted_group")
+    group = group.strip() if isinstance(group, str) and group.strip() else None
+    note = str(payload.get("note") or payload.get("ghi_chu") or "")[:1000]
+    user = current_user_from_request(load_user_store())
+
+    if DB_ENABLED:
+        try:
+            db.session.add(db_models.PhanHoi(
+                trang_thai=verdict,
+                muc_do_hai_long=1 if verdict == "APPROVE" else 0,
+                nhom_thuoc_du_doan=group,
+                noi_dung=note or None,
+                ma_nguoi_dung=(user or {}).get("_ma_nguoi_dung"),
+            ))
+            db.session.commit()
+            return jsonify({"ok": True, "message": "Đã ghi nhận phản hồi. Cảm ơn bạn!"}), 201
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("US18: lỗi ghi DB -> fallback JSONL")
+
+    _append_jsonl(
+        stats_source.FEEDBACK_LOG_PATH,
+        {
+            "ts": iso_utc(now_utc()),
+            "verdict": verdict,
+            "predicted_group": group,
+            "user_email": (user or {}).get("email") or "guest",
+            "note": note,
+        },
+    )
+    return jsonify({"ok": True, "message": "Đã ghi nhận phản hồi. Cảm ơn bạn!"}), 201
 
 
 @app.post("/api/predict")
@@ -4282,13 +3797,15 @@ def predict():
     if not _emergency and context_safety is not None:
         _emergency = context_safety.emergency_message(notes)  # phản vệ: sưng môi/lưỡi/họng + khó thở
     if _emergency:
+        # Cờ đỏ dạng "đi khám sớm" (SEE) KHÔNG phải cấp cứu -> nhãn nhẹ hơn, vẫn chặn kê thuốc (422).
+        is_referral = _emergency.endswith(REFERRAL_SEE_SUFFIX)
         return jsonify({
             "error": _emergency,
-            "display_title": "⚠️ Cần hỗ trợ y tế khẩn cấp",
+            "display_title": "⚠️ Cần đi khám bác sĩ sớm" if is_referral else "⚠️ Cần hỗ trợ y tế khẩn cấp",
             "needs_more_input": True,
             "confidence": None,
             "label_type": LABEL_TYPE,
-            "score_type": "emergency",
+            "score_type": "referral" if is_referral else "emergency",
             "matched_symptoms": [],
             "top_predictions": [],
         }), 422
@@ -4418,23 +3935,17 @@ def predict():
     else:
         prediction = model.predict([model_inputs[0]])[0]
 
-    # Lớp xếp hạng minh bạch theo triệu chứng: hỗ trợ model bằng cách so khớp trực tiếp
-    # triệu chứng đã nhận diện với các ca mẫu trong tập train. Kết quả dùng cho Top 3 và
-    # có thể thay thế model khi điểm khớp rõ ràng hơn.
-    symptom_rankings = rank_drug_groups_by_symptoms(active_symptoms_order, limit=5)
-
     rule_group = (
-        # Rule tổng hợp theo mô tả tiếng Việt: ưu tiên cao nhất để các ca test phổ biến
-        # luôn ra nhóm thuốc hợp ngữ cảnh, sau đó mới tới các rule đặc hiệu/model.
-        clinical_priority_rule_drug_group(notes, active_symptoms)
-        or robust_notes_rule_drug_group(notes, active_symptoms)
         # Notes-aware (vòng 3): ưu tiên cao nhất vì rất đặc hiệu, chặn model đoán sai tự tin.
-        or malaria_rule_drug_group(notes, active_symptoms)
+        malaria_rule_drug_group(notes, active_symptoms)
         or anemia_rule_drug_group(notes, active_symptoms)
         or diabetes_rule_drug_group(active_symptoms)
         or thyroid_rule_drug_group(notes, active_symptoms)
         or psych_rule_drug_group(active_symptoms)
         or cardiac_rule_drug_group(active_symptoms)
+        or bacterial_respiratory_rule_drug_group(notes, active_symptoms)
+        or heat_exhaustion_rule_drug_group(notes)
+        or insect_bite_rule_drug_group(notes)
         or bronchodilator_rule_drug_group(active_symptoms)
         or wound_infection_rule_drug_group(active_symptoms)
         or infectious_bloody_diarrhea_rule_drug_group(active_symptoms)
@@ -4450,30 +3961,14 @@ def predict():
         or dermatology_rule_drug_group(active_symptoms)
         or respiratory_rule_drug_group(active_symptoms)
         or general_fever_pain_rule_drug_group(active_symptoms)
+        or isolated_fever_rule_drug_group(active_symptoms)
     )
     score_type = metadata.get("score_type", "probability")
     if rule_group:
         prediction = rule_group
         confidence = None
-        probabilities = preferred_predictions_for_rule(rule_group, symptom_rankings, active_symptoms)
+        probabilities = []
         score_type = "rule"
-    elif should_use_symptom_overlap_ranking(symptom_rankings, confidence):
-        # Khi nhiều triệu chứng khớp rõ với một nhóm trong tập train, ưu tiên kết quả có thể
-        # giải thích thay vì chỉ dựa vào xác suất của model.
-        prediction = symptom_rankings[0]["group"]
-        confidence = round(float(symptom_rankings[0]["score"]) / 100, 4)
-        probabilities = ranking_to_top_predictions(symptom_rankings)
-        score_type = "symptom_overlap"
-        input_used = "symptom_overlap"
-    elif symptom_rankings:
-        # Model vẫn thắng, nhưng vẫn trả Top 3 có giải thích để người dùng/bác sĩ đối chiếu.
-        overlap_predictions = ranking_to_top_predictions(symptom_rankings)
-        existing = {item.get("disease") for item in probabilities}
-        for item in overlap_predictions:
-            if item.get("disease") not in existing:
-                probabilities.append(item)
-                existing.add(item.get("disease"))
-        probabilities = probabilities[:5]
 
     description = references["description"].get(prediction, "")
     quality_reasons = []
@@ -4537,10 +4032,10 @@ def predict():
     # P2.3: nhóm rủi ro cao KHI DO RULE đoán cũng cần bác sĩ xác nhận (kê đơn) -> không tự dùng.
     # Rule vẫn ngăn model đoán bừa, nhưng output chuyển sang "đi khám" thay vì kê thuốc tự tin.
     if score_type == "rule" and is_high_risk_group(prediction):
-        # Với rule lâm sàng rõ ràng, vẫn HIỂN THỊ nhóm phù hợp để hệ thống có kết quả
-        # cho bộ test/bảo vệ đồ án. Cảnh báo kê đơn sẽ được đưa vào phần warning/precautions,
-        # không chuyển thành "chưa đủ dữ liệu" làm mất nhóm thuốc.
-        pass
+        quality_reasons.append(
+            f"Nhóm '{prediction}' là nhóm thuốc cần kê đơn/chỉ định của bác sĩ; không tự dùng theo "
+            "gợi ý. Hãy đi khám để được đánh giá và chỉ định đúng."
+        )
     # P4: nhóm KHÔNG BAO GIỜ tự gợi ý (ung thư/điều trị chuyên sâu) -> luôn chuyển khám.
     if is_never_suggest_group(prediction):
         quality_reasons.append(
@@ -4689,20 +4184,6 @@ def predict():
 
     # Ngữ cảnh động (vòng 4): bổ sung cảnh báo/chăm sóc theo "sau khi X" cho ca VẪN gợi ý nhóm.
     warning_text = guidance["warning"]
-    if LABEL_TYPE == "drug_group" and has_any_symptom(active_symptoms, ["breathlessness", "shortness of breath", "difficulty breathing", "chest pain"]):
-        respiratory_caution = (
-            "Lưu ý: khó thở hoặc đau ngực là dấu hiệu cần khám sớm/cấp cứu nếu nặng, kéo dài, "
-            "tím tái, lơ mơ hoặc kèm sốt cao. Gợi ý nhóm thuốc chỉ mang tính tham khảo, không tự dùng thuốc kê đơn."
-        )
-        precaution_guidance.insert(0, respiratory_caution)
-        warning_text = respiratory_caution + " " + warning_text
-    if LABEL_TYPE == "drug_group" and score_type == "rule" and is_high_risk_group(prediction):
-        rx_caution = (
-            f"Lưu ý: nhóm '{prediction}' là nhóm thuốc cần bác sĩ/dược sĩ đánh giá, "
-            "không tự mua hoặc tự dùng. Kết quả chỉ dùng để định hướng tham khảo."
-        )
-        precaution_guidance.insert(0, rx_caution)
-        warning_text = rx_caution + " " + warning_text
     if LABEL_TYPE == "drug_group" and prediction == "thuốc giảm đau hạ sốt" and weak_alcohol:
         alcohol_caution = (
             "Lưu ý: không tự dùng paracetamol/acetaminophen nếu vừa uống rượu, uống rượu nhiều "
@@ -4780,641 +4261,8 @@ def predict():
             "top_predictions": probabilities,
         }
     )
-# API QLÝ NHÓM THUỐC (SCRUM-44)
-@app.route('/api/drug-groups', methods=['GET'])
-def get_drug_groups():
-    groups = NhomThuoc.query.order_by(NhomThuoc.id.desc()).all()
-    return jsonify([g.to_dict() for g in groups]), 200
 
 
-@app.route('/api/drug-groups', methods=['POST'])
-def add_drug_group():
-    data = request.get_json(silent=True) or {}
-    ten_nhom = (data.get('ten_nhom') or '').strip()
-    mo_ta = (data.get('mo_ta') or '').strip()
-
-    if not ten_nhom:
-        return jsonify({"error": "Vui lòng nhập tên nhóm thuốc."}), 400
-
-    existed = NhomThuoc.query.filter(db.func.lower(NhomThuoc.ten_nhom) == ten_nhom.lower()).first()
-    if existed:
-        return jsonify({"error": "Tên nhóm thuốc đã tồn tại."}), 409
-
-    new_group = NhomThuoc(ten_nhom=ten_nhom, mo_ta=mo_ta)
-    db.session.add(new_group)
-    db.session.commit()
-    return jsonify({"message": "Thêm nhóm thuốc thành công!", "data": new_group.to_dict()}), 201
-
-
-@app.route('/api/drug-groups/<int:id>', methods=['PUT'])
-def update_drug_group(id):
-    group = NhomThuoc.query.get(id)
-    if not group:
-        return jsonify({"error": "Không tìm thấy nhóm thuốc."}), 404
-
-    data = request.get_json(silent=True) or {}
-    ten_nhom = (data.get('ten_nhom') or '').strip()
-    mo_ta = (data.get('mo_ta') or '').strip()
-
-    if not ten_nhom:
-        return jsonify({"error": "Vui lòng nhập tên nhóm thuốc."}), 400
-
-    existed = NhomThuoc.query.filter(
-        db.func.lower(NhomThuoc.ten_nhom) == ten_nhom.lower(),
-        NhomThuoc.id != id
-    ).first()
-    if existed:
-        return jsonify({"error": "Tên nhóm thuốc đã tồn tại."}), 409
-
-    group.ten_nhom = ten_nhom
-    group.mo_ta = mo_ta
-    db.session.commit()
-    return jsonify({"message": "Cập nhật nhóm thuốc thành công!", "data": group.to_dict()}), 200
-
-
-@app.route('/api/drug-groups/<int:id>', methods=['DELETE'])
-def delete_drug_group(id):
-    group = NhomThuoc.query.get(id)
-    if group:
-        db.session.delete(group)
-        db.session.commit()
-        return jsonify({"message": "Đã xóa nhóm thuốc!"}), 200
-    return jsonify({"error": "Không tìm thấy nhóm thuốc"}), 404
-
-
-# ===================================================================
-# API CRUD QUẢN LÝ THUỐC (SCRUM-47)
-# ===================================================================
-
-@app.route('/api/thuoc', methods=['GET'])
-def get_all_thuoc():
-    """Lấy danh sách thuốc, ưu tiên hiển thị mỗi tên thuốc một lần để tránh trùng dữ liệu import."""
-    nhom_id = request.args.get('nhom_thuoc_id', type=int)
-    query = Thuoc.query.filter_by(nhom_thuoc_id=nhom_id) if nhom_id else Thuoc.query
-    items = query.order_by(Thuoc.ten_thuoc.asc(), Thuoc.id.asc()).all()
-    seen = set()
-    unique_items = []
-    for item in items:
-        key = (item.ten_thuoc or '').strip().lower()
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        unique_items.append(item)
-    return jsonify([t.to_dict() for t in unique_items]), 200
-
-@app.route('/api/thuoc/dedupe', methods=['POST'])
-def dedupe_thuoc():
-    """Xóa bản ghi thuốc trùng tên, giữ bản ghi đầu tiên."""
-    items = Thuoc.query.order_by(Thuoc.ten_thuoc.asc(), Thuoc.id.asc()).all()
-    seen = set()
-    removed = 0
-    for item in items:
-        key = (item.ten_thuoc or '').strip().lower()
-        if not key:
-            continue
-        if key in seen:
-            db.session.delete(item)
-            removed += 1
-        else:
-            seen.add(key)
-    db.session.commit()
-    return jsonify({"success": True, "removed": removed, "message": f"Đã xóa {removed} thuốc trùng tên."}), 200
-
-
-@app.route('/api/thuoc/<int:id>', methods=['GET'])
-def get_thuoc(id):
-    """Lấy chi tiết một thuốc theo ID."""
-    thuoc = Thuoc.query.get(id)
-    if not thuoc:
-        return jsonify({"error": "Không tìm thấy thuốc"}), 404
-    return jsonify(thuoc.to_dict()), 200
-
-
-@app.route('/api/thuoc', methods=['POST'])
-def add_thuoc():
-    """
-    Thêm thuốc mới.
-    Required: ten_thuoc, nhom_thuoc_id
-    Optional: hoat_chat, ham_luong, dang_bao_che, hang_san_xuat,
-              nuoc_san_xuat, so_dang_ky, gia_tham_khao, don_vi_tinh, mo_ta
-    """
-    data = request.get_json() or {}
-
-    # --- validation ---
-    if not data.get('ten_thuoc', '').strip():
-        return jsonify({"error": "Vui lòng nhập tên thuốc"}), 400
-    if not data.get('nhom_thuoc_id'):
-        return jsonify({"error": "Vui lòng chọn nhóm thuốc"}), 400
-    if not NhomThuoc.query.get(data['nhom_thuoc_id']):
-        return jsonify({"error": "Nhóm thuốc không tồn tại"}), 404
-
-    thuoc = Thuoc(
-        ten_thuoc    = data['ten_thuoc'].strip(),
-        hoat_chat    = data.get('hoat_chat'),
-        ham_luong    = data.get('ham_luong'),
-        dang_bao_che = data.get('dang_bao_che'),
-        hang_san_xuat= data.get('hang_san_xuat'),
-        nuoc_san_xuat= data.get('nuoc_san_xuat'),
-        so_dang_ky   = data.get('so_dang_ky'),
-        gia_tham_khao= data.get('gia_tham_khao'),
-        don_vi_tinh  = data.get('don_vi_tinh'),
-        mo_ta        = data.get('mo_ta'),
-        nhom_thuoc_id= data['nhom_thuoc_id'],
-    )
-    try:
-        db.session.add(thuoc)
-        db.session.commit()
-        return jsonify({"message": "Thêm thuốc thành công!", "thuoc": thuoc.to_dict()}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Lỗi khi thêm thuốc: {str(e)}"}), 500
-
-
-@app.route('/api/thuoc/<int:id>', methods=['PUT'])
-def update_thuoc(id):
-    """Cập nhật thông tin thuốc. Chỉ cần gửi các field muốn thay đổi."""
-    thuoc = Thuoc.query.get(id)
-    if not thuoc:
-        return jsonify({"error": "Không tìm thấy thuốc"}), 404
-
-    data = request.get_json() or {}
-
-    # Nếu đổi nhóm thuốc, kiểm tra nhóm mới tồn tại
-    if 'nhom_thuoc_id' in data:
-        if not NhomThuoc.query.get(data['nhom_thuoc_id']):
-            return jsonify({"error": "Nhóm thuốc không tồn tại"}), 404
-        thuoc.nhom_thuoc_id = data['nhom_thuoc_id']
-
-    updatable = ['ten_thuoc', 'hoat_chat', 'ham_luong', 'dang_bao_che',
-                 'hang_san_xuat', 'nuoc_san_xuat', 'so_dang_ky',
-                 'gia_tham_khao', 'don_vi_tinh', 'mo_ta']
-    for field in updatable:
-        if field in data:
-            setattr(thuoc, field, data[field])
-
-    try:
-        db.session.commit()
-        return jsonify({"message": "Cập nhật thuốc thành công!", "thuoc": thuoc.to_dict()}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Lỗi khi cập nhật thuốc: {str(e)}"}), 500
-
-
-@app.route('/api/thuoc/<int:id>', methods=['DELETE'])
-def delete_thuoc(id):
-    """Xóa một thuốc."""
-    thuoc = Thuoc.query.get(id)
-    if not thuoc:
-        return jsonify({"error": "Không tìm thấy thuốc"}), 404
-    try:
-        db.session.delete(thuoc)
-        db.session.commit()
-        return jsonify({"message": "Xóa thuốc thành công!"}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Lỗi khi xóa thuốc: {str(e)}"}), 500
-
-
-
-@app.route('/api/evaluation/<int:id>', methods=['DELETE'])
-def delete_evaluation(id):
-    try:
-        # 1. Tìm bản ghi lịch sử dự đoán theo ID trong Database
-        record = DanhGiaDuDoan.query.get(id)
-        
-        # 2. Nếu không tìm thấy, trả về lỗi 404
-        if not record:
-            return jsonify({
-                'success': False,
-                'message': f'Không tìm thấy bản ghi lịch sử với ID = {id}!'
-            }), 404
-
-        # 3. Tiến hành xóa và lưu (commit) vào Database
-        db.session.delete(record)
-        db.session.commit()
-
-        # 4. Trả về phản hồi thành công
-        return jsonify({
-            'success': True,
-            'message': f'Xóa bản ghi lịch sử dự đoán ID = {id} thành công!'
-        }), 200
-
-    except Exception as e:
-        db.session.rollback()  # Thu hồi lệnh nếu xảy ra lỗi hệ thống
-        return jsonify({
-            'success': False,
-            'message': f'Lỗi hệ thống khi xóa: {str(e)}'
-        }), 500
-    
-    
-
-# ────────────────────────────────────────────────────────────────────────────
-# API QUẢN LÝ PHẢN HỒI ĐÁNH GIÁ NHÓM THUỐC
-# ────────────────────────────────────────────────────────────────────────────
-
-@app.route('/api/feedback', methods=['POST'])
-def submit_feedback():
-    """
-    Ghi lại phản hồi Đồng ý/Không đồng ý từ người dùng.
-    
-    Body:
-    {
-        "prediction_id": <optional int>,
-        "user_id": <optional int>,
-        "feedback_type": "agree" hoặc "disagree",
-        "comment": <optional string>
-    }
-    """
-    try:
-        data = request.get_json() or {}
-        feedback_type = (data.get('feedback_type') or '').strip().lower()
-        
-        if feedback_type not in ['agree', 'disagree']:
-            return jsonify({
-                'success': False,
-                'message': 'feedback_type phải là "agree" hoặc "disagree".'
-            }), 400
-        
-        new_feedback = Feedback(
-            prediction_id=data.get('prediction_id'),
-            user_id=data.get('user_id'),
-            feedback_type=feedback_type,
-            comment=data.get('comment', '').strip() or None
-        )
-        
-        db.session.add(new_feedback)
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Phản hồi đã được ghi nhận thành công.',
-            'feedback': new_feedback.to_dict()
-        }), 201
-    
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            'success': False,
-            'message': 'Không thể ghi nhận phản hồi.',
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/feedback/statistics', methods=['GET'])
-def get_feedback_statistics():
-    """
-    Lấy thống kê số lượng phản hồi Đồng ý / Không đồng ý.
-    
-    Response:
-    {
-        "success": true,
-        "total": <int>,
-        "agree_count": <int>,
-        "disagree_count": <int>,
-        "agree_percentage": <float>,
-        "disagree_percentage": <float>
-    }
-    """
-    try:
-        total = Feedback.query.count()
-        agree_count = Feedback.query.filter_by(feedback_type='agree').count()
-        disagree_count = Feedback.query.filter_by(feedback_type='disagree').count()
-        
-        # Tính tỷ lệ phần trăm, xử lý trường hợp total = 0
-        if total == 0:
-            agree_percentage = 0.0
-            disagree_percentage = 0.0
-        else:
-            agree_percentage = round((agree_count / total) * 100, 2)
-            disagree_percentage = round((disagree_count / total) * 100, 2)
-        
-        return jsonify({
-            'success': True,
-            'total': total,
-            'agree_count': agree_count,
-            'disagree_count': disagree_count,
-            'agree_percentage': agree_percentage,
-            'disagree_percentage': disagree_percentage
-        }), 200
-    
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': 'Không thể lấy dữ liệu thống kê.',
-            'error': str(e)
-        }), 500
-
-
-# ════════════════════════════════════════════════════════════════════════════════
-# API HỖ TRỢ CHỨC NĂNG AUTOCOMPLETE TRIỆU CHỨNG
-# ════════════════════════════════════════════════════════════════════════════════
-
-def fuzzy_match(query: str, target: str, threshold: float = 0.6) -> float:
-    """
-    Tính similarity score giữa query và target sử dụng SequenceMatcher.
-    Returns: float từ 0 đến 1, trong đó 1 là match hoàn hảo.
-    """
-    if not query or not target:
-        return 0.0
-    
-    # Normalize cả query và target
-    norm_query = normalize(query).lower()
-    norm_target = normalize(target).lower()
-    
-    # Check exact match (normalized)
-    if norm_query == norm_target:
-        return 1.0
-    
-    # Check if query starts with target (prefix match - cao hơn contain match)
-    if norm_target.startswith(norm_query):
-        return 0.95
-    
-    # Check if target contains query
-    if norm_query in norm_target:
-        return 0.85
-    
-    # Use SequenceMatcher for fuzzy matching
-    ratio = SequenceMatcher(None, norm_query, norm_target).ratio()
-    
-    return ratio if ratio >= threshold else 0.0
-
-
-@app.route('/api/symptoms/autocomplete', methods=['GET'])
-def autocomplete_symptoms():
-    """
-    Autocomplete API cho triệu chứng với hỗ trợ fuzzy search.
-    
-    Query Parameters:
-    - q: string (optional) - từ khóa tìm kiếm
-    - limit: int (default: 15) - số lượng kết quả trả về
-    - threshold: float (default: 0.6) - ngưỡng tối thiểu cho fuzzy match (0.0 - 1.0)
-    
-    Response:
-    {
-        "success": true,
-        "query": "keyword",
-        "data": [
-            {
-                "id": symptom_id,
-                "label_vi": "Tên triệu chứng Tiếng Việt",
-                "label_en": "Symptom Name English",
-                "score": 0.95
-            },
-            ...
-        ],
-        "total": int
-    }
-    """
-    try:
-        query = request.args.get('q', '').strip()
-        limit = request.args.get('limit', 15, type=int)
-        threshold = request.args.get('threshold', 0.6, type=float)
-        
-        # Validate inputs
-        limit = min(max(limit, 1), 50)  # Từ 1 tới 50
-        threshold = min(max(threshold, 0.0), 1.0)  # Từ 0.0 tới 1.0
-        
-        results = []
-        
-        # Nếu không có query, trả về danh sách phổ biến
-        if not query:
-            common_symptoms = readable_symptoms[:limit] if readable_symptoms else []
-            
-            # Bổ sung từ database nếu cần
-            if len(common_symptoms) < limit:
-                additional = TrieuChung.query.limit(limit - len(common_symptoms)).all()
-                for symptom in additional:
-                    symptom_dict = {
-                        'id': symptom.id,
-                        'label_vi': symptom.ten or '',
-                        'label_en': symptom.ten_en or symptom.ten or '',
-                        'score': 1.0  # Không có query = không có score
-                    }
-                    # Tránh trùng lặp
-                    if not any(s.get('label_vi') == symptom_dict['label_vi'] for s in common_symptoms):
-                        common_symptoms.append(symptom_dict)
-            
-            results = common_symptoms[:limit]
-        else:
-            # Tìm kiếm với fuzzy match trong readable_symptoms
-            for symptom in readable_symptoms:
-                label_vi = symptom.get('label_vi', '')
-                label_en = symptom.get('label_en', '')
-                
-                # Tính score cho cả label_vi và label_en, lấy max
-                score_vi = fuzzy_match(query, label_vi, threshold)
-                score_en = fuzzy_match(query, label_en, threshold)
-                score = max(score_vi, score_en)
-                
-                if score > 0.0:
-                    results.append({
-                        'id': symptom.get('id'),
-                        'label_vi': label_vi,
-                        'label_en': label_en,
-                        'score': round(score, 3)
-                    })
-            
-            # Nếu không đủ kết quả từ readable_symptoms, tìm trong database
-            if len(results) < limit:
-                db_symptoms = TrieuChung.query.filter(
-                    (TrieuChung.ten.ilike(f'%{query}%')) |
-                    (TrieuChung.ten_en.ilike(f'%{query}%'))
-                ).limit(limit - len(results)).all()
-                
-                for symptom in db_symptoms:
-                    # Tính score
-                    score_vi = fuzzy_match(query, symptom.ten or '', threshold)
-                    score_en = fuzzy_match(query, symptom.ten_en or '', threshold)
-                    score = max(score_vi, score_en)
-                    
-                    if score > 0.0:
-                        symptom_dict = {
-                            'id': symptom.id,
-                            'label_vi': symptom.ten or '',
-                            'label_en': symptom.ten_en or symptom.ten or '',
-                            'score': round(score, 3)
-                        }
-                        
-                        # Tránh trùng lặp
-                        if not any(r.get('label_vi') == symptom_dict['label_vi'] for r in results):
-                            results.append(symptom_dict)
-            
-            # Sắp xếp theo score (descending)
-            results.sort(key=lambda x: x.get('score', 0), reverse=True)
-            results = results[:limit]
-        
-        return jsonify({
-            'success': True,
-            'query': query,
-            'data': results,
-            'total': len(results)
-        }), 200
-    except Exception as e:
-        print(f"Error in autocomplete_symptoms: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-# ════════════════════════════════════════════════════════════════════════════════
-# API HỖ TRỢ CHỨC NĂNG GỢI Ý VÀ CHỌN NHANH TRIỆU CHỨNG
-# ════════════════════════════════════════════════════════════════════════════════
-
-@app.route('/api/symptoms/common', methods=['GET'])
-def get_common_symptoms():
-    """
-    Lấy danh sách triệu chứng phổ biến nhất (top 30).
-    
-    Query Parameters:
-    - limit: int (default: 30) - số lượng triệu chứng trả về
-    
-    Response:
-    {
-        "success": true,
-        "data": [
-            {
-                "id": "symptom_id",
-                "label_vi": "Tên triệu chứng Tiếng Việt",
-                "label_en": "Symptom Name English"
-            },
-            ...
-        ],
-        "total": int
-    }
-    """
-    try:
-        limit = request.args.get('limit', 30, type=int)
-        limit = min(limit, 100)  # Giới hạn tối đa 100
-        
-        # Lấy danh sách triệu chứng từ readable_symptoms
-        # Những triệu chứng phổ biến nhất được đặt ở đầu danh sách
-        common_symptoms = readable_symptoms[:limit] if readable_symptoms else []
-        
-        # Nếu không đủ từ readable_symptoms, lấy từ TrieuChung model
-        if len(common_symptoms) < limit:
-            additional_from_db = TrieuChung.query.limit(limit - len(common_symptoms)).all()
-            for symptom in additional_from_db:
-                symptom_dict = {
-                    'id': symptom.id,
-                    'label_vi': symptom.ten or '',
-                    'label_en': symptom.ten_en or symptom.ten or ''
-                }
-                # Tránh trùng lặp
-                if not any(s.get('label_vi') == symptom_dict['label_vi'] for s in common_symptoms):
-                    common_symptoms.append(symptom_dict)
-        
-        return jsonify({
-            'success': True,
-            'data': common_symptoms,
-            'total': len(common_symptoms)
-        }), 200
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/symptoms/search', methods=['GET'])
-def search_symptoms():
-    """
-    Tìm kiếm triệu chứng theo từ khóa.
-    
-    Query Parameters:
-    - q: string (required) - từ khóa tìm kiếm (ít nhất 1 ký tự)
-    - limit: int (default: 30) - số lượng kết quả trả về
-    
-    Response:
-    {
-        "success": true,
-        "query": "keyword",
-        "data": [
-            {
-                "id": "symptom_id",
-                "label_vi": "Tên triệu chứng Tiếng Việt",
-                "label_en": "Symptom Name English"
-            },
-            ...
-        ],
-        "total": int
-    }
-    """
-    try:
-        query = request.args.get('q', '').strip()
-        limit = request.args.get('limit', 30, type=int)
-        limit = min(limit, 100)
-        
-        if not query:
-            return jsonify({
-                'success': False,
-                'error': 'Vui lòng cung cấp từ khóa tìm kiếm (q parameter)'
-            }), 400
-        
-        # Chuẩn hóa từ khóa tìm kiếm
-        normalized_query = normalize(query).lower()
-        
-        results = []
-        
-        # Tìm kiếm trong readable_symptoms
-        for symptom in readable_symptoms:
-            label_vi = symptom.get('label_vi', '')
-            label_en = symptom.get('label_en', '')
-            
-            normalized_label_vi = normalize(label_vi).lower()
-            normalized_label_en = normalize(label_en).lower()
-            
-            # Kiểm tra khớp trong label_vi hoặc label_en
-            if (normalized_query in normalized_label_vi or 
-                normalized_query in normalized_label_en or
-                normalized_label_vi.startswith(normalized_query) or
-                normalized_label_en.startswith(normalized_query)):
-                results.append(symptom)
-        
-        # Nếu không tìm thấy, tìm kiếm trong TrieuChung model
-        if not results:
-            db_symptoms = TrieuChung.query.filter(
-                (TrieuChung.ten.ilike(f'%{query}%')) |
-                (TrieuChung.ten_en.ilike(f'%{query}%'))
-            ).limit(limit).all()
-            
-            for symptom in db_symptoms:
-                symptom_dict = {
-                    'id': symptom.id,
-                    'label_vi': symptom.ten or '',
-                    'label_en': symptom.ten_en or symptom.ten or ''
-                }
-                results.append(symptom_dict)
-        
-        # Sắp xếp kết quả: những kết quả khớp chính xác trước, sau đó khớp bắt đầu, cuối cùng khớp chứa
-        def sort_key(item):
-            label = item.get('label_vi', '').lower()
-            normalized_label = normalize(label).lower()
-            if normalized_label == normalized_query:
-                return 0
-            elif normalized_label.startswith(normalized_query):
-                return 1
-            else:
-                return 2
-        
-        results.sort(key=sort_key)
-        
-        # Giới hạn kết quả
-        results = results[:limit]
-        
-        return jsonify({
-            'success': True,
-            'query': query,
-            'data': results,
-            'total': len(results)
-        }), 200
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-    
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="127.0.0.1", port=port, debug=False)

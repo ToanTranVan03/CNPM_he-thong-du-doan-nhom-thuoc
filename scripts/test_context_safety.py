@@ -3,10 +3,12 @@
 Khóa các hành vi an toàn theo NGỮ CẢNH (bệnh nền/tuổi/thai kỳ/tương tác/dị ứng/phản vệ) để
 không bị regress khi sửa code sau này. Chạy: python scripts/test_context_safety.py
 """
+import os
 import sys
 import warnings
 from pathlib import Path
 
+os.environ["DB_DISABLED"] = "1"  # test logic, JSON-mode — không ghi lịch sử vào Postgres
 warnings.filterwarnings("ignore")
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = Path(__file__).resolve().parents[1]

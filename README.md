@@ -27,26 +27,7 @@ CNPM/
   requirements.txt
 ```
 
-
-## UI/UX Figma
-
-Dự án có thiết kế UI/UX trên Figma theo yêu cầu môn học. Tài liệu chi tiết nằm tại:
-
-```text
-docs/UI_UX_FIGMA.md
-```
-
-Các nội dung bắt buộc đã chuẩn bị:
-
-- Wireframe
-- User Flow
-- Prototype
-- Mockup
-- Design System
-
-Frontend hiện tại được cập nhật theo hướng giao diện Figma nhưng vẫn giữ backend Flask/API để bảo toàn tiến độ Sprint và Jira.
-
-## Cách chạy tai terminal : pip install -r requirements.txt
+## Cách chạy
 
 ```powershell
 python backend/app.py
@@ -64,6 +45,44 @@ Nếu muốn chạy port khác:
 $env:PORT="5001"
 python backend/app.py
 ```
+
+> Mặc định ứng dụng chạy ở **chế độ JSON** (không cần cơ sở dữ liệu): model và dữ liệu
+> tham chiếu đã có sẵn trong repo nên có thể dự đoán ngay. Lịch sử/người dùng được lưu
+> vào file JSON trong `data/` và **tự sinh khi sử dụng**.
+
+## Chạy với PostgreSQL (tùy chọn)
+
+Cơ sở dữ liệu **không nằm trong repo** — mỗi máy phải tự cài đặt và khởi tạo. Khi không
+cấu hình, ứng dụng tự chạy chế độ JSON như trên.
+
+### 1. Chuẩn bị
+
+- Cài đặt PostgreSQL và tạo một database trống (ví dụ `cnpm`).
+- Tạo file `.env` ở thư mục gốc (file này **không** được đẩy lên repo) với chuỗi kết nối:
+
+```text
+DATABASE_URL=postgresql+psycopg2://<user>:<password>@localhost:5432/cnpm
+```
+
+### 2. Tạo schema và nạp dữ liệu
+
+```powershell
+python scripts/init_db.py          # tạo toàn bộ bảng theo backend/models.py
+python scripts/migrate_users.py    # chuyển tài khoản từ JSON sang DB (nếu có)
+python scripts/seed_db.py          # nạp dữ liệu nền
+python scripts/seed_drugs_expand.py# nạp kho thuốc mở rộng
+```
+
+### 3. Chạy
+
+```powershell
+python backend/app.py
+```
+
+Khi phát hiện `DATABASE_URL` hợp lệ và kết nối được, ứng dụng tự bật chế độ PostgreSQL;
+nếu thiếu hoặc kết nối lỗi, ứng dụng quay về chế độ JSON mà không dừng.
+
+> Tắt cưỡng bức PostgreSQL (luôn dùng JSON) bằng biến môi trường `DB_DISABLED=1`.
 
 ## Train model
 

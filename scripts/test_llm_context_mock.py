@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+os.environ["DB_DISABLED"] = "1"  # test logic, JSON-mode — không ghi lịch sử vào Postgres
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))

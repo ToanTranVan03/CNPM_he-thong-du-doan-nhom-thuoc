@@ -47,21 +47,6 @@ const summaryMedicationName = document.getElementById("summary-medication-name")
 const summaryDrugGroup = document.getElementById("summary-drug-group");
 const suggestedSymptomsCard = document.getElementById("suggested-symptoms-card");
 const suggestedSymptomsList = document.getElementById("suggested-symptoms-list");
-const profileForm = document.getElementById("profile-form");
-const profileFullname = document.getElementById("profile-fullname");
-const profileEmail = document.getElementById("profile-email");
-const profilePhone = document.getElementById("profile-phone");
-const profileSpecialty = document.getElementById("profile-specialty");
-const profileMessage = document.getElementById("profile-message");
-const profileCancelButton = document.getElementById("profile-cancel");
-
-// Autocomplete Dropdown Elements (NEW)
-const autocompleteDropdown = document.getElementById("autocomplete-dropdown");
-const autocompleteList = document.getElementById("autocomplete-list");
-const autocompleteLoadingState = document.getElementById("autocomplete-loading-state");
-const autocompleteEmptyState = document.getElementById("autocomplete-empty-state");
-const autocompleteErrorState = document.getElementById("autocomplete-error-state");
-const autocompleteErrorMessage = document.getElementById("autocomplete-error-message");
 
 const AUTH_TOKEN_KEY = "pharmaPredictAuthToken";
 const AUTH_USER_KEY = "pharmaPredictUser";
@@ -71,8 +56,6 @@ const sampleCase =
 
 let symptoms = [];
 const selectedSymptoms = new Set();
-const selectedSymptomLabels = new Map(); // Map để tracking label của triệu chứng đã chọn
-const recentlyUsedSymptoms = []; // Mảng tracking triệu chứng vừa dùng
 let currentResult = null;
 let savedResults = [];
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
@@ -113,21 +96,15 @@ function setAuthMessage(element, message, isError = false) {
   element.classList.toggle("is-error", isError);
 }
 
-const API_BASE_URL = "http://127.0.0.1:5000"; 
-
 async function authRequest(endpoint, payload) {
-  const response = await fetch(API_BASE_URL + endpoint, {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   const data = await response.json();
-  renderTop3DrugGroups(
-    data.top3_predictions || data.predictions || data.results || [],
-    data.symptoms_vi || data.matched_symptoms || []
-);
   if (!response.ok) {
-    throw new Error(data.message || data.error || "Không xử lý được yêu cầu.");
+    throw new Error(data.error || "Không xử lý được yêu cầu.");
   }
   return data;
 }
@@ -141,22 +118,27 @@ function initialsForName(name, email) {
   return source.slice(0, 2).toUpperCase();
 }
 
-function getCurrentUserDisplayName() {
-  return (
-    currentUser?.fullName ||
-    currentUser?.full_name ||
-    currentUser?.name ||
-    (currentUser?.email ? currentUser.email.split("@")[0] : "Người dùng")
-  );
-}
-
 function updateUserUi() {
-  const displayName = getCurrentUserDisplayName();
+  const displayName = currentUser?.name || "Người dùng";
   const displayEmail = currentUser?.email || "";
+  const initials = initialsForName(displayName, displayEmail);
   userName.textContent = displayName;
   userEmail.textContent = displayEmail;
-  userAvatar.textContent = initialsForName(displayName, displayEmail);
-  profileSummary.textContent = `${displayName} (${displayEmail}) đang đăng nhập vào hệ thống hỗ trợ nhập triệu chứng tiếng Việt và gợi ý nhóm thuốc khi dữ liệu đủ tin cậy.`;
+  userAvatar.textContent = initials;
+  // Trang Hồ sơ
+  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  setText("profile-avatar", initials);
+  setText("profile-name-display", displayName);
+  setText("profile-email-display", displayEmail);
+  setVal("profile-name-input", displayName);
+  setVal("profile-email-input", displayEmail);
+  const isAdmin = currentUser?.role === "admin";
+  setText("profile-role", isAdmin ? "Quản trị viên" : "Người dùng");
+  const roleChip = document.getElementById("profile-role-chip");
+  if (roleChip) roleChip.classList.toggle("is-admin", isAdmin);
+  setText("profile-stat-saved", String((typeof savedResults !== "undefined" && savedResults) ? savedResults.length : 0));
+  updateAdminUi();
 }
 
 function showAuthenticatedApp() {
@@ -169,10 +151,6 @@ function showAuthenticatedApp() {
   if (!symptomsLoaded) {
     loadSymptoms();
   }
-  // Initialize autocomplete keyboard navigation
-  setupAutocompleteKeyboardNavigation();
-  // Load recently used symptoms
-  loadRecentlyUsedSymptoms();
 }
 
 function showAuthScreen(viewName = "login") {
@@ -188,98 +166,6 @@ function handleAuthSuccess(data) {
   localStorage.setItem(AUTH_USER_KEY, JSON.stringify(currentUser));
   showAuthenticatedApp();
   showPage("home");
-}
-
-function setProfileMessage(message, isError = false) {
-  if (!profileMessage) return;
-  profileMessage.textContent = message;
-  profileMessage.classList.toggle("is-error", isError);
-}
-
-function setFormLoading(button, isLoading) {
-  if (!button) return;
-  button.disabled = isLoading;
-  const icon = button.querySelector(".material-symbols-outlined");
-  if (icon) {
-    icon.style.opacity = isLoading ? "0.5" : "1";
-  }
-}
-
-async function loadProfileData() {
-  try {
-    const response = await fetch("/api/users/profile", {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Không thể tải dữ liệu hồ sơ.");
-    }
-    
-    // Populate form with current data
-    profileFullname.value = data.fullName || "";
-    profileEmail.value = data.email || "";
-    profilePhone.value = data.phoneNumber || "";
-    profileSpecialty.value = data.specialty || "";
-  } catch (error) {
-    setProfileMessage(formatError(error), true);
-  }
-}
-
-async function saveProfileData(event) {
-  event.preventDefault();
-  
-  // Validation
-  if (!profileFullname.value.trim()) {
-    setProfileMessage("Vui lòng nhập họ tên.", true);
-    return;
-  }
-  
-  const submitButton = profileForm.querySelector('button[type="submit"]');
-  setFormLoading(submitButton, true);
-  setProfileMessage("");
-  
-  try {
-    const response = await fetch("/api/users/profile", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({
-        fullName: profileFullname.value.trim(),
-        phoneNumber: profilePhone.value.trim(),
-        specialty: profileSpecialty.value.trim(),
-      }),
-    });
-    
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || data.message || "Không thể cập nhật hồ sơ.");
-    }
-    
-    // Update local user data consistently for sidebar/profile
-    const updatedProfile = data.user || data;
-    currentUser = {
-      ...(currentUser || {}),
-      ...updatedProfile,
-      name: updatedProfile.name || updatedProfile.fullName || profileFullname.value.trim(),
-      fullName: updatedProfile.fullName || updatedProfile.name || profileFullname.value.trim(),
-      email: updatedProfile.email || currentUser?.email || profileEmail.value.trim(),
-      phoneNumber: updatedProfile.phoneNumber ?? profilePhone.value.trim(),
-      specialty: updatedProfile.specialty ?? profileSpecialty.value.trim(),
-    };
-    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(currentUser));
-    updateUserUi();
-    
-    setProfileMessage("Cập nhật hồ sơ thành công!", false);
-    setTimeout(() => {
-      setProfileMessage("");
-    }, 3000);
-  } catch (error) {
-    setProfileMessage(formatError(error), true);
-  } finally {
-    setFormLoading(submitButton, false);
-  }
 }
 
 async function initializeAuth() {
@@ -310,7 +196,26 @@ async function initializeAuth() {
   }
 }
 
+function isAdminUser() {
+  return currentUser?.role === "admin";
+}
+
+function updateAdminUi() {
+  // US19: chỉ hiển thị mục Dashboard khi user có quyền admin.
+  const admin = isAdminUser();
+  document.querySelectorAll(".admin-only").forEach((el) => {
+    el.classList.toggle("is-hidden", !admin);
+  });
+}
+
+const ADMIN_PAGES = new Set(["dashboard", "admin-history", "dictionary", "drug-admin", "feedback-admin"]);
+
 function showPage(pageName) {
+  // US19/US27: chặn trang admin nếu không phải admin (kể cả khi gọi trực tiếp).
+  if (ADMIN_PAGES.has(pageName) && !isAdminUser()) {
+    pageName = "home";
+  }
+
   pages.forEach((page) => {
     page.classList.toggle("is-active", page.id === `page-${pageName}`);
   });
@@ -318,6 +223,18 @@ function showPage(pageName) {
   navButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.page === pageName);
   });
+
+  if (pageName === "dashboard") {
+    loadDashboard();
+  } else if (pageName === "admin-history") {
+    loadAdminHistory(1);
+  } else if (pageName === "dictionary") {
+    loadDictionary(1);
+  } else if (pageName === "drug-admin") {
+    loadDrugAdmin();
+  } else if (pageName === "feedback-admin") {
+    loadFeedbackAdmin(1);
+  }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -339,544 +256,44 @@ function formatError(error) {
   return message;
 }
 
-// ════════════════════════════════════════════════════════════════════════════════
-// SYMPTOM SUGGESTER - Constants and States
-// ════════════════════════════════════════════════════════════════════════════════
-const MAX_SELECTED_SYMPTOMS = 15;
-const SYMPTOM_STATES = {
-  LOADING: 'loading',
-  EMPTY: 'empty',
-  ERROR: 'error',
-  LOADED: 'loaded'
-};
-
-// Autocomplete Constants (NEW)
-const AUTOCOMPLETE_CONFIG = {
-  DEBOUNCE_DELAY: 300,
-  MIN_QUERY_LENGTH: 1,
-  MAX_RESULTS: 15,
-  THRESHOLD: 0.6
-};
-
-let autocompleteDebounceTimer = null;
-
-// ════════════════════════════════════════════════════════════════════════════════
-// SYMPTOM SUGGESTER - Helper Functions
-// ════════════════════════════════════════════════════════════════════════════════
-
-function showSymptomState(state, errorMessage = "") {
-  const states = {
-    loading: document.getElementById("symptom-loading-state"),
-    empty: document.getElementById("symptom-empty-state"),
-    error: document.getElementById("symptom-error-state"),
-    list: document.getElementById("symptom-list")
-  };
-
-  // Hide all states
-  Object.values(states).forEach(el => {
-    if (el) el.style.display = "none";
-  });
-
-  // Show requested state
-  if (state === SYMPTOM_STATES.LOADING) {
-    if (states.loading) states.loading.style.display = "flex";
-  } else if (state === SYMPTOM_STATES.EMPTY) {
-    if (states.empty) states.empty.style.display = "flex";
-  } else if (state === SYMPTOM_STATES.ERROR) {
-    if (states.error) {
-      states.error.style.display = "flex";
-      const errorMsg = document.getElementById("symptom-error-message");
-      if (errorMsg) errorMsg.textContent = errorMessage || "Lỗi tải dữ liệu, vui lòng thử lại";
-    }
-  } else if (state === SYMPTOM_STATES.LOADED) {
-    if (states.list) states.list.style.display = "flex";
-  }
-}
-
 function updateSelectedCount() {
-  const badgeEl = document.getElementById("selected-count");
-  if (badgeEl) {
-    const count = selectedSymptoms.size;
-    badgeEl.textContent = count === 0 ? "0 đã chọn" : `${count} đã chọn`;
-    badgeEl.setAttribute("data-count", count);
-  }
+  selectedCount.textContent = `${selectedSymptoms.size} đã chọn`;
 }
 
-function canSelectMore() {
-  return selectedSymptoms.size < MAX_SELECTED_SYMPTOMS;
-}
+function renderSymptoms(filter = "") {
+  const query = filter.trim().toLowerCase();
+  const visibleSymptoms = symptoms
+    .filter((symptom) => {
+      const viLabel = (symptom.label_vi || symptom.label || "").toLowerCase();
+      const enLabel = (symptom.label_en || "").toLowerCase();
+      return viLabel.includes(query) || enLabel.includes(query);
+    })
+    .slice(0, 80);
 
-function getSelectedSymptomLabels() {
-  // Trả về mảng tên của các triệu chứng đã chọn để cập nhật textarea
-  const selectedLabels = [];
-  selectedSymptoms.forEach(symptomId => {
-    const symptom = symptoms.find(s => s.id === symptomId);
-    if (symptom) {
-      selectedLabels.push(symptom.label_vi || symptom.label);
-    }
-  });
-  return selectedLabels;
-}
+  symptomList.innerHTML = "";
 
-/**
- * Tự động thêm triệu chứng vào textarea khi người dùng chọn từ autocomplete
- * Tránh trùng lặp bằng cách kiểm tra text trong textarea trước khi thêm
- */
-function appendSymptomToTextarea(symptomLabel) {
-  if (!symptomLabel || !textarea) return false;
-
-  const currentText = textarea.value.trim();
-  const textToAdd = symptomLabel.trim();
-  
-  // Kiểm tra xem triệu chứng đã tồn tại trong textarea chưa
-  // Sử dụng regex word boundary để tránh false positive (ví dụ: "Đau" không match "Đau đầu")
-  const symptomRegex = new RegExp(`\\b${textToAdd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-  
-  if (symptomRegex.test(currentText)) {
-    console.log(`Triệu chứng "${textToAdd}" đã tồn tại trong textarea`);
-    return false;
+  if (visibleSymptoms.length === 0) {
+    symptomList.innerHTML = '<p class="muted-text">Không tìm thấy triệu chứng phù hợp.</p>';
+    return;
   }
 
-  // Thêm triệu chứng vào textarea
-  const newText = currentText ? `${currentText}, ${textToAdd}` : textToAdd;
-  textarea.value = newText;
-  
-  // Cập nhật character count
-  if (charCount) {
-    charCount.textContent = `${textarea.value.length} / 2000 ký tự`;
-  }
-
-  // Dispatch input event để trigger validation
-  textarea.dispatchEvent(new Event('input', { bubbles: true }));
-  
-  // Add to recently used
-  addToRecentlyUsed(symptomLabel);
-  
-  return true;
-}
-function removeSymptomFromTextarea(symptomLabel) {
-  if (!symptomLabel || !textarea) return;
-
-  const label = symptomLabel.trim();
-  let parts = textarea.value
-    .split(",")
-    .map(x => x.trim())
-    .filter(Boolean);
-
-  parts = parts.filter(x => x.toLowerCase() !== label.toLowerCase());
-
-  textarea.value = parts.join(", ");
-  updateCharCount();
-  textarea.dispatchEvent(new Event("input", { bubbles: true }));
-}
-/**
- * Thêm triệu chứng vào danh sách vừa dùng
- */
-function addToRecentlyUsed(symptomLabel) {
-  // Remove if already exists to move to top
-  const index = recentlyUsedSymptoms.indexOf(symptomLabel);
-  if (index > -1) {
-    recentlyUsedSymptoms.splice(index, 1);
-  }
-  
-  // Add to front
-  recentlyUsedSymptoms.unshift(symptomLabel);
-  
-  // Keep only last 10
-  if (recentlyUsedSymptoms.length > 10) {
-    recentlyUsedSymptoms.pop();
-  }
-  
-  // Save to localStorage
-  try {
-    localStorage.setItem('recentlyUsedSymptoms', JSON.stringify(recentlyUsedSymptoms));
-  } catch (e) {
-    console.warn('Could not save recently used symptoms', e);
-  }
-}
-
-/**
- * Load recently used symptoms from localStorage
- */
-function loadRecentlyUsedSymptoms() {
-  try {
-    const saved = localStorage.getItem('recentlyUsedSymptoms');
-    if (saved) {
-      const loaded = JSON.parse(saved);
-      if (Array.isArray(loaded)) {
-        recentlyUsedSymptoms.push(...loaded.slice(0, 10));
-      }
-    }
-  } catch (e) {
-    console.warn('Could not load recently used symptoms', e);
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════════════
-// AUTOCOMPLETE DROPDOWN - Helper Functions (NEW)
-// ════════════════════════════════════════════════════════════════════════════════
-
-function showAutocompleteState(state, errorMessage = "") {
-  // Hide all states
-  if (autocompleteLoadingState) autocompleteLoadingState.classList.remove('visible');
-  if (autocompleteEmptyState) autocompleteEmptyState.classList.remove('visible');
-  if (autocompleteErrorState) autocompleteErrorState.classList.remove('visible');
-  if (autocompleteList) autocompleteList.classList.remove('visible');
-
-  // Update aria-expanded on search input
-  const isVisible = state === 'list' || state === 'loading';
-  if (symptomSearch) {
-    symptomSearch.setAttribute('aria-expanded', isVisible ? 'true' : 'false');
-  }
-
-  // Show requested state
-  if (state === 'loading') {
-    if (autocompleteLoadingState) autocompleteLoadingState.classList.add('visible');
-  } else if (state === 'empty') {
-    if (autocompleteEmptyState) autocompleteEmptyState.classList.add('visible');
-  } else if (state === 'error') {
-    if (autocompleteErrorState) {
-      autocompleteErrorState.classList.add('visible');
-      if (autocompleteErrorMessage) {
-        autocompleteErrorMessage.textContent = errorMessage || "Lỗi tải dữ liệu";
-      }
-    }
-  } else if (state === 'list') {
-    if (autocompleteList) autocompleteList.classList.add('visible');
-  }
-}
-
-function hideAutocompleteDropdown() {
-  if (autocompleteList) autocompleteList.classList.remove('visible');
-  if (autocompleteLoadingState) autocompleteLoadingState.classList.remove('visible');
-  if (autocompleteEmptyState) autocompleteEmptyState.classList.remove('visible');
-  if (autocompleteErrorState) autocompleteErrorState.classList.remove('visible');
-  
-  // Update aria-expanded on search input
-  if (symptomSearch) {
-    symptomSearch.setAttribute('aria-expanded', 'false');
-  }
-}
-
-/**
- * Xử lý keyboard navigation cho autocomplete dropdown
- */
-function setupAutocompleteKeyboardNavigation() {
-  let currentFocusIndex = -1;
-
-  symptomSearch.addEventListener('keydown', (e) => {
-    if (!autocompleteList || !autocompleteList.classList.contains('visible')) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        const query = symptomSearch.value.trim();
-        if (query.length >= AUTOCOMPLETE_CONFIG.MIN_QUERY_LENGTH) {
-          fetchAutocomplete(query);
-        }
-      }
-      return;
-    }
-
-    const items = autocompleteList.querySelectorAll('.autocomplete-item');
-    if (items.length === 0) return;
-
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        currentFocusIndex = Math.min(currentFocusIndex + 1, items.length - 1);
-        items[currentFocusIndex].focus();
-        break;
-
-      case 'ArrowUp':
-        e.preventDefault();
-        if (currentFocusIndex === 0) {
-          currentFocusIndex = -1;
-          symptomSearch.focus();
-        } else if (currentFocusIndex > 0) {
-          currentFocusIndex--;
-          items[currentFocusIndex].focus();
-        }
-        break;
-
-      case 'Enter':
-        e.preventDefault();
-        if (currentFocusIndex >= 0 && items[currentFocusIndex]) {
-          items[currentFocusIndex].click();
-        }
-        break;
-
-      case 'Escape':
-        e.preventDefault();
-        hideAutocompleteDropdown();
-        currentFocusIndex = -1;
-        break;
-
-      default:
-        currentFocusIndex = -1;
-    }
-  });
-
-  // Reset focus index when input changes
-  symptomSearch.addEventListener('input', () => {
-    currentFocusIndex = -1;
-  });
-}
-
-// ════════════════════════════════════════════════════════════════════════════════
-// AUTOCOMPLETE DROPDOWN - Main Functions (NEW)
-// ════════════════════════════════════════════════════════════════════════════════
-
-async function fetchAutocomplete(query) {
-  try {
-    if (!query || query.trim().length < AUTOCOMPLETE_CONFIG.MIN_QUERY_LENGTH) {
-      hideAutocompleteDropdown();
-      return [];
-    }
-
-    showAutocompleteState('loading');
-    const params = new URLSearchParams({
-      q: query.trim(),
-      limit: AUTOCOMPLETE_CONFIG.MAX_RESULTS,
-      threshold: AUTOCOMPLETE_CONFIG.THRESHOLD
-    });
-
-    const response = await fetch(`/api/symptoms/autocomplete?${params}`);
-    if (!response.ok) {
-      throw new Error("Lỗi tìm kiếm triệu chứng");
-    }
-
-    const data = await response.json();
-    if (!data.success) {
-      throw new Error(data.error || "Lỗi tìm kiếm triệu chứng");
-    }
-
-    const results = data.data || [];
-    if (results.length === 0) {
-      showAutocompleteState('empty');
-      return [];
-    }
-
-    renderAutocompleteList(results);
-    return results;
-  } catch (error) {
-    console.error("Autocomplete error:", error);
-    showAutocompleteState('error', error.message);
-    return [];
-  }
-}
-
-function renderAutocompleteList(items) {
-  if (!autocompleteList) return;
-
-  // Clear existing items
-  autocompleteList.innerHTML = '';
-
-  // Render each item
-  items.forEach((item, index) => {
-    const li = document.createElement('li');
-    li.className = 'autocomplete-item';
-    li.setAttribute('role', 'option');
-    li.setAttribute('data-symptom-id', item.id);
-    li.setAttribute('tabindex', '0');
-
-    // Check if already selected
-    const isSelected = selectedSymptoms.has(item.id);
-    
-    // Add aria-selected
-    li.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-
-    const labelVi = item.label_vi || '';
-    const labelEn = item.label_en || '';
-    const score = item.score ? (item.score * 100).toFixed(0) : '';
-
-    // Build accessible label
-    let ariaLabel = labelVi;
-    if (labelEn && labelEn !== labelVi) {
-      ariaLabel += `, ${labelEn}`;
-    }
-    if (score) {
-      ariaLabel += `, Độ phù hợp ${score} phần trăm`;
-    }
-    if (isSelected) {
-      ariaLabel += ', đã chọn';
-    }
-    li.setAttribute('aria-label', ariaLabel);
-
-    let html = `<div class="autocomplete-item-label">${escapeHtml(labelVi)}</div>`;
-    if (labelEn && labelEn !== labelVi) {
-      html += `<div class="autocomplete-item-en">${escapeHtml(labelEn)}</div>`;
-    }
-    if (score) {
-      html += `<div class="autocomplete-item-score">Độ phù hợp: ${score}%</div>`;
-    }
-
-    li.innerHTML = html;
-
-    // Add visual indicator for selected items
-    if (isSelected) {
-      li.style.background = 'var(--primary-soft)';
-      li.style.opacity = '0.8';
-    }
-
-    // Event listeners
-    li.addEventListener('click', (e) => {
-      e.preventDefault();
-      handleAutocompleteItemSelect(item);
-    });
-
-    li.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleAutocompleteItemSelect(item);
-      }
-    });
-
-    autocompleteList.appendChild(li);
-  });
-
-  showAutocompleteState('list');
-}
-
-function handleAutocompleteItemSelect(item) {
-  // Check if already selected
-  if (selectedSymptoms.has(item.id)) {
-    // Deselect
-    selectedSymptoms.delete(item.id);
-    selectedSymptomLabels.delete(item.id);
-  } else {
-    // Check if can select more
-    if (!canSelectMore()) {
-      alert(`Đã chọn tối đa ${MAX_SELECTED_SYMPTOMS} triệu chứng`);
-      return;
-    }
-    // Select
-    selectedSymptoms.add(item.id);
-    selectedSymptomLabels.set(item.id, item.label_vi);
-    
-    // Tự động thêm vào textarea
-    appendSymptomToTextarea(item.label_vi);
-  }
-
-  updateSelectedCount();
-  
-  // Re-render current autocomplete list to reflect selection
-  const currentQuery = symptomSearch.value;
-  if (currentQuery.trim().length >= AUTOCOMPLETE_CONFIG.MIN_QUERY_LENGTH) {
-    fetchAutocomplete(currentQuery);
-  }
-
-  // Keep focus on input
-  symptomSearch.focus();
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-// ════════════════════════════════════════════════════════════════════════════════
-// SYMPTOM SUGGESTER - Main Functions
-// ════════════════════════════════════════════════════════════════════════════════
-
-async function loadSymptoms() {
-  try {
-    showSymptomState(SYMPTOM_STATES.LOADING);
-    const response = await fetch("/api/symptoms/common?limit=30");
-    if (!response.ok) {
-      throw new Error("Không tải được danh sách triệu chứng.");
-    }
-    const data = await response.json();
-    symptoms = data.data || data.symptoms || [];
-    symptomsLoaded = true;
-    renderSymptoms("");
-  } catch (error) {
-    showSymptomState(SYMPTOM_STATES.ERROR, error.message);
-    console.error("Error loading symptoms:", error);
-  }
-}
-
-async function renderSymptoms(filter = "") {
-  try {
-    const query = filter.trim();
-
-    if (!query) {
-      // Nếu không có filter, hiển thị danh sách common symptoms từ cache
-      if (symptoms.length === 0) {
-        showSymptomState(SYMPTOM_STATES.EMPTY);
-        return;
-      }
-      renderSymptomChips(symptoms);
-    } else {
-      // Nếu có filter, gọi API search
-      showSymptomState(SYMPTOM_STATES.LOADING);
-      const response = await fetch(`/api/symptoms/search?q=${encodeURIComponent(query)}&limit=30`);
-      if (!response.ok) {
-        throw new Error("Lỗi tìm kiếm triệu chứng");
-      }
-      const data = await response.json();
-      const results = data.data || [];
-      
-      if (results.length === 0) {
-        showSymptomState(SYMPTOM_STATES.EMPTY);
-      } else {
-        renderSymptomChips(results);
-      }
-    }
-  } catch (error) {
-    showSymptomState(SYMPTOM_STATES.ERROR, error.message);
-    console.error("Error rendering symptoms:", error);
-  }
-}
-
-function renderSymptomChips(symptomsData) {
-  const chipsContainer = document.getElementById("symptom-list");
-  if (!chipsContainer) return;
-
-  chipsContainer.innerHTML = "";
-  showSymptomState(SYMPTOM_STATES.LOADED);
-
-  symptomsData.forEach((symptom) => {
+  visibleSymptoms.forEach((symptom) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "symptom-chip";
-    
-    const isSelected = selectedSymptoms.has(symptom.id);
-    if (isSelected) {
-      button.classList.add("selected");
-    }
-
-    // Disable button nếu đạt giới hạn và chưa được chọn
-    const isDisabled = !isSelected && !canSelectMore();
-    if (isDisabled) {
-      button.classList.add("disabled");
-      button.disabled = true;
-      button.title = `Đã chọn tối đa ${MAX_SELECTED_SYMPTOMS} triệu chứng`;
-    }
-
     button.dataset.symptom = symptom.id;
-    button.textContent = symptom.label_vi || symptom.label || symptom.label_en;
-    
+    button.textContent = symptom.label;
+    button.classList.toggle("is-selected", selectedSymptoms.has(symptom.id));
     button.addEventListener("click", () => {
       if (selectedSymptoms.has(symptom.id)) {
-        // Bỏ chọn
         selectedSymptoms.delete(symptom.id);
-        selectedSymptomLabels.delete(symptom.id);
-        removeSymptomFromTextarea(symptom.label_vi || symptom.label || symptom.label_en);
       } else {
-        // Chọn (nếu chưa đạt giới hạn)
-        if (canSelectMore()) {
-          selectedSymptoms.add(symptom.id);
-          selectedSymptomLabels.set(symptom.id, symptom.label_vi);
-          
-          // Tự động thêm vào textarea
-          appendSymptomToTextarea(symptom.label_vi);
-        }
+        selectedSymptoms.add(symptom.id);
       }
       updateSelectedCount();
       renderSymptoms(symptomSearch.value);
     });
-
-    chipsContainer.appendChild(button);
+    symptomList.appendChild(button);
   });
 }
 
@@ -967,58 +384,13 @@ function createHistoryCard(entry) {
   icon.className = "material-symbols-outlined";
   icon.setAttribute("aria-hidden", "true");
   icon.textContent = "chevron_right";
-  button.addEventListener("click", () => {
-    showHistoryDetail(entry);
-  });
+
   topLine.append(status, time);
   button.appendChild(icon);
   card.append(topLine, title, summary, button);
   return card;
 }
-function showHistoryDetail(entry) {
-  const oldModal = document.getElementById("history-detail-modal");
-  if (oldModal) oldModal.remove();
 
-  const symptoms = Array.isArray(entry.symptoms) && entry.symptoms.length
-    ? entry.symptoms.join(", ")
-    : "Không rõ";
-
-  const modal = document.createElement("div");
-  modal.id = "history-detail-modal";
-  modal.className = "pretty-modal-backdrop";
-  modal.innerHTML = `
-    <div class="pretty-modal-card" role="dialog" aria-modal="true" aria-labelledby="history-detail-title">
-      <div class="pretty-modal-header">
-        <div>
-          <p class="eyebrow">Chi tiết lịch sử dự đoán</p>
-          <h2 id="history-detail-title">${escapeHtml(entry.disease || "Kết quả dự đoán")}</h2>
-        </div>
-        <button class="icon-button" type="button" data-close-history-detail aria-label="Đóng">
-          <span class="material-symbols-outlined" aria-hidden="true">close</span>
-        </button>
-      </div>
-      <div class="pretty-detail-grid">
-        <div class="pretty-detail-item"><span>Ngày lưu</span><strong>${escapeHtml(entry.savedAt || "Không rõ")}</strong></div>
-        <div class="pretty-detail-item"><span>Người dùng</span><strong>${escapeHtml(entry.user || "Không rõ")}</strong></div>
-        <div class="pretty-detail-item wide"><span>Triệu chứng</span><strong>${escapeHtml(symptoms)}</strong></div>
-        <div class="pretty-detail-item wide"><span>Ghi chú bệnh án</span><strong>${escapeHtml(entry.notes || "Không có")}</strong></div>
-        <div class="pretty-detail-item"><span>Độ tin cậy</span><strong>${entry.score != null ? escapeHtml(String(entry.score)) : "Không có"}</strong></div>
-        <div class="pretty-detail-item"><span>Loại điểm</span><strong>${escapeHtml(entry.score_type || "Không có")}</strong></div>
-      </div>
-      <div class="pretty-modal-actions">
-        <button class="primary-button" type="button" data-close-history-detail>Đóng</button>
-      </div>
-    </div>
-  `;
-
-  modal.addEventListener("click", (event) => {
-    if (event.target === modal || event.target.closest("[data-close-history-detail]")) {
-      modal.remove();
-    }
-  });
-
-  document.body.appendChild(modal);
-}
 function renderSavedHistory() {
   document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
   savedResults
@@ -1027,146 +399,7 @@ function renderSavedHistory() {
     .forEach((entry) => {
       historyList.prepend(createHistoryCard(entry));
     });
-  renderHistoryTable();
   updateHistoryEmptyState();
-}
-
-function renderHistoryTable() {
-  const tbody = document.getElementById('history-table-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-
-  // Use current filter from search box
-  const allFiltered = getFilteredHistoryEntries();
-  const total = allFiltered.length;
-  historyPageSize = parseInt(document.getElementById('history-page-size')?.value || historyPageSize, 10) || historyPageSize;
-  const totalPages = Math.max(1, Math.ceil(total / historyPageSize));
-  if (historyCurrentPage > totalPages) historyCurrentPage = totalPages;
-  if (historyCurrentPage < 1) historyCurrentPage = 1;
-
-  const start = (historyCurrentPage - 1) * historyPageSize;
-  const pageRows = allFiltered.slice(start, start + historyPageSize);
-
-  pageRows.forEach((entry, localIdx) => {
-    const idx = start + localIdx; // index in reversed array
-    const tr = document.createElement('tr');
-    tr.dataset.search = `${entry.disease || ''} ${entry.notes || ''} ${(entry.symptoms || []).join(' ')} ${entry.savedAt || ''}`.toLowerCase();
-
-    const tdDate = document.createElement('td');
-    tdDate.style.padding = '12px';
-    tdDate.textContent = entry.savedAt || '';
-
-    const tdTitle = document.createElement('td');
-    tdTitle.style.padding = '12px';
-    tdTitle.textContent = entry.disease || '';
-
-    const tdSymptoms = document.createElement('td');
-    tdSymptoms.style.padding = '12px';
-    tdSymptoms.textContent = (entry.symptoms || []).join(', ');
-
-    const tdNotes = document.createElement('td');
-    tdNotes.style.padding = '12px';
-    tdNotes.textContent = entry.notes || '';
-
-    const tdActions = document.createElement('td');
-    tdActions.style.padding = '12px';
-    tdActions.style.textAlign = 'center';
-    const viewBtn = document.createElement('button');
-    viewBtn.className = 'text-button';
-    viewBtn.type = 'button';
-    viewBtn.textContent = 'Xem';
-    viewBtn.addEventListener('click', () => {
-      showHistoryDetail(entry);
-    });
-    const delBtn = document.createElement('button');
-    delBtn.className = 'text-button';
-    delBtn.type = 'button';
-    delBtn.textContent = 'Xóa';
-    delBtn.addEventListener('click', () => {
-      if (confirm('Xác nhận xóa mục lịch sử này?')) {
-        // compute global index in savedResults (reversed earlier)
-        const globalIdx = savedResults.length - 1 - idx;
-        savedResults.splice(globalIdx, 1);
-        saveHistory();
-        renderSavedHistory();
-        renderRecentActivity();
-      }
-    });
-    tdActions.style.display = "flex";
-    tdActions.style.justifyContent = "center";
-    tdActions.style.gap = "10px";
-    tdActions.append(viewBtn, delBtn);
-
-    tr.append(tdDate, tdTitle, tdSymptoms, tdNotes, tdActions);
-    tbody.appendChild(tr);
-  });
-
-  // update pager UI
-  const pagerInfo = document.getElementById('history-pager-info');
-  const pagerPrev = document.getElementById('history-pager-prev');
-  const pagerNext = document.getElementById('history-pager-next');
-  if (pagerInfo) {
-    const from = total === 0 ? 0 : start + 1;
-    const to = Math.min(total, start + pageRows.length);
-    pagerInfo.textContent = `Hiển thị ${from}–${to} / ${total}`;
-  }
-  if (pagerPrev) pagerPrev.disabled = historyCurrentPage <= 1;
-  if (pagerNext) pagerNext.disabled = historyCurrentPage >= totalPages;
-
-  // set jump input value
-  const jumpInput = document.getElementById('history-jump-input');
-  if (jumpInput) jumpInput.value = historyCurrentPage;
-
-  // ensure pager controls wired once
-  attachHistoryPagerHandlers();
-}
-
-function attachHistoryPagerHandlers() {
-  const pagerPrev = document.getElementById('history-pager-prev');
-  const pagerNext = document.getElementById('history-pager-next');
-  const pageSizeSelect = document.getElementById('history-page-size');
-  if (pagerPrev && !pagerPrev._hasHandler) {
-    pagerPrev.addEventListener('click', () => { historyCurrentPage = Math.max(1, historyCurrentPage - 1); renderHistoryTable(); updateHistoryEmptyState(); });
-    pagerPrev._hasHandler = true;
-  }
-  if (pagerNext && !pagerNext._hasHandler) {
-    pagerNext.addEventListener('click', () => { historyCurrentPage = historyCurrentPage + 1; renderHistoryTable(); updateHistoryEmptyState(); });
-    pagerNext._hasHandler = true;
-  }
-  if (pageSizeSelect && !pageSizeSelect._hasHandler) {
-    pageSizeSelect.addEventListener('change', () => { historyPageSize = parseInt(pageSizeSelect.value, 10) || 10; historyCurrentPage = 1; renderHistoryTable(); updateHistoryEmptyState(); });
-    pageSizeSelect._hasHandler = true;
-  }
-  // Jump-to-page handlers
-  const jumpInputEl = document.getElementById('history-jump-input');
-  const jumpGo = document.getElementById('history-jump-go');
-  if (jumpGo && !jumpGo._hasHandler) {
-    jumpGo.addEventListener('click', () => {
-      const val = parseInt(jumpInputEl?.value, 10);
-      const total = getFilteredHistoryEntries().length;
-      const totalPages = Math.max(1, Math.ceil(total / historyPageSize));
-      const errorEl = document.getElementById('history-jump-error');
-      if (!Number.isFinite(val) || val < 1 || val > totalPages) {
-        if (errorEl) {
-          errorEl.textContent = `Nhập số trang hợp lệ: 1 - ${totalPages}`;
-          errorEl.style.display = 'inline';
-        } else {
-          alert(`Nhập số trang hợp lệ: 1 - ${totalPages}`);
-        }
-        if (jumpInputEl) jumpInputEl.focus();
-        return;
-      }
-      if (errorEl) { errorEl.textContent = ''; errorEl.style.display = 'none'; }
-      historyCurrentPage = val;
-      renderHistoryTable();
-      updateHistoryEmptyState();
-    });
-    jumpGo._hasHandler = true;
-  }
-  if (jumpInputEl && !jumpInputEl._hasHandler) {
-    jumpInputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('history-jump-go')?.click(); }});
-    jumpInputEl._hasHandler = true;
-  }
 }
 
 function updateHistoryEmptyState() {
@@ -1175,23 +408,17 @@ function updateHistoryEmptyState() {
     return;
   }
   const cards = historyList.querySelectorAll(".history-card");
-  const visibleCard = Array.from(cards).some((card) => !card.classList.contains("is-hidden"));
-  const visibleTableRows = document.querySelectorAll("#history-table-tbody tr:not(.is-hidden)");
-  const anyVisible = visibleCard || visibleTableRows.length > 0;
+  const anyVisible = Array.from(cards).some((card) => !card.classList.contains("is-hidden"));
   empty.classList.toggle("is-hidden", anyVisible);
   const title = empty.querySelector("h2");
   const desc = empty.querySelector("p");
   if (title && desc) {
-    if (cards.length === 0 && document.querySelectorAll('#history-table-tbody tr').length === 0) {
+    if (cards.length === 0) {
       title.textContent = "Chưa có lịch sử dự đoán";
       desc.textContent = "Các kết quả bạn lưu sẽ xuất hiện ở đây. Hãy thử tạo một dự đoán mới.";
-    } else if (!anyVisible) {
+    } else {
       title.textContent = "Không tìm thấy kết quả";
       desc.textContent = "Không có mục nào khớp với từ khóa tìm kiếm.";
-    } else {
-      // Có ít nhất một mục, giữ mặc định thông điệp
-      title.textContent = "Kết quả";
-      desc.textContent = "Hiển thị các mục lịch sử phù hợp.";
     }
   }
 }
@@ -1259,32 +486,9 @@ function setConfidenceLevel(level) {
     tag.textContent = labels[level] || "";
   }
 }
-function renderDangerWarning(dangerWarning) {
-  if (!dangerWarning || !dangerWarning.has_danger) {
-    return;
-  }
 
-  const warningContainer = document.getElementById("warning-text");
-
-  if (!warningContainer) {
-    return;
-  }
-
-  const keywords = dangerWarning.danger_keywords || [];
-
-  warningContainer.innerHTML = `
-    <div class="danger-banner">
-      <h3>🚨 CẢNH BÁO Y KHOA KHẨN CẤP</h3>
-      <p>${dangerWarning.warning_message}</p>
-      <div class="danger-keywords">
-        ${keywords.map(x => `<span>${x}</span>`).join("")}
-      </div>
-    </div>
-  `;
-}
 function renderPrediction(result) {
   const isRuleBased = result.score_type === "rule";
-  const isSymptomOverlap = result.score_type === "symptom_overlap";
   const confidence = result.confidence === null || result.confidence === undefined ? "0.0" : (result.confidence * 100).toFixed(1);
   const isUncertain = Boolean(result.needs_more_input);
   const matchedCount = (result.matched_symptoms_vi || result.matched_symptoms || []).length;
@@ -1292,11 +496,11 @@ function renderPrediction(result) {
   const scoreText = result.score_label || "Độ tin cậy";
 
   currentResult = result;
-  renderDangerWarning(result.danger_warning);
   renderCaseSummary(result);
   renderSuggestedSymptoms(result);
+  resetFeedbackBox(true); // US18: cho phép đánh giá khi đã có gợi ý
   if (scoreLabel) {
-    scoreLabel.textContent = isRuleBased ? "Cơ chế gợi ý" : (isSymptomOverlap ? "Điểm phù hợp" : scoreText);
+    scoreLabel.textContent = isRuleBased ? "Cơ chế gợi ý" : scoreText;
   }
   // P1: rule là heuristic, KHÔNG phải xác suất -> không hiển thị 100%, không thanh phần trăm.
   confidenceValue.textContent = isRuleBased ? "Quy tắc" : `${confidence}%`;
@@ -1313,6 +517,16 @@ function renderPrediction(result) {
     confidenceLevel = "high";
   }
   setConfidenceLevel(confidenceLevel);
+  // Vòng donut độ tin cậy (đồng bộ với mức màu qua data-level)
+  const donutArc = document.getElementById("confidence-donut-arc");
+  const donutVal = document.getElementById("confidence-donut-value");
+  if (donutArc) {
+    const C = 2 * Math.PI * 52;
+    const shown = isRuleBased ? 0 : Math.max(0, Math.min(100, confidencePct || 0));
+    donutArc.style.strokeDasharray = C.toFixed(1);
+    donutArc.style.strokeDashoffset = (C * (1 - shown / 100)).toFixed(1);
+  }
+  if (donutVal) donutVal.textContent = isRuleBased ? "Quy tắc" : `${confidence}%`;
   resultTitle.textContent = result.display_title || result.disease_vi || result.disease;
   resultSubtitle.textContent = `${matchedCount} triệu chứng đã map sang đặc trưng tiếng Anh`;
   if (unsupportedLabels.length > 0) {
@@ -1349,11 +563,9 @@ function renderPrediction(result) {
   topPredictionsTitle.textContent =
     result.score_type === "rule"
       ? "Kết quả theo rule triệu chứng"
-      : result.score_type === "symptom_overlap"
-        ? "Top nhóm theo triệu chứng khớp"
-        : result.score_type === "cosine_similarity"
-          ? "Độ tương đồng từ mô hình"
-          : "Xác suất từ mô hình";
+      : result.score_type === "cosine_similarity"
+        ? "Độ tương đồng từ mô hình"
+        : "Xác suất từ mô hình";
   topPredictions.innerHTML = "";
   if (result.score_type === "rule") {
     const li = document.createElement("li");
@@ -1369,10 +581,7 @@ function renderPrediction(result) {
 
     const name = document.createElement("span");
     name.className = "prediction-name";
-    const matchedText = (prediction.matched_symptoms_vi || []).length
-      ? ` · Khớp: ${(prediction.matched_symptoms_vi || []).slice(0, 3).join(", ")}`
-      : "";
-    name.textContent = `${prediction.disease_vi || prediction.disease}${matchedText}`;
+    name.textContent = prediction.disease_vi || prediction.disease;
 
     const value = document.createElement("span");
     value.className = "prediction-value";
@@ -1398,6 +607,7 @@ function renderInsufficientInput(result) {
   currentResult = null;
   renderCaseSummary(result);
   renderSuggestedSymptoms(result);
+  resetFeedbackBox(false); // US18: chưa đủ dữ liệu thì không có gì để đánh giá
   if (scoreLabel) {
     scoreLabel.textContent = "Trạng thái";
   }
@@ -1463,6 +673,600 @@ async function loadSymptoms() {
   }
 }
 
+// ── US19: DASHBOARD ADMIN ────────────────────────────────────────────────────
+const dashboardMessage = document.getElementById("dashboard-message");
+const dashboardFrom = document.getElementById("dashboard-from");
+const dashboardTo = document.getElementById("dashboard-to");
+const dashboardRefresh = document.getElementById("dashboard-refresh");
+let dashboardLoading = false;
+
+function setDashboardMessage(message, isError = false) {
+  if (!dashboardMessage) return;
+  dashboardMessage.textContent = message || "";
+  dashboardMessage.classList.toggle("is-error", isError);
+}
+
+// SCRUM-80: biểu đồ vẽ bằng Chart.js (vendor cục bộ frontend/vendor/chart.umd.min.js).
+let barsChart = null;
+let donutChart = null;
+
+function cssVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+// Plugin nhỏ: vẽ % Đồng ý ở tâm donut.
+const donutCenterText = {
+  id: "donutCenterText",
+  afterDraw(chart) {
+    const txt = chart.config.options.plugins?.centerText?.text;
+    if (!txt) return;
+    const { ctx, chartArea } = chart;
+    const x = (chartArea.left + chartArea.right) / 2;
+    const y = (chartArea.top + chartArea.bottom) / 2;
+    ctx.save();
+    ctx.font = "700 26px Inter, sans-serif";
+    ctx.fillStyle = cssVar("--text", "#0e1b2b");
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(txt, x, y);
+    ctx.restore();
+  },
+};
+
+function renderDashboard(stats) {
+  document.getElementById("stat-total-predictions").textContent = (stats.total_predictions || 0).toLocaleString("vi-VN");
+  document.getElementById("stat-agree-rate").textContent =
+    stats.agree_rate === null || stats.agree_rate === undefined ? "—" : `${stats.agree_rate}%`;
+  document.getElementById("stat-feedback-total").textContent = (stats.feedback_total || 0).toLocaleString("vi-VN");
+
+  // Biểu đồ cột: ca dự đoán theo ngày (Chart.js).
+  const series = stats.predictions_over_time || [];
+  document.getElementById("dashboard-bars-empty").classList.toggle("is-hidden", series.length > 0);
+  const barsCanvas = document.getElementById("dashboard-bars-canvas");
+  if (barsChart) barsChart.destroy();
+  barsChart = new Chart(barsCanvas, {
+    type: "bar",
+    data: {
+      labels: series.map((p) => (p.date || "").slice(5)),
+      datasets: [{
+        label: "Số ca",
+        data: series.map((p) => p.count || 0),
+        backgroundColor: cssVar("--primary", "#0b5fb5"),
+        borderRadius: 6,
+        maxBarThickness: 48,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+    },
+  });
+
+  // Donut: Đồng ý vs Không đồng ý (Chart.js doughnut).
+  const agree = stats.agree_count || 0;
+  const disagree = stats.disagree_count || 0;
+  const total = agree + disagree;
+  const agreePct = total ? Math.round((agree / total) * 100) : 0;
+  document.getElementById("dashboard-donut-empty").classList.toggle("is-hidden", total > 0);
+  const donutCanvas = document.getElementById("dashboard-donut-canvas");
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(donutCanvas, {
+    type: "doughnut",
+    data: {
+      labels: ["Đồng ý", "Không đồng ý"],
+      datasets: [{
+        data: total ? [agree, disagree] : [0, 0],
+        backgroundColor: [cssVar("--success", "#16a34a"), cssVar("--danger", "#dc2626")],
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "62%",
+      plugins: {
+        legend: { position: "bottom" },
+        centerText: { text: total ? `${agreePct}%` : "" },
+      },
+    },
+    plugins: [donutCenterText],
+  });
+
+  // Top nhóm thuốc.
+  const topGroups = document.getElementById("dashboard-top-groups");
+  topGroups.innerHTML = "";
+  const groups = stats.top_groups || [];
+  if (groups.length === 0) {
+    const li = document.createElement("li");
+    li.className = "muted-text";
+    li.textContent = "Chưa có dữ liệu.";
+    topGroups.appendChild(li);
+  } else {
+    const maxGroup = groups.reduce((m, g) => Math.max(m, g.count || 0), 0) || 1;
+    groups.forEach((g) => {
+      const li = document.createElement("li");
+      li.className = "prediction-row";
+      const name = document.createElement("span");
+      name.className = "prediction-name";
+      name.textContent = g.group;
+      const value = document.createElement("span");
+      value.className = "prediction-value";
+      value.textContent = g.count;
+      const track = document.createElement("span");
+      track.className = "prediction-track";
+      const fill = document.createElement("span");
+      fill.className = "prediction-fill";
+      fill.style.width = `${Math.round(((g.count || 0) / maxGroup) * 100)}%`;
+      track.appendChild(fill);
+      li.append(name, value, track);
+      topGroups.appendChild(li);
+    });
+  }
+}
+
+async function loadDashboard() {
+  if (!isAdminUser() || dashboardLoading) return;
+  dashboardLoading = true;
+  setDashboardMessage("Đang tải số liệu thống kê...");
+  const params = new URLSearchParams();
+  if (dashboardFrom?.value) params.set("from", dashboardFrom.value);
+  if (dashboardTo?.value) params.set("to", dashboardTo.value);
+  const query = params.toString();
+  try {
+    const response = await fetch(`/api/admin/stats${query ? `?${query}` : ""}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Không tải được số liệu thống kê.");
+    }
+    renderDashboard(data);
+    setDashboardMessage(data.total_predictions === 0 ? "Chưa có ca dự đoán nào được ghi nhận." : "");
+    await loadFeedbackStats(query);
+    await loadGroupStats(query);
+  } catch (error) {
+    setDashboardMessage(formatError(error), true);
+  } finally {
+    dashboardLoading = false;
+  }
+}
+
+// US22: tải + render thống kê lý do "Không đồng ý".
+let rejectBarsChart = null;
+
+function fillTopList(elId, items, labelKey, fallback) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.innerHTML = "";
+  if (!items || items.length === 0) {
+    const li = document.createElement("li");
+    li.className = "muted-text";
+    li.textContent = fallback;
+    el.appendChild(li);
+    return;
+  }
+  const max = items.reduce((m, it) => Math.max(m, it.count || 0), 0) || 1;
+  items.forEach((it) => {
+    const li = document.createElement("li");
+    li.className = "prediction-row";
+    const name = document.createElement("span");
+    name.className = "prediction-name";
+    name.textContent = it[labelKey];
+    const value = document.createElement("span");
+    value.className = "prediction-value";
+    value.textContent = it.count;
+    const track = document.createElement("span");
+    track.className = "prediction-track";
+    const fill = document.createElement("span");
+    fill.className = "prediction-fill";
+    fill.style.width = `${Math.round(((it.count || 0) / max) * 100)}%`;
+    track.appendChild(fill);
+    li.append(name, value, track);
+    el.appendChild(li);
+  });
+}
+
+function renderFeedbackStats(stats) {
+  const pill = document.getElementById("reject-total-pill");
+  if (pill) pill.textContent = `${(stats.reject_total || 0).toLocaleString("vi-VN")} lượt không đồng ý`;
+
+  const series = stats.reject_over_time || [];
+  document.getElementById("reject-bars-empty").classList.toggle("is-hidden", series.length > 0);
+  const canvas = document.getElementById("reject-bars-canvas");
+  if (rejectBarsChart) rejectBarsChart.destroy();
+  rejectBarsChart = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: series.map((p) => (p.date || "").slice(5)),
+      datasets: [{
+        label: "Không đồng ý",
+        data: series.map((p) => p.count || 0),
+        backgroundColor: cssVar("--danger", "#dc2626"),
+        borderRadius: 6,
+        maxBarThickness: 48,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+    },
+  });
+
+  fillTopList("reject-keywords", stats.top_keywords, "keyword", "Chưa có ghi chú lý do.");
+  fillTopList("reject-by-group", stats.reject_by_group, "group", "Chưa có dữ liệu.");
+}
+
+async function loadFeedbackStats(query) {
+  try {
+    const response = await fetch(`/api/admin/feedback-stats${query ? `?${query}` : ""}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Không tải được thống kê phản hồi.");
+    renderFeedbackStats(data);
+  } catch (error) {
+    setDashboardMessage(formatError(error), true);
+  }
+}
+
+// US23: Top nhóm thuốc được dự đoán nhiều nhất (biểu đồ ngang + xếp hạng %).
+let groupBarsChart = null;
+
+function renderGroupStats(stats) {
+  const groups = stats.groups || [];
+  const pill = document.getElementById("group-stats-pill");
+  if (pill) pill.textContent = `${stats.distinct_groups || 0} nhóm`;
+
+  document.getElementById("group-bars-empty").classList.toggle("is-hidden", groups.length > 0);
+  const canvas = document.getElementById("group-bars-canvas");
+  if (groupBarsChart) groupBarsChart.destroy();
+  groupBarsChart = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: groups.map((g) => g.group),
+      datasets: [{
+        label: "Số ca dự đoán",
+        data: groups.map((g) => g.count || 0),
+        backgroundColor: cssVar("--primary", "#0b5fb5"),
+        borderRadius: 6,
+      }],
+    },
+    options: {
+      indexAxis: "y", // biểu đồ thanh NGANG cho dễ đọc tên nhóm
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+    },
+  });
+
+  // Xếp hạng: tên nhóm + count (percent%)
+  const rank = document.getElementById("group-rank");
+  rank.innerHTML = "";
+  if (groups.length === 0) {
+    const li = document.createElement("li");
+    li.className = "muted-text";
+    li.textContent = "Chưa có dữ liệu.";
+    rank.appendChild(li);
+    return;
+  }
+  const max = groups.reduce((m, g) => Math.max(m, g.count || 0), 0) || 1;
+  groups.forEach((g, i) => {
+    const li = document.createElement("li");
+    li.className = "prediction-row";
+    const name = document.createElement("span");
+    name.className = "prediction-name";
+    name.textContent = `${i + 1}. ${g.group}`;
+    const value = document.createElement("span");
+    value.className = "prediction-value";
+    value.textContent = `${g.count} (${g.percent}%)`;
+    const track = document.createElement("span");
+    track.className = "prediction-track";
+    const fill = document.createElement("span");
+    fill.className = "prediction-fill";
+    fill.style.width = `${Math.round(((g.count || 0) / max) * 100)}%`;
+    track.appendChild(fill);
+    li.append(name, value, track);
+    rank.appendChild(li);
+  });
+}
+
+async function loadGroupStats(query) {
+  try {
+    const response = await fetch(`/api/admin/group-stats${query ? `?${query}&limit=10` : "?limit=10"}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Không tải được thống kê nhóm thuốc.");
+    renderGroupStats(data);
+  } catch (error) {
+    setDashboardMessage(formatError(error), true);
+  }
+}
+
+// ── US27: Từ điển triệu chứng — tìm kiếm nhanh + phân trang ───────────────────
+const dictionarySearch = document.getElementById("dictionary-search");
+const dictionaryRows = document.getElementById("dictionary-rows");
+const dictionaryEmpty = document.getElementById("dictionary-empty");
+const dictionaryTotal = document.getElementById("dictionary-total");
+const dictionaryMessage = document.getElementById("dictionary-message");
+const dictPageInfo = document.getElementById("dict-page-info");
+const dictPrev = document.getElementById("dict-prev");
+const dictNext = document.getElementById("dict-next");
+const DICT_PER_PAGE = 10;
+let dictPage = 1;
+let dictTotalPages = 0;
+let dictDebounce = null;
+
+function renderDictionary(data) {
+  const items = data.trieu_chung || [];
+  dictTotalPages = data.total_pages || 0;
+  dictPage = data.page || 1;
+  if (dictionaryTotal) dictionaryTotal.textContent = `${(data.total || 0).toLocaleString("vi-VN")} triệu chứng`;
+  dictionaryEmpty.classList.toggle("is-hidden", items.length > 0);
+  dictionaryRows.innerHTML = "";
+  const startIdx = (dictPage - 1) * DICT_PER_PAGE;
+  items.forEach((it, i) => {
+    const tr = document.createElement("tr");
+    tr.className = "dict-row-clickable";
+    tr.title = "Bấm để xem nhóm thuốc liên quan";
+    const td0 = document.createElement("td");
+    td0.textContent = startIdx + i + 1;
+    const td1 = document.createElement("td");
+    td1.textContent = it.ten;
+    const td2 = document.createElement("td");
+    td2.className = "muted-text";
+    td2.textContent = it.tu_khoa || "—";
+    const td3 = document.createElement("td");
+    td3.className = "admin-row-actions";
+    const eBtn = document.createElement("button");
+    eBtn.className = "text-button";
+    eBtn.type = "button";
+    eBtn.textContent = "Sửa";
+    eBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      document.getElementById("tc-edit-ma").value = it.ma;
+      document.getElementById("tc-ten").value = it.ten;
+      document.getElementById("tc-tu-khoa").value = it.tu_khoa || "";
+      document.getElementById("tc-submit").textContent = "Lưu sửa";
+      document.getElementById("tc-cancel").hidden = false;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    const dBtn = document.createElement("button");
+    dBtn.className = "text-button danger";
+    dBtn.type = "button";
+    dBtn.textContent = "Xóa";
+    dBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      if (!confirm(`Xóa triệu chứng "${it.ten}"?`)) return;
+      const r = await fetch(`/api/admin/db/trieu-chung/${it.ma}`, { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+      if (r.ok) loadDictionary(dictPage);
+    });
+    td3.append(eBtn, dBtn);
+    tr.append(td0, td1, td2, td3);
+    tr.addEventListener("click", () => openMappingModal(it.ma, it.ten)); // US28
+    dictionaryRows.appendChild(tr);
+  });
+  if (dictPageInfo) dictPageInfo.textContent = dictTotalPages ? `Trang ${dictPage} / ${dictTotalPages}` : "Trang 0";
+  if (dictPrev) dictPrev.disabled = dictPage <= 1;
+  if (dictNext) dictNext.disabled = dictPage >= dictTotalPages;
+}
+
+async function loadDictionary(page) {
+  if (!isAdminUser()) return;
+  dictPage = page || 1;
+  const q = dictionarySearch ? dictionarySearch.value.trim() : "";
+  if (dictionaryMessage) dictionaryMessage.textContent = "Đang tìm...";
+  const params = new URLSearchParams({ page: String(dictPage), per_page: String(DICT_PER_PAGE) });
+  if (q) params.set("q", q);
+  try {
+    const response = await fetch(`/api/admin/db/trieu-chung?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Không tìm được triệu chứng.");
+    renderDictionary(data);
+    if (dictionaryMessage) dictionaryMessage.textContent = "";
+  } catch (error) {
+    if (dictionaryMessage) {
+      dictionaryMessage.textContent = formatError(error);
+      dictionaryMessage.classList.add("is-error");
+    }
+  }
+}
+
+if (dictionarySearch) {
+  // Tìm THỜI GIAN THỰC (debounce 250ms), reset về trang 1 khi gõ.
+  dictionarySearch.addEventListener("input", () => {
+    clearTimeout(dictDebounce);
+    dictDebounce = setTimeout(() => loadDictionary(1), 250);
+  });
+}
+if (dictPrev) dictPrev.addEventListener("click", () => { if (dictPage > 1) loadDictionary(dictPage - 1); });
+if (dictNext) dictNext.addEventListener("click", () => { if (dictPage < dictTotalPages) loadDictionary(dictPage + 1); });
+
+// PORT: thêm/sửa triệu chứng trong từ điển
+const tcForm = document.getElementById("tc-form");
+const tcMessage = document.getElementById("tc-message");
+const tcEditMa = document.getElementById("tc-edit-ma");
+const tcSubmit = document.getElementById("tc-submit");
+const tcCancel = document.getElementById("tc-cancel");
+function resetTcForm() {
+  if (tcForm) tcForm.reset();
+  if (tcEditMa) tcEditMa.value = "";
+  if (tcSubmit) tcSubmit.textContent = "Thêm triệu chứng";
+  if (tcCancel) tcCancel.hidden = true;
+}
+if (tcForm) {
+  tcForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const ma = tcEditMa.value;
+    const body = JSON.stringify({ ten: document.getElementById("tc-ten").value, tu_khoa: document.getElementById("tc-tu-khoa").value });
+    const url = ma ? `/api/admin/db/trieu-chung/${ma}` : "/api/admin/db/trieu-chung";
+    tcMessage.classList.remove("is-error");
+    try {
+      const r = await fetch(url, { method: ma ? "PUT" : "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` }, body });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Không lưu được.");
+      resetTcForm();
+      tcMessage.textContent = ma ? "Đã cập nhật triệu chứng." : "Đã thêm triệu chứng.";
+      loadDictionary(ma ? dictPage : 1);
+    } catch (error) {
+      tcMessage.textContent = formatError(error);
+      tcMessage.classList.add("is-error");
+    }
+  });
+}
+if (tcCancel) tcCancel.addEventListener("click", resetTcForm);
+
+// ── US28: Modal ánh xạ chi tiết triệu chứng ↔ nhóm thuốc ─────────────────────
+const mappingModal = document.getElementById("mapping-modal");
+const mappingModalTitle = document.getElementById("mapping-modal-title");
+const mappingModalSub = document.getElementById("mapping-modal-sub");
+const mappingModalMessage = document.getElementById("mapping-modal-message");
+const mappingModalGroups = document.getElementById("mapping-modal-groups");
+const mappingModalClose = document.getElementById("mapping-modal-close");
+
+function closeMappingModal() {
+  if (mappingModal) mappingModal.classList.add("is-hidden");
+}
+
+async function openMappingModal(ma, ten) {
+  if (!mappingModal) return;
+  mappingModalTitle.textContent = ten || "Chi tiết triệu chứng";
+  mappingModalGroups.innerHTML = "";
+  mappingModalMessage.textContent = "Đang tải ánh xạ...";
+  mappingModalMessage.classList.remove("is-error");
+  mappingModal.classList.remove("is-hidden");
+  try {
+    const response = await fetch(`/api/admin/symptom-mapping?ma=${encodeURIComponent(ma)}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Không tải được ánh xạ.");
+    const groups = data.groups || [];
+    mappingModalSub.textContent =
+      `${data.distinct_groups || 0} nhóm thuốc liên quan · ${(data.total_cases || 0).toLocaleString("vi-VN")} ca trong dữ liệu huấn luyện.`;
+    mappingModalMessage.textContent = groups.length ? "" : "Triệu chứng này chưa có ánh xạ nhóm thuốc trong dữ liệu.";
+    const max = groups.reduce((m, g) => Math.max(m, g.count || 0), 0) || 1;
+    groups.forEach((g, i) => {
+      const li = document.createElement("li");
+      li.className = "prediction-row";
+      const name = document.createElement("span");
+      name.className = "prediction-name";
+      name.textContent = `${i + 1}. ${g.group}`;
+      const value = document.createElement("span");
+      value.className = "prediction-value";
+      value.textContent = `${g.count.toLocaleString("vi-VN")} (${g.percent}%)`;
+      const track = document.createElement("span");
+      track.className = "prediction-track";
+      const fill = document.createElement("span");
+      fill.className = "prediction-fill";
+      fill.style.width = `${Math.round(((g.count || 0) / max) * 100)}%`;
+      track.appendChild(fill);
+      li.append(name, value, track);
+      mappingModalGroups.appendChild(li);
+    });
+  } catch (error) {
+    mappingModalMessage.textContent = formatError(error);
+    mappingModalMessage.classList.add("is-error");
+  }
+}
+
+if (mappingModalClose) mappingModalClose.addEventListener("click", closeMappingModal);
+if (mappingModal) {
+  mappingModal.addEventListener("click", (e) => {
+    if (e.target === mappingModal) closeMappingModal(); // bấm nền ngoài -> đóng
+  });
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeMappingModal();
+});
+
+if (dashboardRefresh) {
+  dashboardRefresh.addEventListener("click", () => {
+    dashboardLoading = false;
+    loadDashboard();
+  });
+}
+
+// ── US18: phản hồi Đồng ý / Không đồng ý ─────────────────────────────────────
+const feedbackBox = document.getElementById("feedback-box");
+const feedbackApprove = document.getElementById("feedback-approve");
+const feedbackReject = document.getElementById("feedback-reject");
+const feedbackThanks = document.getElementById("feedback-thanks");
+const feedbackReason = document.getElementById("feedback-reason");
+const feedbackReasonText = document.getElementById("feedback-reason-text");
+const feedbackReasonSubmit = document.getElementById("feedback-reason-submit");
+const feedbackReasonCancel = document.getElementById("feedback-reason-cancel");
+
+function resetFeedbackBox(show) {
+  if (!feedbackBox) return;
+  feedbackBox.classList.toggle("is-hidden", !show);
+  if (feedbackThanks) feedbackThanks.classList.add("is-hidden");
+  if (feedbackReason) feedbackReason.classList.add("is-hidden");
+  if (feedbackReasonText) feedbackReasonText.value = "";
+  [feedbackApprove, feedbackReject].forEach((b) => {
+    if (b) {
+      b.disabled = false;
+      b.classList.remove("is-chosen");
+    }
+  });
+}
+
+async function sendFeedback(verdict, note, button) {
+  const group = currentResult?.case_summary?.drug_group || null;
+  [feedbackApprove, feedbackReject].forEach((b) => b && (b.disabled = true));
+  if (button) button.classList.add("is-chosen");
+  try {
+    const response = await fetch("/api/feedback", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify({ verdict, predicted_group: group, note: note || "" }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Không gửi được phản hồi.");
+    }
+    if (feedbackReason) feedbackReason.classList.add("is-hidden");
+    if (feedbackThanks) feedbackThanks.classList.remove("is-hidden");
+  } catch (error) {
+    setMessage(formatError(error), true);
+    [feedbackApprove, feedbackReject].forEach((b) => b && (b.disabled = false));
+    if (button) button.classList.remove("is-chosen");
+  }
+}
+
+// Đồng ý: gửi ngay. Không đồng ý (US22): mở ô nhập LÝ DO trước khi gửi.
+if (feedbackApprove) feedbackApprove.addEventListener("click", () => sendFeedback("APPROVE", "", feedbackApprove));
+if (feedbackReject) {
+  feedbackReject.addEventListener("click", () => {
+    feedbackReject.classList.add("is-chosen");
+    if (feedbackReason) feedbackReason.classList.remove("is-hidden");
+    if (feedbackReasonText) feedbackReasonText.focus();
+  });
+}
+if (feedbackReasonSubmit) {
+  feedbackReasonSubmit.addEventListener("click", () =>
+    sendFeedback("REJECT", feedbackReasonText ? feedbackReasonText.value.trim() : "", feedbackReject)
+  );
+}
+if (feedbackReasonCancel) {
+  feedbackReasonCancel.addEventListener("click", () => {
+    if (feedbackReason) feedbackReason.classList.add("is-hidden");
+    if (feedbackReject) feedbackReject.classList.remove("is-chosen");
+    [feedbackApprove, feedbackReject].forEach((b) => b && (b.disabled = false));
+  });
+}
+
 authSwitchButtons.forEach((button) => {
   button.addEventListener("click", () => {
     showAuthView(button.dataset.authTarget);
@@ -1471,20 +1275,14 @@ authSwitchButtons.forEach((button) => {
 
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  setAuthMessage(loginMessage, "Đang xác thực với máy chủ...");
-  
-  const inputEmail = document.getElementById("login-email").value;
-  const inputPassword = document.getElementById("login-password").value;
-
+  setAuthMessage(loginMessage, "Đang đăng nhập...");
   try {
-    const data = await authRequest("/api/login", {
-      email: inputEmail,
-      password: inputPassword,
+    const data = await authRequest("/api/auth/login", {
+      email: document.getElementById("login-email").value,
+      password: document.getElementById("login-password").value,
     });
-    
     setAuthMessage(loginMessage, "");
     handleAuthSuccess(data);
-    
   } catch (error) {
     setAuthMessage(loginMessage, formatError(error), true);
   }
@@ -1546,36 +1344,87 @@ resetForm.addEventListener("submit", async (event) => {
 async function logoutCurrentUser() {
   if (authToken) {
     try {
-      await authRequest("/api/logout", {});
-    } catch (e) {
-      console.log("Backend không phản hồi, tiến hành đăng xuất local:", e);
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+    } catch {
+      // Local logout still clears the browser session if the API is unavailable.
     }
   }
 
   authToken = "";
   currentUser = null;
   savedResults = [];
-  localStorage.removeItem(AUTH_TOKEN_KEY); 
-  localStorage.removeItem(AUTH_USER_KEY);     
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_USER_KEY);
   document.querySelectorAll(".user-history-card").forEach((card) => card.remove());
-  showAuthScreen("login"); 
-  showToast?.("Bạn đã đăng xuất an toàn khỏi hệ thống.", "success");
+  showAuthScreen("login");
 }
 
 logoutButton.addEventListener("click", logoutCurrentUser);
-if (profileLogoutButton) profileLogoutButton.addEventListener("click", logoutCurrentUser);
+profileLogoutButton.addEventListener("click", logoutCurrentUser);
+
+// ── Hồ sơ: cập nhật họ tên (gọi /api/auth/profile) ──────────────────────────
+const profileInfoForm = document.getElementById("profile-info-form");
+if (profileInfoForm) {
+  profileInfoForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const msg = document.getElementById("profile-info-message");
+    const name = document.getElementById("profile-name-input").value.trim();
+    if (msg) { msg.textContent = ""; msg.classList.remove("is-error"); }
+    try {
+      const res = await fetch("/api/auth/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không cập nhật được hồ sơ.");
+      currentUser = data.user;
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(currentUser));
+      updateUserUi();
+      if (msg) { msg.textContent = "Đã lưu thay đổi."; }
+    } catch (error) {
+      if (msg) { msg.textContent = formatError(error); msg.classList.add("is-error"); }
+    }
+  });
+}
+
+// ── Hồ sơ: đổi mật khẩu (gọi /api/auth/change-password) ─────────────────────
+const profilePwForm = document.getElementById("profile-password-form");
+if (profilePwForm) {
+  profilePwForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const msg = document.getElementById("profile-pw-message");
+    const cur = document.getElementById("profile-current-pw").value;
+    const np = document.getElementById("profile-new-pw").value;
+    const cp = document.getElementById("profile-confirm-pw").value;
+    if (msg) { msg.textContent = ""; msg.classList.remove("is-error"); }
+    if (np !== cp) {
+      if (msg) { msg.textContent = "Mật khẩu nhập lại không khớp."; msg.classList.add("is-error"); }
+      return;
+    }
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ current_password: cur, new_password: np }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không đổi được mật khẩu.");
+      if (data.token) { authToken = data.token; localStorage.setItem(AUTH_TOKEN_KEY, authToken); }
+      if (data.user) { currentUser = data.user; localStorage.setItem(AUTH_USER_KEY, JSON.stringify(currentUser)); }
+      profilePwForm.reset();
+      if (msg) { msg.textContent = "Đổi mật khẩu thành công."; }
+    } catch (error) {
+      if (msg) { msg.textContent = formatError(error); msg.classList.add("is-error"); }
+    }
+  });
+}
 
 navButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-      showPage(button.dataset.page);
-      // Tự động load dữ liệu hồ sơ khi bấm vào tab "Hồ sơ"
-      if (button.dataset.page === "about") {
-          loadProfileData();
-      }
-            if (button.dataset.page === "admin-feedback") {
-          loadRejectedFeedbacks();
-      }
-  });
+  button.addEventListener("click", () => showPage(button.dataset.page));
 });
 
 textarea.addEventListener("input", updateCharCount);
@@ -1598,6 +1447,288 @@ exampleButton.addEventListener("click", () => {
   textarea.focus();
 });
 
+// ── PORT: Quản lý thuốc (CRUD nhóm thuốc + thuốc) ────────────────────────────
+const dgForm = document.getElementById("dg-form");
+const dgList = document.getElementById("dg-list");
+const dgCount = document.getElementById("dg-count");
+const dgMessage = document.getElementById("dg-message");
+const dgEditMa = document.getElementById("dg-edit-ma");
+const dgSubmit = document.getElementById("dg-submit");
+const dgCancel = document.getElementById("dg-cancel");
+const thForm = document.getElementById("th-form");
+const thList = document.getElementById("th-list");
+const thCount = document.getElementById("th-count");
+const thMessage = document.getElementById("th-message");
+const thNhom = document.getElementById("th-nhom");
+const thSearch = document.getElementById("th-search");
+const thPageInfo = document.getElementById("th-page-info");
+const thPrev = document.getElementById("th-prev");
+const thNext = document.getElementById("th-next");
+const TH_PER_PAGE = 10;
+let thPage = 1, thTotalPages = 0, thDebounce = null;
+
+function adminHeaders(json) {
+  return { ...(json ? { "Content-Type": "application/json" } : {}), Authorization: `Bearer ${authToken}` };
+}
+
+function adminRow(text, sub, onEdit, onDelete) {
+  const li = document.createElement("li");
+  li.className = "admin-list-item";
+  const info = document.createElement("div");
+  const t = document.createElement("strong");
+  t.textContent = text;
+  info.appendChild(t);
+  if (sub) {
+    const s = document.createElement("span");
+    s.className = "muted-text";
+    s.textContent = sub;
+    info.appendChild(s);
+  }
+  const actions = document.createElement("div");
+  actions.className = "admin-row-actions";
+  if (onEdit) {
+    const e = document.createElement("button");
+    e.className = "text-button";
+    e.type = "button";
+    e.textContent = "Sửa";
+    e.addEventListener("click", onEdit);
+    actions.appendChild(e);
+  }
+  const d = document.createElement("button");
+  d.className = "text-button danger";
+  d.type = "button";
+  d.textContent = "Xóa";
+  d.addEventListener("click", onDelete);
+  actions.appendChild(d);
+  li.append(info, actions);
+  return li;
+}
+
+async function loadDrugGroups() {
+  const r = await fetch("/api/admin/db/nhom-thuoc", { headers: adminHeaders() });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || "Không tải được nhóm thuốc.");
+  const groups = data.nhom_thuoc || [];
+  if (dgCount) dgCount.textContent = String(groups.length);
+  dgList.innerHTML = "";
+  // select gắn nhóm cho thuốc
+  if (thNhom) {
+    thNhom.innerHTML = '<option value="">— Gắn vào nhóm (tùy chọn) —</option>';
+    groups.forEach((g) => {
+      const o = document.createElement("option");
+      o.value = String(g.ma); o.textContent = g.ten;
+      thNhom.appendChild(o);
+    });
+  }
+  groups.forEach((g) => {
+    dgList.appendChild(adminRow(
+      g.ten, `${g.so_thuoc} thuốc${g.mo_ta ? " · " + g.mo_ta : ""}`,
+      () => { dgEditMa.value = g.ma; document.getElementById("dg-ten").value = g.ten; document.getElementById("dg-mo-ta").value = g.mo_ta || ""; dgSubmit.textContent = "Lưu sửa"; dgCancel.hidden = false; },
+      async () => {
+        if (!confirm(`Xóa nhóm "${g.ten}"? Các liên kết thuốc cũng bị gỡ.`)) return;
+        const dr = await fetch(`/api/admin/db/nhom-thuoc/${g.ma}`, { method: "DELETE", headers: adminHeaders() });
+        if (dr.ok) loadDrugAdmin(); else dgMessage.textContent = (await dr.json()).error || "Không xóa được.";
+      }));
+  });
+}
+
+async function loadDrugs(page) {
+  thPage = page || 1;
+  const q = thSearch ? thSearch.value.trim() : "";
+  const params = new URLSearchParams({ page: String(thPage), per_page: String(TH_PER_PAGE) });
+  if (q) params.set("q", q);
+  const r = await fetch(`/api/admin/db/thuoc?${params}`, { headers: adminHeaders() });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || "Không tải được thuốc.");
+  thTotalPages = data.total_pages || 0;
+  if (thCount) thCount.textContent = (data.total || 0).toLocaleString("vi-VN");
+  thList.innerHTML = "";
+  (data.thuoc || []).forEach((t) => {
+    const sub = [t.hoat_chat, (t.nhom || []).join(", ")].filter(Boolean).join(" · ");
+    thList.appendChild(adminRow(t.ten, sub, null, async () => {
+      if (!confirm(`Xóa thuốc "${t.ten}"?`)) return;
+      const dr = await fetch(`/api/admin/db/thuoc/${t.ma}`, { method: "DELETE", headers: adminHeaders() });
+      if (dr.ok) loadDrugs(thPage); else thMessage.textContent = (await dr.json()).error || "Không xóa được.";
+    }));
+  });
+  if (thPageInfo) thPageInfo.textContent = thTotalPages ? `Trang ${thPage} / ${thTotalPages}` : "Trang 0";
+  if (thPrev) thPrev.disabled = thPage <= 1;
+  if (thNext) thNext.disabled = thPage >= thTotalPages;
+}
+
+async function loadDrugAdmin() {
+  if (!isAdminUser()) return;
+  try {
+    await loadDrugGroups();
+    await loadDrugs(1);
+  } catch (error) {
+    if (dgMessage) dgMessage.textContent = formatError(error);
+  }
+}
+
+if (dgForm) {
+  dgForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const ma = dgEditMa.value;
+    const body = JSON.stringify({ ten: document.getElementById("dg-ten").value, mo_ta: document.getElementById("dg-mo-ta").value });
+    const url = ma ? `/api/admin/db/nhom-thuoc/${ma}` : "/api/admin/db/nhom-thuoc";
+    try {
+      const r = await fetch(url, { method: ma ? "PUT" : "POST", headers: adminHeaders(true), body });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Không lưu được.");
+      dgForm.reset(); dgEditMa.value = ""; dgSubmit.textContent = "Thêm nhóm"; dgCancel.hidden = true;
+      dgMessage.textContent = ma ? "Đã cập nhật nhóm." : "Đã thêm nhóm.";
+      loadDrugAdmin();
+    } catch (error) { dgMessage.textContent = formatError(error); }
+  });
+}
+if (dgCancel) dgCancel.addEventListener("click", () => { dgForm.reset(); dgEditMa.value = ""; dgSubmit.textContent = "Thêm nhóm"; dgCancel.hidden = true; });
+
+if (thForm) {
+  thForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const body = JSON.stringify({
+      ten: document.getElementById("th-ten").value,
+      hoat_chat: document.getElementById("th-hoat-chat").value,
+      ma_nhom_thuoc: thNhom.value || null,
+    });
+    try {
+      const r = await fetch("/api/admin/db/thuoc", { method: "POST", headers: adminHeaders(true), body });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Không thêm được.");
+      thForm.reset();
+      thMessage.textContent = "Đã thêm thuốc.";
+      loadDrugGroups();
+      loadDrugs(1);
+    } catch (error) { thMessage.textContent = formatError(error); }
+  });
+}
+if (thSearch) thSearch.addEventListener("input", () => { clearTimeout(thDebounce); thDebounce = setTimeout(() => loadDrugs(1), 250); });
+if (thPrev) thPrev.addEventListener("click", () => { if (thPage > 1) loadDrugs(thPage - 1); });
+if (thNext) thNext.addEventListener("click", () => { if (thPage < thTotalPages) loadDrugs(thPage + 1); });
+
+// PORT: bulk import CSV
+async function bulkUpload(fileInputId, url, msgEl, onDone) {
+  const f = document.getElementById(fileInputId).files[0];
+  if (!f) { msgEl.textContent = "Chưa chọn file."; msgEl.classList.add("is-error"); return; }
+  msgEl.classList.remove("is-error");
+  msgEl.textContent = "Đang tải lên...";
+  const fd = new FormData();
+  fd.append("file", f);
+  try {
+    const r = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${authToken}` }, body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Import lỗi.");
+    let txt = `Đã thêm ${data.inserted}`;
+    if (typeof data.skipped === "number") txt += `, bỏ qua ${data.skipped} (trùng)`;
+    if (data.errors && data.errors.length) txt += `. ${data.errors.length} cảnh báo: ${data.errors[0]}`;
+    msgEl.textContent = txt;
+    if (onDone) onDone();
+  } catch (error) {
+    msgEl.textContent = formatError(error);
+    msgEl.classList.add("is-error");
+  }
+}
+
+async function downloadTemplate(url, filename) {
+  try {
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${authToken}` } });
+    if (!r.ok) throw new Error("Không tải được template.");
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) { /* bỏ qua */ }
+}
+
+const importDgBtn = document.getElementById("import-dg-btn");
+const importThBtn = document.getElementById("import-th-btn");
+if (importDgBtn) importDgBtn.addEventListener("click", () =>
+  bulkUpload("import-dg-file", "/api/admin/bulk-import/nhom-thuoc", document.getElementById("import-dg-msg"), loadDrugAdmin));
+if (importThBtn) importThBtn.addEventListener("click", () =>
+  bulkUpload("import-th-file", "/api/admin/bulk-import/thuoc", document.getElementById("import-th-msg"), loadDrugAdmin));
+const tplDg = document.getElementById("tpl-dg");
+const tplTh = document.getElementById("tpl-th");
+if (tplDg) tplDg.addEventListener("click", (e) => { e.preventDefault(); downloadTemplate("/api/admin/bulk-import/template/nhom-thuoc", "nhom_thuoc_template.csv"); });
+if (tplTh) tplTh.addEventListener("click", (e) => { e.preventDefault(); downloadTemplate("/api/admin/bulk-import/template/thuoc", "thuoc_template.csv"); });
+
+// ── PORT: duyệt phản hồi không đồng ý ────────────────────────────────────────
+const fbList = document.getElementById("fb-list");
+const fbEmpty = document.getElementById("fb-empty");
+const fbPendingPill = document.getElementById("fb-pending-pill");
+const fbMessage = document.getElementById("fb-message");
+const fbPageInfo = document.getElementById("fb-page-info");
+const fbPrev = document.getElementById("fb-prev");
+const fbNext = document.getElementById("fb-next");
+const fbTabs = document.querySelectorAll("[data-fb-filter]");
+let fbFilter = "0", fbPage = 1, fbTotalPages = 0;
+
+function fmtDate(iso) {
+  if (!iso) return "";
+  try { return new Date(iso).toLocaleString("vi-VN"); } catch { return iso; }
+}
+
+async function loadFeedbackAdmin(page) {
+  if (!isAdminUser()) return;
+  fbPage = page || 1;
+  const params = new URLSearchParams({ page: String(fbPage), per_page: "10" });
+  if (fbFilter === "0" || fbFilter === "1") params.set("reviewed", fbFilter);
+  try {
+    const r = await fetch(`/api/admin/rejected-feedbacks?${params}`, { headers: { Authorization: `Bearer ${authToken}` } });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Không tải được phản hồi.");
+    fbTotalPages = data.total_pages || 0;
+    if (fbPendingPill) fbPendingPill.textContent = `${data.chua_xu_ly || 0} chưa xử lý`;
+    const items = data.feedbacks || [];
+    fbEmpty.classList.toggle("is-hidden", items.length > 0);
+    fbList.innerHTML = "";
+    items.forEach((f) => {
+      const li = document.createElement("li");
+      li.className = "admin-list-item";
+      const info = document.createElement("div");
+      const t = document.createElement("strong");
+      t.textContent = f.noi_dung || "(không ghi lý do)";
+      const s = document.createElement("span");
+      s.className = "muted-text";
+      s.textContent = [f.nhom_thuoc, fmtDate(f.thoi_gian), f.da_xu_ly ? "✓ đã xử lý" : "• chưa xử lý"].filter(Boolean).join(" · ");
+      info.append(t, s);
+      const actions = document.createElement("div");
+      actions.className = "admin-row-actions";
+      const btn = document.createElement("button");
+      btn.className = f.da_xu_ly ? "text-button" : "primary-button compact";
+      btn.type = "button";
+      btn.textContent = f.da_xu_ly ? "Mở lại" : "Đánh dấu đã xử lý";
+      btn.addEventListener("click", async () => {
+        const rr = await fetch(`/api/admin/rejected-feedbacks/${f.ma}/reviewed`, {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ da_xu_ly: !f.da_xu_ly }),
+        });
+        if (rr.ok) loadFeedbackAdmin(fbPage);
+      });
+      actions.appendChild(btn);
+      li.append(info, actions);
+      fbList.appendChild(li);
+    });
+    if (fbPageInfo) fbPageInfo.textContent = fbTotalPages ? `Trang ${fbPage} / ${fbTotalPages}` : "Trang 0";
+    if (fbPrev) fbPrev.disabled = fbPage <= 1;
+    if (fbNext) fbNext.disabled = fbPage >= fbTotalPages;
+  } catch (error) {
+    if (fbMessage) { fbMessage.textContent = formatError(error); fbMessage.classList.add("is-error"); }
+  }
+}
+
+fbTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    fbFilter = tab.dataset.fbFilter;
+    fbTabs.forEach((t) => t.classList.toggle("is-active", t === tab));
+    loadFeedbackAdmin(1);
+  });
+});
+if (fbPrev) fbPrev.addEventListener("click", () => { if (fbPage > 1) loadFeedbackAdmin(fbPage - 1); });
+if (fbNext) fbNext.addEventListener("click", () => { if (fbPage < fbTotalPages) loadFeedbackAdmin(fbPage + 1); });
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const submitButton = form.querySelector('button[type="submit"]');
@@ -1611,254 +1742,19 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-// ════════════════════════════════════════════════════════════════════════════════
-// SYMPTOM SEARCH - Debounced Input Handler
-// ════════════════════════════════════════════════════════════════════════════════
-
-let symptomSearchTimeout;
-const SYMPTOM_SEARCH_DELAY = 300; // ms
-
 symptomSearch.addEventListener("input", (event) => {
-  // Clear previous timeout
-  if (symptomSearchTimeout) {
-    clearTimeout(symptomSearchTimeout);
-  }
-  
-  // Set new timeout to debounce search
-  // Use autocomplete for instant feedback
-  symptomSearchTimeout = setTimeout(() => {
-    const query = event.target.value.trim();
-    
-    if (query.length < AUTOCOMPLETE_CONFIG.MIN_QUERY_LENGTH) {
-      // If query is empty or too short, hide autocomplete and show common symptoms
-      hideAutocompleteDropdown();
-      renderSymptoms("");
-    } else {
-      // Fetch autocomplete suggestions
-      fetchAutocomplete(query);
-    }
-  }, AUTOCOMPLETE_CONFIG.DEBOUNCE_DELAY);
+  renderSymptoms(event.target.value);
 });
-
-// Show autocomplete when input gets focus
-symptomSearch.addEventListener("focus", () => {
-  const query = symptomSearch.value.trim();
-  if (query.length >= AUTOCOMPLETE_CONFIG.MIN_QUERY_LENGTH) {
-    fetchAutocomplete(query);
-  }
-});
-
-// Hide autocomplete when input loses focus (with delay to allow clicking items)
-symptomSearch.addEventListener("blur", () => {
-  setTimeout(() => {
-    hideAutocompleteDropdown();
-  }, 200);
-});
-
-// Click outside to close autocomplete
-document.addEventListener('click', (e) => {
-  if (symptomSearch && autocompleteDropdown) {
-    if (!symptomSearch.contains(e.target) && !autocompleteDropdown.contains(e.target)) {
-      hideAutocompleteDropdown();
-    }
-  }
-});
-
-let historyCurrentPage = 1;
-let historyPageSize = 10;
 
 historySearch.addEventListener("input", (event) => {
   const query = event.target.value.trim().toLowerCase();
 
   document.querySelectorAll(".history-card").forEach((card) => {
-    const haystack = (card.dataset.search || '').toLowerCase();
+    const haystack = card.dataset.search.toLowerCase();
     card.classList.toggle("is-hidden", query !== "" && !haystack.includes(query));
   });
-
-  // Reset to first page when searching
-  historyCurrentPage = 1;
-  renderHistoryTable();
   updateHistoryEmptyState();
 });
-
-// Thiết lập chuyển chế độ Thẻ / Bảng
-(function initHistoryViewToggle(){
-  const historyViewButtons = document.querySelectorAll('.view-toggle-btn');
-  const historyTableWrap = document.getElementById('history-table-wrap');
-  const historyGrid = document.getElementById('history-list');
-  if (!historyViewButtons || historyViewButtons.length === 0) return;
-  historyViewButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      historyViewButtons.forEach((b) => {
-        b.classList.toggle('is-active', b === btn);
-        b.setAttribute('aria-selected', String(b === btn));
-      });
-      const view = btn.dataset.historyView;
-      if (view === 'table') {
-        if (historyGrid) historyGrid.classList.add('is-hidden');
-        if (historyTableWrap) historyTableWrap.classList.remove('is-hidden');
-      } else {
-        if (historyGrid) historyGrid.classList.remove('is-hidden');
-        if (historyTableWrap) historyTableWrap.classList.add('is-hidden');
-      }
-    });
-  });
-})();
-
-// --- CSV EXPORT FOR HISTORY ---
-function getFilteredHistoryEntries() {
-  const query = (historySearch && historySearch.value ? historySearch.value.trim().toLowerCase() : '');
-  return savedResults.slice().reverse().filter((entry) => {
-    const hay = `${entry.disease || ''} ${entry.notes || ''} ${(entry.symptoms || []).join(' ') } ${entry.savedAt || ''}`.toLowerCase();
-    return query === '' || hay.includes(query);
-  });
-}
-
-function toCsvRow(fields, sep = ',') {
-  return fields
-    .map((f) => {
-      if (f === null || f === undefined) return '';
-      const s = String(f);
-      const needsQuote = s.includes('"') || s.includes('\n') || (sep && s.includes(sep));
-      if (needsQuote) {
-        return '"' + s.replace(/"/g, '""') + '"';
-      }
-      return s;
-    })
-    .join(sep);
-}
-
-function exportHistoryCsv(selectedCols = ['date','disease','symptoms','notes','user','score','score_type'], exportAll = false, sep = ',') {
-  const rows = exportAll ? savedResults.slice().reverse() : getFilteredHistoryEntries();
-  if (!rows || rows.length === 0) {
-    alert('Không có mục lịch sử để xuất.');
-    return;
-  }
-
-  const colMap = {
-    date: 'Ngày',
-    disease: 'Bệnh/Nhóm thuốc',
-    symptoms: 'Triệu chứng',
-    notes: 'Ghi chú',
-    user: 'Người dùng',
-    score: 'Score',
-    score_type: 'Score type',
-  };
-
-  const header = selectedCols.map((c) => colMap[c] || c);
-  const lines = [toCsvRow(header, sep)];
-
-  rows.forEach((r) => {
-    const values = selectedCols.map((c) => {
-      switch (c) {
-        case 'date':
-          return r.savedAt || '';
-        case 'disease':
-          return r.disease || '';
-        case 'symptoms':
-          return (r.symptoms || []).join('; ');
-        case 'notes':
-          return r.notes || '';
-        case 'user':
-          return r.user || (currentUser ? (currentUser.email || currentUser.name) : 'guest') || '';
-        case 'score':
-          return r.score != null ? String(r.score) : (r._raw_confidence != null ? String(r._raw_confidence) : '');
-        case 'score_type':
-          return r.score_type || r._raw_score_type || '';
-        default:
-          return '';
-      }
-    });
-    lines.push(toCsvRow(values, sep));
-  });
-
-  const csv = '\uFEFF' + lines.join('\r\n'); // BOM for Excel
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `pharma_history_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
-
-function exportHistoryJson(selectedCols = ['date','disease','symptoms','notes','user','score','score_type'], exportAll = false) {
-  const rows = exportAll ? savedResults.slice().reverse() : getFilteredHistoryEntries();
-  if (!rows || rows.length === 0) {
-    alert('Không có mục lịch sử để xuất.');
-    return;
-  }
-  const items = rows.map((r) => {
-    const obj = {};
-    selectedCols.forEach((c) => {
-      switch (c) {
-        case 'date': obj['date'] = r.savedAt || ''; break;
-        case 'disease': obj['disease'] = r.disease || ''; break;
-        case 'symptoms': obj['symptoms'] = r.symptoms || []; break;
-        case 'notes': obj['notes'] = r.notes || ''; break;
-        case 'user': obj['user'] = r.user || (currentUser ? (currentUser.email || currentUser.name) : 'guest') || ''; break;
-        case 'score': obj['score'] = r.score != null ? r.score : (r._raw_confidence != null ? r._raw_confidence : null); break;
-        case 'score_type': obj['score_type'] = r.score_type || r._raw_score_type || null; break;
-        default: obj[c] = ''; break;
-      }
-    });
-    return obj;
-  });
-  const json = JSON.stringify(items, null, 2);
-  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `pharma_history_${new Date().toISOString().slice(0,10)}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
-
-const historyExportBtn = document.getElementById('history-export-button');
-if (historyExportBtn) {
-  const exportOptions = document.getElementById('history-export-options');
-  historyExportBtn.addEventListener('click', (e) => {
-    if (!exportOptions) return;
-    e.stopPropagation();
-    exportOptions.classList.toggle('is-hidden');
-    exportOptions.setAttribute('aria-hidden', exportOptions.classList.contains('is-hidden') ? 'true' : 'false');
-  });
-
-  document.addEventListener('click', (event) => {
-    if (!exportOptions || exportOptions.classList.contains('is-hidden')) return;
-    if (!exportOptions.contains(event.target) && event.target !== historyExportBtn && !historyExportBtn.contains(event.target)) {
-      exportOptions.classList.add('is-hidden');
-      exportOptions.setAttribute('aria-hidden', 'true');
-    }
-  });
-
-  const exportConfirm = document.getElementById('history-export-confirm');
-  const exportCancel = document.getElementById('history-export-cancel');
-  if (exportCancel) exportCancel.addEventListener('click', () => exportOptions && exportOptions.classList.add('is-hidden'));
-  if (exportConfirm) exportConfirm.addEventListener('click', () => {
-    const selected = [];
-    if (document.getElementById('col-date')?.checked) selected.push('date');
-    if (document.getElementById('col-disease')?.checked) selected.push('disease');
-    if (document.getElementById('col-symptoms')?.checked) selected.push('symptoms');
-    if (document.getElementById('col-notes')?.checked) selected.push('notes');
-    if (document.getElementById('col-user')?.checked) selected.push('user');
-    if (document.getElementById('col-score')?.checked) selected.push('score');
-    if (document.getElementById('col-score-type')?.checked) selected.push('score_type');
-    const exportAll = !!document.getElementById('export-all')?.checked;
-    const format = (document.getElementById('export-format')?.value || 'csv').toLowerCase();
-    const sep = (document.getElementById('export-sep')?.value) || ',';
-    if (format === 'json') {
-      exportHistoryJson(selected, exportAll);
-    } else {
-      exportHistoryCsv(selected, exportAll, sep);
-    }
-    exportOptions && exportOptions.classList.add('is-hidden');
-  });
-}
 
 saveResultButton.addEventListener("click", () => {
   if (currentResult) {
@@ -1867,12 +1763,6 @@ saveResultButton.addEventListener("click", () => {
       symptoms: currentResult.matched_symptoms_vi || [],
       notes: textarea.value.trim(),
       savedAt: new Date().toLocaleDateString("vi-VN"),
-      user: currentUser ? (currentUser.email || currentUser.name) : 'guest',
-      score: (typeof currentResult.confidence === 'number') ? currentResult.confidence : (currentResult.confidence ?? null),
-      score_type: currentResult.score_type || null,
-      // keep raw fields if downstream code needs them
-      _raw_confidence: currentResult.confidence ?? null,
-      _raw_score_type: currentResult.score_type ?? null,
     });
     saveHistory();
     historyList.prepend(createHistoryCard(savedResults[savedResults.length - 1]));
@@ -1881,11 +1771,6 @@ saveResultButton.addEventListener("click", () => {
   }
   showPage("history");
 });
-
-// --- GẮN SỰ KIỆN KÍCH HOẠT SCRUM-40 VÀO NÚT LƯU ---
-if (profileForm) {
-    profileForm.addEventListener("submit", saveProfileData);
-}
 
 const THEME_KEY = "pharmaPredictTheme";
 const themeToggles = document.querySelectorAll(".theme-toggle");
@@ -1926,1876 +1811,151 @@ themeToggles.forEach((button) => {
     try {
       localStorage.setItem(THEME_KEY, next);
     } catch {
+      // Bỏ qua nếu localStorage không khả dụng; vẫn đổi theme trong phiên.
     }
     applyTheme(next);
   });
 });
-// --- XỬ LÝ ĐỔI MẬT KHẨU ---
-const passwordForm = document.getElementById("password-form");
-if (passwordForm) {
-    passwordForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const oldPassword = document.getElementById("old-password").value;
-        const newPassword = document.getElementById("new-password").value;
-        const confirmPassword = document.getElementById("confirm-password").value;
-        const msgEl = document.getElementById("password-message");
-        if (newPassword !== confirmPassword) {
-            msgEl.textContent = "❌ Mật khẩu mới không khớp nhau!";
-            msgEl.style.color = "red";
-            return;
-        }
-        if (oldPassword === newPassword) {
-            msgEl.textContent = "❌ Mật khẩu mới phải khác mật khẩu cũ!";
-            msgEl.style.color = "red";
-            return;
-        }
 
-        msgEl.textContent = "⏳ Đang xử lý...";
-        msgEl.style.color = "blue";
+// ── Admin: lịch sử dự đoán toàn hệ thống (đọc từ Postgres) ───────────────────
+let ahPage = 1, ahPages = 1, ahStatus = "", ahEmail = "", ahDebounce = null;
+const AH_STATUS_LABELS = { suggest: "Gợi ý OTC", safety_block: "Né an toàn", emergency: "Cấp cứu" };
 
-        try {
-            const token = localStorage.getItem("token") || localStorage.getItem("pharmaPredictAuthToken");
-            
-            const response = await fetch("http://127.0.0.1:5000/api/users/change-password", {
-                method: "PUT",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    old_password: oldPassword,
-                    new_password: newPassword
-                })
-            });
-
-            const data = await response.json();
-            
-            if (response.ok) {
-                msgEl.textContent = "✅ Đổi mật khẩu thành công!";
-                msgEl.style.color = "green";
-                passwordForm.reset(); 
-            } else {
-                msgEl.textContent = "❌ " + (data.error || "Lỗi khi đổi mật khẩu.");
-                msgEl.style.color = "red";
-            }
-        } catch (err) {
-            msgEl.textContent = "❌ Không thể kết nối tới máy chủ.";
-            msgEl.style.color = "red";
-        }
-    });
+function ahEscape(value) {
+  const div = document.createElement("div");
+  div.textContent = value == null ? "" : String(value);
+  return div.innerHTML;
 }
-const drugGroupForm = document.getElementById("drug-group-form");
-const drugGroupList = document.getElementById("drug-group-list");
-const dgNameInput = document.getElementById("dg-name");
-const dgDescInput = document.getElementById("dg-desc");
-const dgSubmitButton = drugGroupForm?.querySelector('button[type="submit"]');
-let editingDrugGroupId = null;
 
-function escapeHtml(value = "") {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-// ============================================================
-// SCRUM-78 / Task 47
-// UI Admin xem danh sách phản hồi "Không đồng ý"
-// ============================================================
-
-let rejectedFeedbacks = [];
-
-async function loadRejectedFeedbacks() {
-  const tbody = document.getElementById("feedback-tbody");
-  const empty = document.getElementById("feedback-empty");
-
-  if (!tbody) return;
-
-  tbody.innerHTML = `
-    <tr>
-      <td colspan="6" style="padding:20px; text-align:center; color:var(--text-muted);">
-        Đang tải danh sách phản hồi...
-      </td>
-    </tr>
-  `;
-
+async function loadAdminHistory(page = 1) {
+  ahPage = page;
+  const rows = document.getElementById("ah-rows");
+  const table = document.getElementById("ah-table");
+  const empty = document.getElementById("ah-empty");
+  const msg = document.getElementById("ah-message");
+  const pill = document.getElementById("ah-total-pill");
+  const info = document.getElementById("ah-page-info");
+  if (!rows) return;
+  if (msg) { msg.textContent = ""; msg.classList.remove("is-error"); }
   try {
-    const res = await fetch(`${API_BASE_URL}/api/admin/rejected-feedbacks`);
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.message || "Không tải được phản hồi.");
-    }
-
-    rejectedFeedbacks = data.feedbacks || [];
-    renderRejectedFeedbacks();
-
-    if (empty) {
-      empty.classList.toggle("is-hidden", rejectedFeedbacks.length > 0);
-    }
-  } catch (error) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="6" style="padding:20px; text-align:center; color:#ef4444;">
-          ${escapeHtml(error.message || "Lỗi tải phản hồi.")}
-        </td>
-      </tr>
-    `;
-  }
-}
-
-function renderRejectedFeedbacks() {
-  const tbody = document.getElementById("feedback-tbody");
-  const searchInput = document.getElementById("feedback-search");
-
-  if (!tbody) return;
-
-  const keyword = (searchInput?.value || "").trim().toLowerCase();
-
-  const filtered = rejectedFeedbacks.filter((item) => {
-    const text = `${item.trieu_chung_nhap || ""} ${item.ghi_chu || ""}`.toLowerCase();
-    return !keyword || text.includes(keyword);
-  });
-
-  if (filtered.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="6" class="table-empty-cell">Không có phản hồi phù hợp.</td>
-      </tr>
-    `;
-    return;
-  }
-
-  tbody.innerHTML = "";
-
-  filtered.forEach((item) => {
-    const row = document.createElement("tr");
-    const createdAt = item.created_at ? new Date(item.created_at).toLocaleString("vi-VN") : "Không rõ";
-    const isDone = item.xu_ly === "DA_XU_LY";
-
-    row.innerHTML = `
-      <td>${escapeHtml(String(item.id || ""))}</td>
-      <td>${escapeHtml(item.trieu_chung_nhap || "Không rõ")}</td>
-      <td>${escapeHtml(item.ghi_chu || "Không có ghi chú")}</td>
-      <td>${escapeHtml(createdAt)}</td>
-      <td>
-        <span class="status-pill ${isDone ? "status-secure" : "status-warning"}">
-          ${isDone ? "Đã xử lý" : "Chưa xử lý"}
-        </span>
-      </td>
-      <td class="table-actions-cell">
-        ${isDone
-          ? `<span class="done-label">Hoàn tất</span>`
-          : `<button class="text-button reviewed-action" type="button" onclick="markFeedbackReviewed(${item.id})">
-              <span class="material-symbols-outlined" aria-hidden="true">done</span>
-              Đánh dấu đã xử lý
-            </button>`
-        }
-      </td>
-    `;
-
-    tbody.appendChild(row);
-  });
-}
-
-function showConfirmModal({ title, message, confirmText = "Xác nhận", cancelText = "Hủy" }) {
-  return new Promise((resolve) => {
-    const oldModal = document.getElementById("confirm-modal");
-    if (oldModal) oldModal.remove();
-
-    const modal = document.createElement("div");
-    modal.id = "confirm-modal";
-    modal.className = "pretty-modal-backdrop";
-    modal.innerHTML = `
-      <div class="pretty-modal-card confirm-card" role="dialog" aria-modal="true">
-        <div class="pretty-modal-header">
-          <div>
-            <p class="eyebrow">Xác nhận thao tác</p>
-            <h2>${escapeHtml(title)}</h2>
-          </div>
-          <button class="icon-button" type="button" data-confirm-cancel aria-label="Đóng">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        <p class="modal-message">${escapeHtml(message)}</p>
-
-        <div class="pretty-modal-actions">
-          <button class="secondary-button" type="button" data-confirm-cancel>${cancelText}</button>
-          <button class="primary-button" type="button" data-confirm-ok>${confirmText}</button>
-        </div>
-      </div>
-    `;
-
-    modal.addEventListener("click", (event) => {
-      if (event.target === modal || event.target.closest("[data-confirm-cancel]")) {
-        modal.remove();
-        resolve(false);
-      }
-
-      if (event.target.closest("[data-confirm-ok]")) {
-        modal.remove();
-        resolve(true);
-      }
-    });
-
-    document.body.appendChild(modal);
-  });
-}
-
-async function markFeedbackReviewed(id) {
-  const ok = await showConfirmModal({
-    title: "Đánh dấu đã xử lý?",
-    message: "Phản hồi này sẽ được chuyển sang trạng thái Đã xử lý và không cần xem lại nhiều lần.",
-    confirmText: "Đánh dấu",
-    cancelText: "Hủy"
-  });
-
-  if (!ok) return;
-
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/admin/rejected-feedbacks/${id}/reviewed`, {
-      method: "POST"
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.message || "Không cập nhật được phản hồi.");
-    }
-
-    await loadRejectedFeedbacks();
-    showToast?.("Đã đánh dấu phản hồi là đã xử lý.", "success");
-  } catch (error) {
-    showToast?.(error.message || "Lỗi cập nhật phản hồi.", "error");
-  }
-}
-
-window.markFeedbackReviewed = markFeedbackReviewed;
-
-function setDrugGroupFormMode(mode = "add", group = null) {
-  editingDrugGroupId = mode === "edit" && group ? group.id : null;
-  if (dgNameInput) dgNameInput.value = group?.ten_nhom || "";
-  if (dgDescInput) dgDescInput.value = group?.mo_ta || "";
-
-  if (dgSubmitButton) {
-    dgSubmitButton.innerHTML = editingDrugGroupId
-      ? `<span class="material-symbols-outlined">save</span> Cập nhật`
-      : `<span class="material-symbols-outlined">add</span> Thêm nhóm`;
-  }
-
-  let cancelBtn = document.getElementById("dg-cancel-edit");
-  if (editingDrugGroupId && !cancelBtn && drugGroupForm) {
-    cancelBtn = document.createElement("button");
-    cancelBtn.id = "dg-cancel-edit";
-    cancelBtn.type = "button";
-    cancelBtn.className = "secondary-button";
-    cancelBtn.style.height = "46px";
-    cancelBtn.style.marginBottom = "4px";
-    cancelBtn.innerHTML = `<span class="material-symbols-outlined">close</span> Hủy`;
-    cancelBtn.addEventListener("click", () => {
-      drugGroupForm.reset();
-      setDrugGroupFormMode("add");
-    });
-    drugGroupForm.appendChild(cancelBtn);
-  }
-  if (!editingDrugGroupId && cancelBtn) cancelBtn.remove();
-}
-
-async function loadDrugGroups() {
-  if (!drugGroupList) return;
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/drug-groups`);
-    if (!res.ok) throw new Error("Không tải được danh sách nhóm thuốc.");
-    const data = await res.json();
-
-    drugGroupList.innerHTML = "";
-
-    if (!Array.isArray(data) || data.length === 0) {
-      drugGroupList.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 20px; color: var(--text-muted);">Chưa có dữ liệu nhóm thuốc nào.</td></tr>`;
-      return;
-    }
-
-    data.forEach((g) => {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td style="padding: 12px; border-bottom: 1px solid var(--outline); color: var(--text-muted);">${g.id}</td>
-        <td style="padding: 12px; border-bottom: 1px solid var(--outline); font-weight: 600;">${escapeHtml(g.ten_nhom)}</td>
-        <td style="padding: 12px; border-bottom: 1px solid var(--outline); color: var(--text-muted);">${escapeHtml(g.mo_ta || "Không có mô tả.")}</td>
-        <td style="padding: 12px; border-bottom: 1px solid var(--outline); text-align: center; white-space: nowrap;">
-          <button type="button" class="text-button" data-action="edit" data-id="${g.id}" data-name="${escapeHtml(g.ten_nhom)}" data-desc="${escapeHtml(g.mo_ta || "")}" style="color: #2563eb; padding: 4px 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
-            <span class="material-symbols-outlined" style="font-size: 18px;">edit</span> Sửa
-          </button>
-          <button type="button" class="text-button" data-action="delete" data-id="${g.id}" style="color: #ef4444; padding: 4px 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
-            <span class="material-symbols-outlined" style="font-size: 18px;">delete</span> Xóa
-          </button>
-        </td>
-      `;
-      drugGroupList.appendChild(row);
-    });
-  } catch (e) {
-    console.error("Lỗi kết nối API lấy danh mục nhóm thuốc:", e);
-  }
-}
-
-if (drugGroupList) {
-  drugGroupList.addEventListener("click", async (e) => {
-    const button = e.target.closest("button[data-action]");
-    if (!button) return;
-
-    const action = button.dataset.action;
-    const id = Number(button.dataset.id);
-
-    if (action === "edit") {
-      setDrugGroupFormMode("edit", {
-        id,
-        ten_nhom: button.dataset.name || "",
-        mo_ta: button.dataset.desc || "",
-      });
-      dgNameInput?.focus();
-      return;
-    }
-
-    if (action === "delete") {
-      await deleteDrugGroup(id);
-    }
-  });
-}
-
-async function deleteDrugGroup(id) {
-  if (!confirm("⚠️ Bạn có chắc chắn muốn xóa nhóm thuốc này khỏi hệ thống không?")) return;
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/drug-groups/${id}`, {
-      method: "DELETE",
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Không thể xóa nhóm thuốc.");
-    if (editingDrugGroupId === id) setDrugGroupFormMode("add");
-    loadDrugGroups();
-  } catch (e) {
-    alert(e.message || "Lỗi xóa nhóm thuốc.");
-    console.error("Lỗi xóa nhóm thuốc:", e);
-  }
-}
-
-if (drugGroupForm) {
-  drugGroupForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const ten_nhom = dgNameInput?.value.trim() || "";
-    const mo_ta = dgDescInput?.value.trim() || "";
-
-    if (!ten_nhom) {
-      alert("Vui lòng nhập tên nhóm thuốc.");
-      dgNameInput?.focus();
-      return;
-    }
-
-    try {
-      const endpoint = editingDrugGroupId
-        ? `${API_BASE_URL}/api/drug-groups/${editingDrugGroupId}`
-        : `${API_BASE_URL}/api/drug-groups`;
-      const method = editingDrugGroupId ? "PUT" : "POST";
-
-      const res = await fetch(endpoint, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ten_nhom, mo_ta }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Không thể lưu nhóm thuốc.");
-
-      drugGroupForm.reset();
-      setDrugGroupFormMode("add");
-      loadDrugGroups();
-    } catch (e) {
-      alert(e.message || "Lỗi lưu nhóm thuốc.");
-      console.error("Lỗi lưu nhóm thuốc:", e);
-    }
-  });
-}
-document.getElementById("btn-reload-feedback")
-  ?.addEventListener("click", loadRejectedFeedbacks);
-
-document.getElementById("feedback-search")
-  ?.addEventListener("input", renderRejectedFeedbacks);
-// ============================================================
-// SCRUM-75 / SCRUM-76
-// Bác sĩ đánh giá kết quả dự đoán: Đồng ý / Không đồng ý
-// ============================================================
-
-const btnEvalApprove = document.getElementById("btn-eval-approve");
-const btnEvalReject = document.getElementById("btn-eval-reject");
-const btnEvalCancel = document.getElementById("btn-eval-cancel");
-const btnEvalSubmit = document.getElementById("btn-eval-submit");
-const evaluationNoteBox = document.getElementById("evaluation-note-box");
-const evaluationNote = document.getElementById("evaluation-note");
-const evaluationMessage = document.getElementById("evaluation-message");
-
-function setEvaluationMessage(message, isError = false) {
-  if (!evaluationMessage) return;
-  evaluationMessage.textContent = message;
-  evaluationMessage.classList.toggle("is-error", isError);
-}
-
-async function sendEvaluation(status, note = "") {
-  if (!currentResult) {
-    setEvaluationMessage("Chưa có kết quả dự đoán để đánh giá.", true);
-    return;
-  }
-
-  const symptomsText =
-    textarea?.value?.trim() ||
-    (currentResult.matched_symptoms_vi || []).join(", ") ||
-    "Không rõ";
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/evaluation`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        trieu_chung_nhap: symptomsText,
-        trang_thai: status,
-        ghi_chu: note
-      })
-    });
-
+    const params = new URLSearchParams({ page: String(page), page_size: "20" });
+    if (ahStatus) params.set("status", ahStatus);
+    if (ahEmail) params.set("email", ahEmail);
+    const response = await fetch(`/api/admin/history?${params.toString()}`, { headers: adminHeaders() });
     const data = await response.json();
-
-    if (!response.ok || !data.success) {
-      throw new Error(data.message || "Không gửi được đánh giá.");
-    }
-
-    setEvaluationMessage("Đã gửi đánh giá thành công.", false);
-
-    if (evaluationNoteBox) {
-      evaluationNoteBox.classList.add("is-hidden");
-    }
-
-    if (evaluationNote) {
-      evaluationNote.value = "";
-    }
+    if (!response.ok) throw new Error(data.error || "Không tải được lịch sử hệ thống.");
+    ahPages = data.pages || 1;
+    if (pill) pill.textContent = `${data.total} lượt`;
+    if (info) info.textContent = `Trang ${data.page} / ${data.pages}`;
+    rows.innerHTML = "";
+    (data.items || []).forEach((it) => {
+      const tr = document.createElement("tr");
+      const time = it.time ? new Date(it.time).toLocaleString("vi-VN") : "—";
+      const label = AH_STATUS_LABELS[it.status] || it.status || "—";
+      tr.className = "ah-row";
+      tr.innerHTML =
+        `<td>${ahEscape(time)}</td>` +
+        `<td>${ahEscape(it.email || "guest")}</td>` +
+        `<td><span class="ah-status ah-${ahEscape(it.status || "")}">${ahEscape(label)}</span></td>` +
+        `<td>${ahEscape(it.group || "—")}</td>` +
+        `<td class="ah-chevron"><span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></td>`;
+      tr.addEventListener("click", () => openAhDetail(it));
+      rows.appendChild(tr);
+    });
+    const isEmpty = (data.items || []).length === 0;
+    if (empty) empty.classList.toggle("is-hidden", !isEmpty);
+    if (table) table.classList.toggle("is-hidden", isEmpty);
   } catch (error) {
-    setEvaluationMessage(error.message || "Lỗi gửi đánh giá.", true);
+    if (msg) { msg.textContent = error.message; msg.classList.add("is-error"); }
   }
 }
 
-btnEvalApprove?.addEventListener("click", () => {
-  sendEvaluation("APPROVE", "Bác sĩ đồng ý với kết quả dự đoán.");
+document.querySelectorAll("[data-ah-status]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-ah-status]").forEach((b) => b.classList.toggle("is-active", b === btn));
+    ahStatus = btn.dataset.ahStatus || "";
+    loadAdminHistory(1);
+  });
 });
+const ahEmailInput = document.getElementById("ah-email");
+if (ahEmailInput) {
+  ahEmailInput.addEventListener("input", () => {
+    clearTimeout(ahDebounce);
+    ahDebounce = setTimeout(() => { ahEmail = ahEmailInput.value.trim(); loadAdminHistory(1); }, 300);
+  });
+}
+const ahPrevBtn = document.getElementById("ah-prev");
+const ahNextBtn = document.getElementById("ah-next");
+if (ahPrevBtn) ahPrevBtn.addEventListener("click", () => { if (ahPage > 1) loadAdminHistory(ahPage - 1); });
+if (ahNextBtn) ahNextBtn.addEventListener("click", () => { if (ahPage < ahPages) loadAdminHistory(ahPage + 1); });
 
-btnEvalReject?.addEventListener("click", () => {
-  setEvaluationMessage("");
-  evaluationNoteBox?.classList.remove("is-hidden");
-  evaluationNote?.focus();
-});
+const ahExportBtn = document.getElementById("ah-export");
+if (ahExportBtn) {
+  ahExportBtn.addEventListener("click", async () => {
+    const msg = document.getElementById("ah-message");
+    try {
+      const params = new URLSearchParams();
+      if (ahStatus) params.set("status", ahStatus);
+      if (ahEmail) params.set("email", ahEmail);
+      const qs = params.toString();
+      const response = await fetch(`/api/admin/history.csv${qs ? `?${qs}` : ""}`, { headers: adminHeaders() });
+      if (!response.ok) throw new Error("Không xuất được CSV.");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "lich_su_he_thong.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      if (msg) { msg.textContent = error.message; msg.classList.add("is-error"); }
+    }
+  });
+}
 
-btnEvalCancel?.addEventListener("click", () => {
-  evaluationNoteBox?.classList.add("is-hidden");
-  if (evaluationNote) evaluationNote.value = "";
-  setEvaluationMessage("");
-});
+// Master–detail: bấm 1 dòng để xem chi tiết đầy đủ.
+const ahDetailModal = document.getElementById("ah-detail-modal");
+const ahDetailBody = document.getElementById("ah-detail-body");
+const ahDetailClose = document.getElementById("ah-detail-close");
 
-btnEvalSubmit?.addEventListener("click", () => {
-  const note = evaluationNote?.value?.trim() || "";
+function closeAhDetail() {
+  if (ahDetailModal) ahDetailModal.classList.add("is-hidden");
+}
 
-  if (!note) {
-    setEvaluationMessage("Vui lòng nhập lý do không đồng ý.", true);
-    return;
+function openAhDetail(it) {
+  if (!ahDetailModal || !ahDetailBody) return;
+  const time = it.time ? new Date(it.time).toLocaleString("vi-VN") : "—";
+  const label = AH_STATUS_LABELS[it.status] || it.status || "—";
+  const conf = (typeof it.confidence === "number") ? `${Math.round(it.confidence * 100)}%` : "—";
+  const fields = [
+    ["Thời gian", time],
+    ["Người dùng", it.email || "guest"],
+    ["Hướng xử trí", label],
+    ["Nhóm thuốc", it.group || "—"],
+    ["Độ tin cậy", conf],
+    ["Câu người dùng nhập", it.notes || "(không lưu cho ca này)"],
+  ];
+  ahDetailBody.innerHTML = fields
+    .map(([k, v]) => `<dt>${ahEscape(k)}</dt><dd>${ahEscape(v)}</dd>`)
+    .join("");
+  ahDetailModal.classList.remove("is-hidden");
+}
+
+if (ahDetailClose) ahDetailClose.addEventListener("click", closeAhDetail);
+if (ahDetailModal) {
+  ahDetailModal.addEventListener("click", (e) => {
+    if (e.target === ahDetailModal) closeAhDetail();
+  });
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && ahDetailModal && !ahDetailModal.classList.contains("is-hidden")) {
+    closeAhDetail();
   }
-
-  sendEvaluation("REJECT", note);
 });
+
 initTheme();
 updateCharCount();
 updateSelectedCount();
 initializeAuth();
-loadDrugGroups(); 
-
-
-// ============================================================
-// MODULE: QUẢN LÝ THUỐC (Admin)  — SCRUM-48
-// ============================================================
-
-const API = "http://127.0.0.1:5000/api";
-
-
-// ============================================================
-// MODULE: QUẢN LÝ TỪ ĐIỂN TRIỆU CHỨNG (Admin)
-// - CRUD đơn giản, tìm kiếm, import CSV, export CSV
-// - Endpoints dự kiến: GET/POST/PUT/DELETE /api/symptoms
-// ============================================================
-
-(async function () {
-  // State
-  let _dictList = [];
-  let _editDictId = null;
-
-  // DOM refs
-  const dictTbody = document.getElementById("dict-tbody");
-  const dictEmpty = document.getElementById("dict-empty");
-  const dictSearch = document.getElementById("dict-search");
-  const btnAddDict = document.getElementById("btn-add-dict");
-  const btnImportDict = document.getElementById("btn-import-dict");
-  const dictFileInput = document.getElementById("dict-file-input");
-  const btnExportDict = document.getElementById("btn-export-dict");
-
-  // Create modal elements (lightweight, reuse modal style)
-  const modalId = 'modal-dict';
-  if (!document.getElementById(modalId)) {
-    const modalHtml = `
-    <div class="modal-overlay is-hidden" id="${modalId}" role="dialog" aria-modal="true" aria-labelledby="modal-dict-title">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h2 id="modal-dict-title">Thêm mục từ điển</h2>
-          <button class="icon-button" type="button" id="modal-dict-close" aria-label="Đóng"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
-        </div>
-        <form id="modal-dict-form" class="modal-body" novalidate>
-          <input type="hidden" id="modal-dict-id" />
-          <div class="form-row">
-            <div class="form-field"><label for="dict-vi">Triệu chứng (Tiếng Việt) *</label><input id="dict-vi" type="text" required placeholder="ví dụ: sốt"/></div>
-            <div class="form-field"><label for="dict-en">Label (Tiếng Anh) *</label><input id="dict-en" type="text" required placeholder="ví dụ: fever"/></div>
-          </div>
-          <div class="form-field"><label for="dict-note">Ghi chú</label><input id="dict-note" type="text" placeholder="Ghi chú/alias"/></div>
-          <p class="form-message" id="modal-dict-msg" role="status"></p>
-          <div class="form-actions">
-            <button class="primary-button" type="submit" id="modal-dict-submit"><span class="material-symbols-outlined">save</span> Lưu</button>
-            <button class="secondary-button" type="button" id="modal-dict-cancel"><span class="material-symbols-outlined">close</span> Hủy</button>
-          </div>
-        </form>
-      </div>
-    </div>`;
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-  }
-
-  const modalOverlay = document.getElementById(modalId);
-  const modalForm = document.getElementById('modal-dict-form');
-  const modalMsg = document.getElementById('modal-dict-msg');
-  const modalSubmit = document.getElementById('modal-dict-submit');
-  const inpId = document.getElementById('modal-dict-id');
-  const inpVi = document.getElementById('dict-vi');
-  const inpEn = document.getElementById('dict-en');
-  const inpNote = document.getElementById('dict-note');
-  const btnClose = document.getElementById('modal-dict-close');
-  const btnCancel = document.getElementById('modal-dict-cancel');
-
-  function setModalDictMsg(m, err = false) { modalMsg.textContent = m; modalMsg.className = 'form-message' + (err ? ' is-error' : ''); }
-
-  // Fetch list
-  async function loadDict() {
-    try {
-      const res = await fetch(`${API}/symptoms`);
-      if (!res.ok) throw new Error('Không tải được từ điển.');
-      const data = await res.json();
-      _dictList = Array.isArray(data) ? data : (data.symptoms || []);
-    } catch (e) {
-      _dictList = [];
-      console.error(e);
-    }
-    renderDictTable(dictSearch?.value || '');
-  }
-
-  function renderDictTable(keyword = '') {
-    const kw = (keyword || '').trim().toLowerCase();
-    dictTbody.innerHTML = '';
-    const filtered = _dictList.filter(item => {
-      if (!kw) return true;
-      return (item.label_vi || '').toLowerCase().includes(kw) || (item.label_en || '').toLowerCase().includes(kw) || (item.note || '').toLowerCase().includes(kw);
-    });
-    if (filtered.length === 0) {
-      dictEmpty.classList.remove('is-hidden');
-      dictTbody.innerHTML = '';
-      return;
-    }
-    dictEmpty.classList.add('is-hidden');
-    filtered.forEach(item => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td style="padding:10px;">${item.id ?? ''}</td>
-        <td style="padding:10px;">${escapeHtml(item.label_vi || item.label || '')}</td>
-        <td style="padding:10px;">${escapeHtml(item.label_en || '')}</td>
-        <td style="padding:10px;">${escapeHtml(item.note || '')}</td>
-        <td style="text-align:center; padding:10px; white-space:nowrap;">
-          <button class="text-button" data-action="edit" data-id="${item.id}" style="margin-right:8px;"><span class="material-symbols-outlined">edit</span> Sửa</button>
-          <button class="text-button" data-action="delete" data-id="${item.id}"><span class="material-symbols-outlined">delete</span> Xóa</button>
-        </td>`;
-      dictTbody.appendChild(tr);
-    });
-  }
-
-  function openAddDict() {
-    _editDictId = null;
-    inpId.value = '';
-    inpVi.value = '';
-    inpEn.value = '';
-    inpNote.value = '';
-    setModalDictMsg('');
-    document.getElementById('modal-dict-title').textContent = 'Thêm mục từ điển';
-    modalSubmit.innerHTML = '<span class="material-symbols-outlined">add</span> Thêm';
-    modalOverlay.classList.remove('is-hidden');
-    inpVi.focus();
-  }
-
-  function openEditDict(id) {
-    const item = _dictList.find(x => String(x.id) === String(id));
-    if (!item) return alert('Không tìm thấy mục.');
-    _editDictId = item.id;
-    inpId.value = item.id;
-    inpVi.value = item.label_vi || item.label || '';
-    inpEn.value = item.label_en || '';
-    inpNote.value = item.note || '';
-    setModalDictMsg('');
-    document.getElementById('modal-dict-title').textContent = 'Sửa mục từ điển';
-    modalSubmit.innerHTML = '<span class="material-symbols-outlined">save</span> Lưu';
-    modalOverlay.classList.remove('is-hidden');
-    inpVi.focus();
-  }
-
-  function closeModalDict() { modalOverlay.classList.add('is-hidden'); setModalDictMsg(''); _editDictId = null; }
-
-  modalForm?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    setModalDictMsg('');
-    const vi = inpVi.value.trim();
-    const en = inpEn.value.trim();
-    if (!vi || !en) { setModalDictMsg('Vui lòng nhập cả Tiếng Việt và Label Tiếng Anh.', true); return; }
-    const payload = { label_vi: vi, label_en: en, note: inpNote.value.trim() || null };
-    try {
-      const method = _editDictId ? 'PUT' : 'POST';
-      const url = _editDictId ? `${API}/symptoms/${_editDictId}` : `${API}/symptoms`;
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setModalDictMsg(data.error || 'Lỗi lưu mục', true); return; }
-      closeModalDict();
-      await loadDict();
-    } catch (err) {
-      setModalDictMsg('Không kết nối được máy chủ.', true);
-    }
-  });
-
-  btnClose?.addEventListener('click', closeModalDict);
-  btnCancel?.addEventListener('click', closeModalDict);
-  modalOverlay?.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModalDict(); });
-
-  // actions in table
-  dictTbody?.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-action]');
-    if (!btn) return;
-    const act = btn.dataset.action;
-    const id = btn.dataset.id;
-    if (act === 'edit') openEditDict(id);
-    if (act === 'delete') confirmDeleteDict(id);
-  });
-
-
-// =========================================================
-// TASK 65 & 66: XỬ LÝ XÓA LỊCH SỬ DỰ ĐOÁN VỚI MODAL HIỆN ĐẠI
-// =========================================================
-let currentDeleteId = null;
-
-// 1. Hàm này gắn vào nút "Xóa" ngoài giao diện lịch sử để mở Modal
-function confirmDelete(id) {
-    currentDeleteId = id; 
-    const modal = document.getElementById('delete-confirm-modal');
-    if (modal) {
-        modal.classList.remove('is-hidden'); 
-    }
-}
-
-// 2. Hàm này dùng để đóng Modal khi bấm Hủy
-function closeDeleteModal() {
-    currentDeleteId = null;
-    const modal = document.getElementById('delete-confirm-modal');
-    if (modal) {
-        modal.classList.add('is-hidden'); 
-    }
-}
-
-// 3. Hàm thực thi xóa khi bấm nút "Xác nhận xóa" bên trong Modal (Viết theo đúng phong cách của nhóm bạn)
-async function executeDeleteHistory() {
-    if (!currentDeleteId) return;
-    try {
-        // Gọi tới API của Flask Backend (Cổng 5000)
-        const res = await fetch(`http://127.0.0.1:5000/api/evaluation/${currentDeleteId}`, { method: 'DELETE' });
-        
-        if (!res.ok) { 
-            const d = await res.json().catch(() => ({})); 
-            alert(d.message || 'Xóa thất bại'); 
-            closeDeleteModal();
-            return; 
-        }
-        
-        alert('Xóa bản ghi lịch sử thành công!');
-        
-        // Xóa dòng đó trên giao diện mà không cần reload
-        const element = document.getElementById(`record-${currentDeleteId}`);
-        if (element) {
-            element.remove();
-        } else {
-            window.location.reload(); // Dự phòng nếu không tìm thấy ID dòng
-        }
-    } catch (e) { 
-        alert('Không kết nối máy chủ Backend.'); 
-    } finally {
-        closeDeleteModal(); // Luôn luôn đóng modal sau khi chạy xong
-    }
-}
-
-
-  async function confirmDeleteDict(id) {
-    if (!confirm('Xóa mục này khỏi từ điển?')) return;
-    try {
-      const res = await fetch(`${API}/symptoms/${id}`, { method: 'DELETE' });
-      if (!res.ok) { const d = await res.json().catch(()=>({})); alert(d.error || 'Xóa thất bại'); return; }
-      await loadDict();
-    } catch (e) { alert('Không kết nối máy chủ.'); }
-  }
-
-  // search
-  dictSearch?.addEventListener('input', (e) => renderDictTable(e.target.value));
-
-  // add
-  btnAddDict?.addEventListener('click', openAddDict);
-
-  // import CSV
-  btnImportDict?.addEventListener('click', () => dictFileInput.click());
-  dictFileInput?.addEventListener('change', async (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    try {
-      const text = await f.text();
-      const parsed = parseCSV(text);
-      // expect columns like label_vi,label_en,note
-      const header = parsed.header.map(h => h.toLowerCase());
-      const viIdx = header.findIndex(h => h.includes('vi') || h.includes('label_vi') || h.includes('tieng_viet') || h.includes('vietnam'));
-      const enIdx = header.findIndex(h => h.includes('en') || h.includes('label_en') || h.includes('label') || h.includes('english'));
-      if (viIdx === -1 || enIdx === -1) {
-        alert('CSV phải có cột chứa Tiếng Việt và Label Tiếng Anh (ví dụ header: label_vi,label_en).');
-        return;
-      }
-      let added = 0, failed = 0;
-      for (let i=0;i<parsed.data.length;i++){
-        const row = parsed.data[i];
-        const vi = row[header[viIdx]]?.trim() || '';
-        const en = row[header[enIdx]]?.trim() || '';
-        const note = (header.includes('note') ? (row['note'] || '') : (row[header.find(h=>h.includes('note'))]||''));
-        if (!vi||!en){ failed++; continue; }
-        try {
-          const res = await fetch(`${API}/symptoms`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label_vi:vi, label_en:en, note: note || null }) });
-          if (res.ok) added++; else failed++;
-        } catch { failed++; }
-      }
-      alert(`Nhập xong. Thêm: ${added}, Lỗi: ${failed}`);
-      await loadDict();
-    } catch (err) { alert('Lỗi đọc file CSV'); }
-  });
-
-  // export CSV
-  btnExportDict?.addEventListener('click', () => {
-    const rows = [ ['id','label_vi','label_en','note'] ];
-    _dictList.forEach(r => rows.push([r.id, r.label_vi||r.label||'', r.label_en||'', r.note||'']));
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'dictionary_export.csv'; a.click(); URL.revokeObjectURL(url);
-  });
-
-  // initial load when page is shown
-  const origShow = window.showPage;
-  window.showPage = function(pageName){ origShow(pageName); if (pageName === 'admin-dictionary') loadDict(); };
-
-  // expose for debugging
-  window._dictReload = loadDict;
-})();
-
-// ── State ──────────────────────────────────────────────────
-let _thuocList    = [];   // cache danh sách thuốc
-let _nhomList     = [];   // cache danh sách nhóm thuốc
-let _thuocEditId  = null; // null = đang thêm mới
-
-// ── DOM refs ───────────────────────────────────────────────
-const pageThuoc      = document.getElementById("page-admin-thuoc");
-const thuocTbody     = document.getElementById("admin-thuoc-tbody");
-const thuocEmpty     = document.getElementById("admin-thuoc-empty");
-const searchInput    = document.getElementById("thuoc-search-input");
-const filterNhomSel  = document.getElementById("thuoc-filter-nhom");
-
-const modalThuoc     = document.getElementById("modal-thuoc");
-const modalTitle     = document.getElementById("modal-thuoc-title");
-const modalForm      = document.getElementById("modal-thuoc-form");
-const modalMsg       = document.getElementById("modal-thuoc-msg");
-const modalSubmitBtn = document.getElementById("modal-thuoc-submit");
-
-// form fields
-const mtId       = document.getElementById("modal-thuoc-id");
-const mtTen      = document.getElementById("mt-ten");
-const mtNhom     = document.getElementById("mt-nhom");
-const mtHoatChat = document.getElementById("mt-hoat-chat");
-const mtHamLuong = document.getElementById("mt-ham-luong");
-const mtDangBC   = document.getElementById("mt-dang-bao-che");
-const mtDonVi    = document.getElementById("mt-don-vi");
-const mtHangSX   = document.getElementById("mt-hang-sx");
-const mtNuocSX   = document.getElementById("mt-nuoc-sx");
-const mtSoDK     = document.getElementById("mt-so-dk");
-const mtGia      = document.getElementById("mt-gia");
-const mtMoTa     = document.getElementById("mt-mo-ta");
-
-// ── Helpers ────────────────────────────────────────────────
-function formatGia(val) {
-  if (val == null || val === "") return "—";
-  return new Intl.NumberFormat("vi-VN").format(val) + " ₫";
-}
-function esc(s) {
-  if (!s) return "";
-  return String(s)
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
-function setModalMsg(msg, isErr = false) {
-  modalMsg.textContent = msg;
-  modalMsg.className   = "form-message" + (isErr ? " is-error" : "");
-}
-
-// ── Nhóm thuốc: load cho dropdown ─────────────────────────
-async function loadNhomThuocOptions() {
-  try {
-    const res = await fetch(`${API}/drug-groups`);
-    _nhomList = await res.json();
-  } catch (_) {
-    _nhomList = [];
-  }
-
-  // Đổ vào select lọc (trang chính)
-  if (filterNhomSel) {
-    filterNhomSel.innerHTML = '<option value="">Tất cả nhóm thuốc</option>';
-    _nhomList.forEach(n => {
-      const o = document.createElement("option");
-      o.value = n.id; o.textContent = n.ten_nhom;
-      filterNhomSel.appendChild(o);
-    });
-  }
-
-  // Đổ vào select trong modal
-  if (mtNhom) {
-    mtNhom.innerHTML = '<option value="">— Chọn nhóm thuốc —</option>';
-    _nhomList.forEach(n => {
-      const o = document.createElement("option");
-      o.value = n.id; o.textContent = n.ten_nhom;
-      mtNhom.appendChild(o);
-    });
-  }
-}
-
-// ── Thuốc: fetch từ API ────────────────────────────────────
-async function fetchThuocList(nhomId = "") {
-  const url = nhomId
-    ? `${API}/thuoc?nhom_thuoc_id=${nhomId}`
-    : `${API}/thuoc`;
-  const res  = await fetch(url);
-  _thuocList = await res.json();
-}
-
-// ── Thuốc: render bảng ────────────────────────────────────
-function renderThuocTable(keyword = "") {
-  const kw = keyword.trim().toLowerCase();
-  const filtered = _thuocList.filter(t =>
-    !kw ||
-    t.ten_thuoc.toLowerCase().includes(kw) ||
-    (t.hoat_chat || "").toLowerCase().includes(kw)
-  );
-
-  thuocTbody.innerHTML = "";
-
-  if (filtered.length === 0) {
-    thuocTbody.innerHTML = `
-      <tr><td colspan="8" class="admin-table-empty">
-        <span class="material-symbols-outlined">search_off</span>
-        ${kw ? "Không tìm thấy thuốc phù hợp." : "Chưa có thuốc nào trong nhóm này."}
-      </td></tr>`;
-    thuocEmpty.classList.toggle("is-hidden", kw !== "");
-    return;
-  }
-
-  thuocEmpty.classList.add("is-hidden");
-
-  filtered.forEach(t => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td style="color:var(--text-muted);font-size:.85rem">${t.id}</td>
-      <td>
-        <div class="thuoc-name">${esc(t.ten_thuoc)}</div>
-        ${t.so_dang_ky ? `<div class="thuoc-sub">SĐK: ${esc(t.so_dang_ky)}</div>` : ""}
-      </td>
-      <td>${esc(t.hoat_chat) || "<span style='color:var(--text-muted)'>—</span>"}</td>
-      <td>${esc(t.ham_luong) || "<span style='color:var(--text-muted)'>—</span>"}</td>
-      <td>${esc(t.dang_bao_che) || "<span style='color:var(--text-muted)'>—</span>"}</td>
-      <td>
-        ${t.nhom_thuoc
-          ? `<span class="nhom-badge">${esc(t.nhom_thuoc.ten_nhom)}</span>`
-          : "<span style='color:var(--text-muted)'>—</span>"}
-      </td>
-      <td class="gia-cell">${formatGia(t.gia_tham_khao)}</td>
-      <td class="action-cell">
-        <button class="icon-button" title="Sửa thuốc"
-                onclick="openEditThuoc(${t.id})" aria-label="Sửa ${esc(t.ten_thuoc)}">
-          <span class="material-symbols-outlined">edit</span>
-        </button>
-        <button class="icon-button btn-delete-thuoc" title="Xóa thuốc"
-                onclick="confirmDeleteThuoc(${t.id}, '${esc(t.ten_thuoc)}')"
-                aria-label="Xóa ${esc(t.ten_thuoc)}">
-          <span class="material-symbols-outlined">delete</span>
-        </button>
-      </td>`;
-    thuocTbody.appendChild(tr);
-  });
-}
-
-// ── Load + render tổng hợp ─────────────────────────────────
-async function reloadThuoc() {
-  thuocTbody.innerHTML = `
-    <tr><td colspan="8" class="admin-table-empty">
-      <span class="material-symbols-outlined">hourglass_empty</span>
-      Đang tải...
-    </td></tr>`;
-  thuocEmpty.classList.add("is-hidden");
-
-  const nhomId = filterNhomSel?.value || "";
-  await fetchThuocList(nhomId);
-  renderThuocTable(searchInput?.value || "");
-}
-
-// ── Modal: mở thêm mới ────────────────────────────────────
-function openAddThuoc() {
-  _thuocEditId = null;
-  modalTitle.textContent = "Thêm thuốc mới";
-  modalSubmitBtn.innerHTML = `<span class="material-symbols-outlined">add</span> Thêm thuốc`;
-  modalForm.reset();
-  mtId.value = "";
-  setModalMsg("");
-  modalThuoc.classList.remove("is-hidden");
-  mtTen.focus();
-}
-
-// ── Modal: mở sửa ─────────────────────────────────────────
-async function openEditThuoc(id) {
-  _thuocEditId = id;
-  modalTitle.textContent = "Sửa thông tin thuốc";
-  modalSubmitBtn.innerHTML = `<span class="material-symbols-outlined">save</span> Lưu thay đổi`;
-  setModalMsg("");
-
-  // Lấy dữ liệu hiện tại
-  try {
-    const res = await fetch(`${API}/thuoc/${id}`);
-    if (!res.ok) throw new Error();
-    const t = await res.json();
-
-    mtId.value          = t.id;
-    mtTen.value         = t.ten_thuoc       || "";
-    mtNhom.value        = t.nhom_thuoc_id   || "";
-    mtHoatChat.value    = t.hoat_chat       || "";
-    mtHamLuong.value    = t.ham_luong       || "";
-    mtDangBC.value      = t.dang_bao_che    || "";
-    mtDonVi.value       = t.don_vi_tinh     || "";
-    mtHangSX.value      = t.hang_san_xuat   || "";
-    mtNuocSX.value      = t.nuoc_san_xuat   || "";
-    mtSoDK.value        = t.so_dang_ky      || "";
-    mtGia.value         = t.gia_tham_khao   || "";
-    mtMoTa.value        = t.mo_ta           || "";
-
-    modalThuoc.classList.remove("is-hidden");
-    mtTen.focus();
-  } catch {
-    alert("Không thể tải thông tin thuốc. Vui lòng thử lại.");
-  }
-}
-
-// ── Modal: đóng ───────────────────────────────────────────
-function closeThuocModal() {
-  modalThuoc.classList.add("is-hidden");
-  modalForm.reset();
-  setModalMsg("");
-  _thuocEditId = null;
-}
-
-// ── Modal: submit (thêm hoặc sửa) ─────────────────────────
-modalForm?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  setModalMsg("");
-
-  const ten   = mtTen.value.trim();
-  const nhomId = parseInt(mtNhom.value);
-
-  if (!ten)    { setModalMsg("Vui lòng nhập tên thuốc.", true); mtTen.focus();  return; }
-  if (!nhomId) { setModalMsg("Vui lòng chọn nhóm thuốc.", true); mtNhom.focus(); return; }
-
-  const payload = {
-    ten_thuoc:    ten,
-    nhom_thuoc_id: nhomId,
-    hoat_chat:    mtHoatChat.value.trim() || null,
-    ham_luong:    mtHamLuong.value.trim() || null,
-    dang_bao_che: mtDangBC.value.trim()   || null,
-    don_vi_tinh:  mtDonVi.value.trim()    || null,
-    hang_san_xuat:mtHangSX.value.trim()   || null,
-    nuoc_san_xuat:mtNuocSX.value.trim()   || null,
-    so_dang_ky:   mtSoDK.value.trim()     || null,
-    gia_tham_khao:mtGia.value !== "" ? parseFloat(mtGia.value) : null,
-    mo_ta:        mtMoTa.value.trim()     || null,
-  };
-
-  const isEdit  = Boolean(_thuocEditId);
-  const url     = isEdit ? `${API}/thuoc/${_thuocEditId}` : `${API}/thuoc`;
-  const method  = isEdit ? "PUT" : "POST";
-
-  // Disable button
-  modalSubmitBtn.disabled = true;
-  const origHtml = modalSubmitBtn.innerHTML;
-  modalSubmitBtn.innerHTML = `<span class="material-symbols-outlined">hourglass_empty</span> Đang lưu...`;
-
-  try {
-    const res  = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-
-    if (!res.ok) {
-      setModalMsg(data.error || "Có lỗi xảy ra.", true);
-      return;
-    }
-
-    closeThuocModal();
-    await reloadThuoc();
-
-  } catch {
-    setModalMsg("Không kết nối được máy chủ.", true);
-  } finally {
-    modalSubmitBtn.disabled = false;
-    modalSubmitBtn.innerHTML = origHtml;
-  }
-});
-
-// ── Xóa thuốc ─────────────────────────────────────────────
-window.confirmDeleteThuoc = async function (id, ten) {
-  if (!confirm(`Xóa thuốc "${ten}"?\nThao tác này không thể hoàn tác.`)) return;
-  try {
-    const res = await fetch(`${API}/thuoc/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      await reloadThuoc();
-    } else {
-      const d = await res.json();
-      alert(d.error || "Xóa thất bại.");
-    }
-  } catch {
-    alert("Không kết nối được máy chủ.");
-  }
-};
-
-// ── Expose để HTML onclick dùng được ──────────────────────
-window.openEditThuoc = openEditThuoc;
-
-// ── Sự kiện tìm kiếm & lọc ────────────────────────────────
-searchInput?.addEventListener("input", () =>
-  renderThuocTable(searchInput.value));
-
-filterNhomSel?.addEventListener("change", reloadThuoc);
-
-// ── Nút mở modal thêm mới ─────────────────────────────────
-document.getElementById("btn-mo-them-thuoc")
-  ?.addEventListener("click", openAddThuoc);
-document.getElementById("btn-mo-them-thuoc-2")
-  ?.addEventListener("click", openAddThuoc);
-document.getElementById("btn-add-thuoc")
-  ?.addEventListener("click", openAddThuoc);
-
-// ── Đóng modal ────────────────────────────────────────────
-document.getElementById("modal-thuoc-close")
-  ?.addEventListener("click", closeThuocModal);
-document.getElementById("modal-thuoc-cancel")
-  ?.addEventListener("click", closeThuocModal);
-
-// Click ra ngoài modal cũng đóng
-modalThuoc?.addEventListener("click", (e) => {
-  if (e.target === modalThuoc) closeThuocModal();
-});
-
-// ESC đóng modal
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !modalThuoc.classList.contains("is-hidden"))
-    closeThuocModal();
-});
-
-// ── Hook vào showPage để load dữ liệu khi vào trang ───────
-const _origShowPage = showPage;
-window.showPage = function(pageName) {
-  _origShowPage(pageName);
-  if (pageName === "admin-thuoc") {
-    loadNhomThuocOptions().then(reloadThuoc);
-  }
-};
-
-// ════════════════════════════════════════════════════════════
-// ── DRAG & DROP FILE UPLOAD COMPONENT ──────────────────────
-// ════════════════════════════════════════════════════════════
-
-const uploadZone = document.getElementById("file-upload-zone");
-const fileInput = document.getElementById("file-upload-input");
-const fileUploadBrowse = document.getElementById("file-upload-browse");
-const btnToggleUpload = document.getElementById("btn-toggle-upload");
-
-if (uploadZone && fileInput && btnToggleUpload) {
-  // Toggle upload zone visibility
-  btnToggleUpload.addEventListener("click", () => {
-    const isVisible = uploadZone.style.display !== "none";
-    uploadZone.style.display = isVisible ? "none" : "block";
-    if (!isVisible) {
-      fileInput.value = "";
-      uploadZone.querySelector(".upload-progress").style.display = "none";
-      uploadZone.querySelector(".upload-result").style.display = "none";
-    }
-  });
-
-  // Browse button click
-  fileUploadBrowse?.addEventListener("click", (e) => {
-    e.preventDefault();
-    fileInput.click();
-  });
-
-  // File input change
-  fileInput.addEventListener("change", (e) => {
-    const files = e.target.files;
-    if (files.length > 0) {
-      handleFileUpload(files[0]);
-    }
-  });
-
-  // Drag and drop events
-  uploadZone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    uploadZone.style.borderColor = "var(--primary)";
-    uploadZone.style.background = "rgba(var(--primary-rgb), 0.05)";
-  });
-
-  uploadZone.addEventListener("dragleave", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    uploadZone.style.borderColor = "var(--outline)";
-    uploadZone.style.background = "var(--surface-low)";
-  });
-
-  uploadZone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    uploadZone.style.borderColor = "var(--outline)";
-    uploadZone.style.background = "var(--surface-low)";
-    
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleFileUpload(files[0]);
-    }
-  });
-
-  // Click on zone to select file
-  uploadZone.addEventListener("click", (e) => {
-    if (e.target.id !== "file-upload-browse") {
-      fileInput.click();
-    }
-  });
-}
-
-// Parse CSV data
-function parseCSV(text) {
-  const lines = text.split("\n").map(l => l.trim()).filter(l => l);
-  const header = lines[0].split(",").map(h => h.trim().toLowerCase());
-  
-  const data = [];
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i]);
-    if (values.length < 2) continue; // Skip empty lines
-    
-    const row = {};
-    header.forEach((col, idx) => {
-      row[col] = values[idx] ? values[idx].trim() : "";
-    });
-    data.push(row);
-  }
-  return { header, data };
-}
-
-// Parse CSV line handling quoted values
-function parseCSVLine(line) {
-  const result = [];
-  let current = "";
-  let inQuotes = false;
-  
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const nextChar = line[i + 1];
-    
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === "," && !inQuotes) {
-      result.push(current);
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  result.push(current);
-  return result;
-}
-
-// Parse XLSX (simplified - requires reading file)
-async function parseXLSX(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const sheet = XLSX.read(data, { type: "array" });
-        const firstSheet = sheet.Sheets[sheet.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
-        
-        if (rows.length === 0) {
-          resolve({ header: [], data: [] });
-          return;
-        }
-        
-        const header = Object.keys(rows[0]).map(k => k.toLowerCase());
-        resolve({ header, data: rows });
-      } catch (err) {
-        console.error("XLSX parsing error:", err);
-        resolve({ header: [], data: [] });
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-// Map column names flexibly
-function mapColumnName(columnName, possibleNames) {
-  const normalized = columnName.toLowerCase().trim();
-  for (const name of possibleNames) {
-    if (normalized.includes(name.toLowerCase()) || name.toLowerCase().includes(normalized)) {
-      return true;
-    }
-  }
-  return normalized.length > 0 && possibleNames.some(n => n.length > 0);
-}
-
-// Main file upload handler
-async function handleFileUpload(file) {
-  const uploadProgress = uploadZone.querySelector(".upload-progress");
-  const uploadResult = uploadZone.querySelector(".upload-result");
-  const uploadStatus = document.getElementById("upload-status");
-  const uploadCount = document.getElementById("upload-count");
-  const uploadResultText = document.getElementById("upload-result-text");
-  const progressBar = document.getElementById("upload-progress-bar");
-
-  uploadProgress.style.display = "block";
-  uploadResult.style.display = "none";
-  progressBar.style.width = "0%";
-
-  const fileName = file.name.toLowerCase();
-  let parsedData;
-
-  try {
-    if (fileName.endsWith(".csv")) {
-      uploadStatus.textContent = "Đang đọc file CSV...";
-      const text = await file.text();
-      parsedData = parseCSV(text);
-    } else if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
-      uploadStatus.textContent = "Đang đọc file Excel...";
-      
-      // Load XLSX library if not available
-      if (typeof XLSX === "undefined") {
-        const script = document.createElement("script");
-        script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js";
-        document.head.appendChild(script);
-        
-        await new Promise(resolve => {
-          script.onload = resolve;
-        });
-      }
-      
-      parsedData = await parseXLSX(file);
-    } else {
-      throw new Error("Định dạng file không hỗ trợ. Vui lòng sử dụng CSV hoặc XLSX.");
-    }
-
-    if (!parsedData || parsedData.data.length === 0) {
-      throw new Error("File không chứa dữ liệu hoặc định dạng không đúng.");
-    }
-
-    uploadStatus.textContent = `Đang nhập ${parsedData.data.length} hàng...`;
-    const totalItems = parsedData.data.length;
-
-    // Map columns
-    const header = parsedData.header || Object.keys(parsedData.data[0] || {});
-    const colMap = {
-      ten: header.find(h => h.includes("ten") || h.includes("name") || h === "tên"),
-      hoatChat: header.find(h => h.includes("hoat") || h.includes("active") || h.includes("substance")),
-      hamLuong: header.find(h => h.includes("ham") || h.includes("strength") || h.includes("dose")),
-      dangBaoChe: header.find(h => h.includes("dang") || h.includes("form")),
-      nhom: header.find(h => h.includes("nhom") || h.includes("group")),
-      gia: header.find(h => h.includes("gia") || h.includes("price")),
-      donVi: header.find(h => h.includes("don") || h.includes("unit")),
-      hangSx: header.find(h => h.includes("hang") || h.includes("manufacturer")),
-      nuocSx: header.find(h => h.includes("nuoc") || h.includes("country")),
-      soDk: header.find(h => h.includes("so") || h.includes("registration")),
-      moTa: header.find(h => h.includes("mo") || h.includes("description"))
-    };
-
-    // Check required columns
-    if (!colMap.ten || !colMap.nhom) {
-      throw new Error("File phải chứa cột 'Tên thuốc' (name) và 'Nhóm thuốc' (group). Kiểm tra tiêu đề cột.");
-    }
-
-    let successCount = 0;
-    let errorCount = 0;
-    const errors = [];
-
-    // Fetch nhom mapping
-    const nhomsResp = await fetch(`${API_BASE_URL}/api/nhom-thuoc`);
-    const nhomsList = (await nhomsResp.json()) || [];
-    const nhomMap = {};
-    nhomsList.forEach(n => {
-      nhomMap[n.ten.toLowerCase()] = n.id;
-    });
-
-    // Process each row
-    for (let i = 0; i < totalItems; i++) {
-      try {
-        const row = parsedData.data[i];
-        const ten = row[colMap.ten]?.trim();
-        const nhomName = row[colMap.nhom]?.trim();
-
-        if (!ten || !nhomName) {
-          errorCount++;
-          errors.push(`Hàng ${i + 2}: Thiếu tên thuốc hoặc nhóm thuốc`);
-          continue;
-        }
-
-        const nhomId = nhomMap[nhomName.toLowerCase()];
-        if (!nhomId) {
-          errorCount++;
-          errors.push(`Hàng ${i + 2}: Nhóm thuốc "${nhomName}" không tồn tại`);
-          continue;
-        }
-
-        const thuocData = {
-          ten: ten,
-          nhom_id: nhomId,
-          hoat_chat: row[colMap.hoatChat]?.trim() || "",
-          ham_luong: row[colMap.hamLuong]?.trim() || "",
-          dang_bao_che: row[colMap.dangBaoChe]?.trim() || "",
-          don_vi: row[colMap.donVi]?.trim() || "",
-          hang_sx: row[colMap.hangSx]?.trim() || "",
-          nuoc_sx: row[colMap.nuocSx]?.trim() || "",
-          so_dk: row[colMap.soDk]?.trim() || "",
-          gia: parseInt(row[colMap.gia]) || 0,
-          mo_ta: row[colMap.moTa]?.trim() || ""
-        };
-
-        // Send to API
-        const response = await fetch(`${API_BASE_URL}/api/thuoc`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${authToken}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(thuocData)
-        });
-
-        if (response.ok) {
-          successCount++;
-        } else {
-          errorCount++;
-          const errText = await response.text();
-          errors.push(`Hàng ${i + 2}: ${errText || "Lỗi thêm thuốc"}`);
-        }
-      } catch (err) {
-        errorCount++;
-        errors.push(`Hàng ${i + 2}: ${err.message}`);
-      }
-
-      // Update progress
-      const progress = ((i + 1) / totalItems) * 100;
-      progressBar.style.width = progress + "%";
-      uploadCount.textContent = `${successCount} thành công / ${i + 1} hàng`;
-    }
-
-    // Show result
-    uploadProgress.style.display = "none";
-    uploadResult.style.display = "block";
-    
-    let resultHTML = `<strong>✅ Nhập file thành công!</strong><br>Thêm ${successCount} thuốc`;
-    if (errorCount > 0) {
-      resultHTML += `<br>❌ Lỗi: ${errorCount} hàng`;
-      if (errors.length > 0 && errors.length <= 5) {
-        resultHTML += "<br><small>" + errors.join("<br>") + "</small>";
-      }
-    }
-    uploadResultText.innerHTML = resultHTML;
-
-    // Reload table
-    setTimeout(() => {
-      reloadThuoc();
-    }, 1000);
-
-  } catch (error) {
-    uploadProgress.style.display = "none";
-    uploadResult.style.display = "block";
-    uploadResult.style.background = "rgba(var(--error-rgb, 220, 38, 38), 0.1)";
-    uploadResultText.innerHTML = `<strong>❌ Lỗi:</strong> ${error.message}`;
-  }
-}
-function renderTop3DrugGroups(predictions = [], matchedSymptoms = []) {
-    const resultArea = document.getElementById("prediction-result");
-
-    if (!resultArea) {
-        console.warn("Không tìm thấy #prediction-result");
-        return;
-    }
-
-    const top3 = predictions.slice(0, 3);
-
-    const top3Html = top3.map((item, index) => {
-        const groupName =
-            item.group ||
-            item.group_name ||
-            item.ten_nhom ||
-            item.label ||
-            "Nhóm thuốc không xác định";
-
-        const score =
-            item.score ??
-            item.confidence ??
-            item.probability ??
-            0;
-
-        const percent = Number(score).toFixed(1);
-
-        return `
-            <div class="top-drug-item">
-                <div class="top-drug-header">
-                    <span class="top-drug-rank">Top ${index + 1}</span>
-                    <strong>${groupName}</strong>
-                    <span>${percent}%</span>
-                </div>
-
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${percent}%"></div>
-                </div>
-            </div>
-        `;
-    }).join("");
-
-    const symptomsHtml = matchedSymptoms.length > 0
-        ? matchedSymptoms.map(symptom => `<span class="symptom-chip">${symptom}</span>`).join("")
-        : `<span class="text-muted">Chưa có triệu chứng khớp.</span>`;
-
-    resultArea.innerHTML += `
-        <div class="result-card mt-3">
-            <h3>Top 3 nhóm thuốc gợi ý</h3>
-            ${top3Html || "<p>Chưa có kết quả dự đoán.</p>"}
-        </div>
-
-        <div class="result-card mt-3">
-            <h3>Triệu chứng đã khớp</h3>
-            <div class="symptom-chip-list">
-                ${symptomsHtml}
-            </div>
-        </div>
-    `;
-}
-
-
-
-// Hàm xử lý khi bấm "Đồng ý"
-function handleApprove() {
-    alert("Cảm ơn bác sĩ đã xác nhận kết quả chính xác!");
-    const btn = document.getElementById('btnApprove');
-    if (btn) {
-        btn.className = "btn btn-success px-4 py-2 fw-semibold";
-        btn.disabled = true;
-    }
-}
-
-/// ==========================================
-// ĐOẠN MÃ MỚI SỬ DỤNG FETCH() ĐỂ GỌI API (TASK 45)
-// ==========================================
-
-// 1. Hàm xử lý khi bấm nút "Đồng ý" -> Gửi trạng thái APPROVE về Backend
-function handleApprove() {
-    // Lấy tên triệu chứng hiện tại từ giao diện (ví dụ lấy từ thẻ h1 hiển thị kết quả)
-    const symptomName = document.getElementById('result-title')?.innerText || "Triệu chứng ẩn danh";
-
-    fetch('http://127.0.0.1:5000/api/evaluation', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            trieu_chung_nhap: symptomName,
-            trang_thai: 'APPROVE',
-            ghi_chu: ''
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            alert("Cảm ơn bác sĩ đã xác nhận kết quả chính xác!");
-            const btn = document.getElementById('btnApprove');
-            if (btn) {
-                btn.style.background = "#059669";
-                btn.style.color = "#ffffff";
-                btn.disabled = true;
-                btn.innerText = "Đã đồng ý";
-            }
-        }
-    })
-    .catch(err => console.error("Lỗi gửi đánh giá:", err));
-}
-
-// 2. Hàm xử lý khi viết ghi chú và bấm "Gửi đánh giá" -> Gửi trạng thái REJECT kèm lời nhắn
-function submitRejectFeedback() {
-    const notes = document.getElementById('feedbackNotes').value.trim();
-    const symptomName = document.getElementById('result-title')?.innerText || "Triệu chứng ẩn danh";
-
-    if (!notes) {
-        alert("Vui lòng nhập lý do hoặc ghi chú trước khi gửi!");
-        return;
-    }
-
-    fetch('http://127.0.0.1:5000/api/evaluation', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            trieu_chung_nhap: symptomName,
-            trang_thai: 'REJECT',
-            ghi_chu: notes
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            alert("Hệ thống đã ghi nhận phản hồi đóng góp của bạn!");
-            
-            // Xóa nội dung trong ô nhập và đóng Modal ẩn đi
-            document.getElementById('feedbackNotes').value = '';
-            const modalEl = document.getElementById('feedbackModal');
-            const modal = bootstrap.Modal.getInstance(modalEl);
-            if (modal) {
-                modal.hide();
-            }
-        }
-    })
-    .catch(err => console.error("Lỗi gửi phản hồi:", err));
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// FEEDBACK STATISTICS (DASHBOARD)
-// ────────────────────────────────────────────────────────────────────────────
-
-let feedbackChartInstance = null;
-
-// Register custom plugin for center label in doughnut chart
-const centerLabelPlugin = {
-    id: 'centerLabel',
-    afterDraw(chart) {
-        const {width, height} = chart;
-        const ctx = chart.ctx;
-        
-        // Calculate font size responsively
-        const fontSize = Math.min(width, height) / 8;
-        const smallFontSize = fontSize / 1.5;
-        
-        // Get chart data
-        const data = chart.data.datasets[0].data;
-        const total = data.reduce((a, b) => a + b, 0);
-        
-        // Draw text
-        ctx.save();
-        ctx.font = `bold ${fontSize}px Inter, system-ui`;
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#000000';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        
-        // Main text
-        ctx.fillText(total, width / 2, height / 2 - fontSize / 4);
-        
-        // Label text - "Tổng đánh giá"
-        ctx.font = `500 ${smallFontSize}px Inter, system-ui`;
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#666666';
-        ctx.fillText('Tổng đánh giá', width / 2, height / 2 + smallFontSize * 0.8);
-        
-        ctx.restore();
-    }
-};
-
-// Register the plugin
-if (window.Chart && window.Chart.register) {
-    Chart.register(centerLabelPlugin);
-}
-
-async function loadFeedbackStatistics() {
-    const loading = document.getElementById('feedback-stats-loading');
-    const content = document.getElementById('feedback-stats-content');
-    const empty = document.getElementById('feedback-stats-empty');
-    const errorDiv = document.getElementById('feedback-stats-error');
-    
-    // Show loading state
-    if (loading) loading.style.display = 'block';
-    if (content) content.classList.add('is-hidden');
-    if (empty) empty.classList.add('is-hidden');
-    
-    try {
-        const response = await fetch('/api/feedback/statistics');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.message || 'API returned error');
-        }
-        
-        // Hide loading
-        if (loading) loading.style.display = 'none';
-        
-        // Check for empty state
-        if (data.total === 0) {
-            if (content) content.classList.add('is-hidden');
-            if (empty) empty.classList.remove('is-hidden');
-            return;
-        }
-        
-        // Update stat cards
-        const agreeCount = document.getElementById('stat-agree-count');
-        const agreePercent = document.getElementById('stat-agree-percent');
-        const disagreeCount = document.getElementById('stat-disagree-count');
-        const disagreePercent = document.getElementById('stat-disagree-percent');
-        const totalCount = document.getElementById('stat-total-count');
-        const consensusRate = document.getElementById('stat-consensus-rate');
-        
-        // Calculate consensus rate
-        const consensus = data.agree_percentage;
-        
-        // Update values with animation
-        if (agreeCount) {
-            agreeCount.textContent = data.agree_count;
-            agreeCount.parentElement.parentElement.style.animation = 'none';
-            setTimeout(() => {
-                agreeCount.parentElement.parentElement.style.animation = '';
-            }, 10);
-        }
-        if (agreePercent) agreePercent.textContent = data.agree_percentage.toFixed(1) + '%';
-        if (disagreeCount) disagreeCount.textContent = data.disagree_count;
-        if (disagreePercent) disagreePercent.textContent = data.disagree_percentage.toFixed(1) + '%';
-        if (totalCount) totalCount.textContent = data.total;
-        if (consensusRate) consensusRate.textContent = data.agree_percentage.toFixed(1) + '%';
-        
-        // Update legend labels
-        const legendAgreeCount = document.getElementById('legend-agree-count');
-        const legendAgreePercent = document.getElementById('legend-agree-percent');
-        const legendDisagreeCount = document.getElementById('legend-disagree-count');
-        const legendDisagreePercent = document.getElementById('legend-disagree-percent');
-        
-        if (legendAgreeCount) legendAgreeCount.textContent = data.agree_count;
-        if (legendAgreePercent) legendAgreePercent.textContent = data.agree_percentage.toFixed(0);
-        if (legendDisagreeCount) legendDisagreeCount.textContent = data.disagree_count;
-        if (legendDisagreePercent) legendDisagreePercent.textContent = data.disagree_percentage.toFixed(0);
-        
-        // Render chart
-        renderFeedbackChart(data);
-        
-        // Show content, hide loading/error
-        if (content) {
-            content.classList.remove('is-hidden');
-            if (errorDiv) errorDiv.classList.add('is-hidden');
-        }
-        
-    } catch (error) {
-        console.error('Error loading feedback statistics:', error);
-        
-        // Show error state
-        if (loading) loading.style.display = 'none';
-        if (content) content.classList.add('is-hidden');
-        if (empty) empty.classList.add('is-hidden');
-        if (errorDiv) errorDiv.classList.remove('is-hidden');
-    }
-}
-
-function renderFeedbackChart(data) {
-    const canvas = document.getElementById('feedbackChart');
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    
-    // Destroy previous chart instance if it exists
-    if (feedbackChartInstance) {
-        feedbackChartInstance.destroy();
-    }
-    
-    // Prepare chart options
-    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#0e1b2b';
-    const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#5a6675';
-    
-    // Create new chart with enhanced styling
-    feedbackChartInstance = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Đồng ý', 'Không đồng ý'],
-            datasets: [{
-                data: [data.agree_count, data.disagree_count],
-                backgroundColor: ['#22c55e', '#ef4444'],
-                borderColor: [
-                    getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#f5f7fb',
-                    getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#f5f7fb'
-                ],
-                borderWidth: 3,
-                hoverBorderWidth: 5,
-                hoverOffset: 8,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            animation: {
-                duration: 800,
-                easing: 'easeInOutQuart',
-                delay: (context) => {
-                    let delay = 0;
-                    if (context.type === 'data' && context.mode === 'default' && !context.dropped) {
-                        delay = context.dataIndex * 100 + context.datasetIndex * 50;
-                    }
-                    return delay;
-                },
-            },
-            plugins: {
-                centerLabel: {},
-                legend: {
-                    position: 'right',
-                    align: 'center',
-                    labels: {
-                        color: textColor,
-                        padding: 16,
-                        font: {
-                            size: 14,
-                            weight: '500',
-                            family: 'Inter, system-ui, -apple-system'
-                        },
-                        boxWidth: 12,
-                        boxHeight: 12,
-                        borderRadius: 3,
-                        generateLabels(chart) {
-                            const data = chart.data;
-                            const datasets = data.datasets;
-                            const total = datasets[0].data.reduce((a, b) => a + b, 0);
-                            
-                            return data.labels.map((label, i) => {
-                                const value = datasets[0].data[i];
-                                const percentage = total > 0 ? ((value / total) * 100).toFixed(0) : 0;
-                                const emoji = i === 0 ? '🟢' : '🔴';
-                                
-                                return {
-                                    text: `${emoji} ${label}\n${value} (${percentage}%)`,
-                                    fillStyle: datasets[0].backgroundColor[i],
-                                    hidden: false,
-                                    index: i,
-                                };
-                            });
-                        }
-                    }
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    titleColor: '#ffffff',
-                    bodyColor: '#ffffff',
-                    borderColor: 'rgba(255, 255, 255, 0.2)',
-                    borderWidth: 1,
-                    padding: 12,
-                    displayColors: true,
-                    boxWidth: 10,
-                    boxHeight: 10,
-                    cornerRadius: 6,
-                    titleFont: {
-                        size: 13,
-                        weight: '600',
-                        family: 'Inter, system-ui'
-                    },
-                    bodyFont: {
-                        size: 12,
-                        family: 'Inter, system-ui'
-                    },
-                    callbacks: {
-                        title: function(context) {
-                            const index = context[0].dataIndex;
-                            const labels = ['Đồng ý', 'Không đồng ý'];
-                            return labels[index] || '';
-                        },
-                        label: function(context) {
-                            const value = context.parsed || 0;
-                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                            return [`${value} đánh giá`, `${percentage}%`];
-                        },
-                        afterLabel: function(context) {
-                            const index = context.dataIndex;
-                            return index === 0 ? '✓ Chính xác' : '✗ Không chính xác';
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-// Hook into page switching
-const originalPageSwitch = document.querySelector('[data-page="dashboard"]');
-if (originalPageSwitch) {
-    document.addEventListener('click', function(e) {
-        if (e.target.closest('[data-page="dashboard"]')) {
-            setTimeout(loadFeedbackStatistics, 100);
-        }
-    });
-}
-
-// Retry button handler
-const retryBtn = document.getElementById('btn-retry-stats');
-if (retryBtn) {
-    retryBtn.addEventListener('click', loadFeedbackStatistics);
-}
-
-// Refresh empty state button handler
-const refreshEmptyBtn = document.getElementById('btn-refresh-empty');
-if (refreshEmptyBtn) {
-    refreshEmptyBtn.addEventListener('click', loadFeedbackStatistics);
-}
-
-// Legend item hover effects
-document.addEventListener('DOMContentLoaded', function() {
-    const legendItems = document.querySelectorAll('.legend-item');
-    if (legendItems.length > 0 && feedbackChartInstance) {
-        legendItems.forEach((item, index) => {
-            item.addEventListener('click', function() {
-                if (feedbackChartInstance) {
-                    feedbackChartInstance.toggleDataVisibility(index, true);
-                }
-            });
-        });
-    }
-});
