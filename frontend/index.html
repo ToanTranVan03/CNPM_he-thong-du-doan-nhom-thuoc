@@ -6,7 +6,7 @@
     <title>PharmaPredict - Hệ thống gợi ý nhóm thuốc tham khảo</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
     <script>
       // Khởi tạo theme sớm để tránh nháy sai màu (no-flash)
@@ -151,26 +151,36 @@
             <span class="material-symbols-outlined" aria-hidden="true">history</span>
             <span>Lịch Sử Dự Đoán</span>
           </button>
-          <button class="nav-link admin-only is-hidden" type="button" data-page="dashboard">
-            <span class="material-symbols-outlined" aria-hidden="true">monitoring</span>
-            <span>Dashboard</span>
-          </button>
-          <button class="nav-link admin-only is-hidden" type="button" data-page="admin-history">
-            <span class="material-symbols-outlined" aria-hidden="true">manage_search</span>
-            <span>Lịch Sử Hệ Thống</span>
-          </button>
-          <button class="nav-link admin-only is-hidden" type="button" data-page="dictionary">
-            <span class="material-symbols-outlined" aria-hidden="true">menu_book</span>
-            <span>Từ Điển Triệu Chứng</span>
-          </button>
-          <button class="nav-link admin-only is-hidden" type="button" data-page="drug-admin">
-            <span class="material-symbols-outlined" aria-hidden="true">medication</span>
-            <span>Quản Lý Thuốc</span>
-          </button>
-          <button class="nav-link admin-only is-hidden" type="button" data-page="feedback-admin">
-            <span class="material-symbols-outlined" aria-hidden="true">rate_review</span>
-            <span>Duyệt Phản Hồi</span>
-          </button>
+          <div class="nav-admin admin-only is-hidden">
+            <button class="nav-link nav-admin-trigger" type="button" aria-haspopup="true">
+              <span class="material-symbols-outlined" aria-hidden="true">shield_person</span>
+              <span>Quản Trị</span>
+              <span class="material-symbols-outlined nav-caret" aria-hidden="true">expand_more</span>
+            </button>
+            <div class="nav-admin-panel" role="menu">
+              <p class="nav-admin-label">Khu quản trị</p>
+              <button class="nav-link" type="button" data-page="dashboard">
+                <span class="material-symbols-outlined" aria-hidden="true">monitoring</span>
+                <span>Dashboard</span>
+              </button>
+              <button class="nav-link" type="button" data-page="admin-history">
+                <span class="material-symbols-outlined" aria-hidden="true">manage_search</span>
+                <span>Lịch Sử Hệ Thống</span>
+              </button>
+              <button class="nav-link" type="button" data-page="dictionary">
+                <span class="material-symbols-outlined" aria-hidden="true">menu_book</span>
+                <span>Từ Điển Triệu Chứng</span>
+              </button>
+              <button class="nav-link" type="button" data-page="drug-admin">
+                <span class="material-symbols-outlined" aria-hidden="true">medication</span>
+                <span>Quản Lý Thuốc</span>
+              </button>
+              <button class="nav-link" type="button" data-page="feedback-admin">
+                <span class="material-symbols-outlined" aria-hidden="true">rate_review</span>
+                <span>Duyệt Phản Hồi</span>
+              </button>
+            </div>
+          </div>
           <button class="nav-link" type="button" data-page="about">
             <span class="material-symbols-outlined" aria-hidden="true">person</span>
             <span>Hồ Sơ Của Tôi</span>
@@ -198,7 +208,7 @@
           <div class="intro">
             <p class="eyebrow">Hệ thống hỗ trợ lâm sàng</p>
             <h1 id="home-title">Gợi ý nhóm thuốc từ triệu chứng tiếng Việt.</h1>
-                <p class="lead">Mô tả triệu chứng bằng tiếng Việt, hệ thống sẽ map sang cụm triệu chứng tiếng Anh trong dataset và chỉ trả nhóm thuốc khi dữ liệu đủ tin cậy.</p>
+                
           </div>
 
           <form class="diagnosis-panel" id="diagnosis-form">
@@ -243,41 +253,12 @@
                 <span class="material-symbols-outlined" aria-hidden="true">restart_alt</span>
                 Xóa trắng
               </button>
+              <button class="text-button" type="button" id="example-case">
+                <span class="material-symbols-outlined" aria-hidden="true">auto_awesome</span>
+                Dùng thử ví dụ
+              </button>
             </div>
           </form>
-
-          <aside class="side-stack" aria-label="Goi y nhap lieu">
-            <div class="metric-strip">
-              <div>
-                <strong>8.421</strong>
-                <span>Ca huấn luyện</span>
-              </div>
-              <div>
-                <strong>16.766</strong>
-                <span>Triệu chứng có thể map</span>
-              </div>
-            </div>
-            <div class="tip-card">
-              <div class="tip-title">
-                <span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>
-                <h2>Mẹo viết bệnh án</h2>
-              </div>
-              <ul>
-                <li>Nêu triệu chứng chính, thời điểm khởi phát và mức độ nặng.</li>
-                <li>Bổ sung bệnh nền, dị ứng thuốc, thuốc đang dùng.</li>
-                <li>Thêm xét nghiệm liên quan như CRP, bạch cầu, men gan, creatinine.</li>
-              </ul>
-              <button class="text-button" type="button" id="example-case">Dùng thử ví dụ</button>
-            </div>
-          </aside>
-        </div>
-
-        <div class="container">
-          <div class="section-heading">
-            <h2>Hoạt động gần đây</h2>
-            <button class="text-button" type="button" data-page="history">Xem tất cả</button>
-          </div>
-          <div class="activity-grid" id="home-activity" aria-live="polite"></div>
         </div>
       </section>
 
@@ -293,6 +274,13 @@
               </div>
             </div>
             <div class="confidence-box" aria-label="Do tin cay">
+              <div class="confidence-donut" aria-hidden="true">
+                <svg viewBox="0 0 120 120">
+                  <circle class="cd-track" cx="60" cy="60" r="52"></circle>
+                  <circle class="cd-arc" id="confidence-donut-arc" cx="60" cy="60" r="52"></circle>
+                </svg>
+                <div class="cd-center"><b id="confidence-donut-value">0%</b></div>
+              </div>
               <div class="confidence-head">
                 <span id="score-label">Độ tương đồng</span>
                 <strong id="confidence-value">0%</strong>
@@ -397,9 +385,9 @@
         <div class="container">
           <div class="history-head">
             <div>
-              <p class="eyebrow">Lịch sử hệ thống</p>
+              <p class="eyebrow">Của tôi</p>
               <h1 id="history-title">Lịch sử dự đoán</h1>
-              <p class="lead">Tra cứu và quản lý các phân loại nhóm thuốc đã thực hiện.</p>
+              <p class="lead">Toàn bộ ca bạn đã phân tích, lưu theo phiên đăng nhập.</p>
             </div>
             <div class="history-actions">
               <button class="secondary-button compact" type="button">
@@ -766,53 +754,56 @@
       </section>
 
       <section class="page" id="page-about" aria-labelledby="about-title">
-        <div class="container about-layout">
-          <div class="about-copy">
-            <p class="eyebrow">Hồ sơ cá nhân</p>
-            <h1 id="about-title">Thông tin tài khoản</h1>
-            <p class="lead" id="profile-summary">Bạn đang đăng nhập vào hệ thống hỗ trợ nhập triệu chứng tiếng Việt và gợi ý nhóm thuốc khi dữ liệu đủ tin cậy.</p>
-            <div class="form-actions">
-              <button class="primary-button" type="button" id="profile-logout-button">
-                <span class="material-symbols-outlined" aria-hidden="true">logout</span>
-                Đăng xuất
-              </button>
-              <button class="secondary-button" type="button" data-page="home">Bắt đầu nhập liệu</button>
+        <div class="container page-narrow">
+          <div class="history-head">
+            <div>
+              <p class="eyebrow">Tài khoản</p>
+              <h1 id="about-title">Hồ sơ của tôi</h1>
             </div>
           </div>
-          <div class="about-cards">
-            <article class="feature-card">
-              <span class="feature-icon material-symbols-outlined" aria-hidden="true">psychology</span>
-              <h2>Dữ liệu tiếng Anh</h2>
-              <p>Model dùng trường trieu_chung trong CSV mới để học quan hệ giữa cụm triệu chứng và nhóm thuốc.</p>
-            </article>
-            <article class="feature-card dark">
-              <span class="feature-icon material-symbols-outlined" aria-hidden="true">verified</span>
-              <h2>Tiền xử lý tiếng Việt</h2>
-              <p>Triệu chứng người dùng nhập được map sang đúng mã đặc trưng tiếng Anh trước khi gọi model.</p>
-            </article>
-            <article class="feature-card">
-              <span class="feature-icon material-symbols-outlined" aria-hidden="true">encrypted</span>
-              <h2>Kết quả tiếng Việt</h2>
-              <p>Tên bệnh, mô tả, thuốc, lưu ý phòng ngừa và chăm sóc được dịch hoặc ánh xạ sang tiếng Việt.</p>
-            </article>
-          </div>
-        </div>
 
-        <div class="container faq-grid">
-          <article class="faq-item">
-            <h2>Cần nhập dữ liệu gì?</h2>
-            <p>Triệu chứng chính, tiền sử bệnh, dị ứng, thuốc đang dùng và chỉ số xét nghiệm liên quan.</p>
+          <article class="profile-card">
+            <div class="profile-hero">
+              <div class="profile-avatar" id="profile-avatar">ND</div>
+              <div class="profile-meta">
+                <h2 id="profile-name-display">Người dùng</h2>
+                <p id="profile-email-display">user@example.com</p>
+                <div class="profile-chips">
+                  <span class="profile-chip"><span class="material-symbols-outlined" aria-hidden="true">bookmark</span><span id="profile-stat-saved">0</span> đã lưu</span>
+                  <span class="profile-chip" id="profile-role-chip"><span class="material-symbols-outlined" aria-hidden="true">shield_person</span><span id="profile-role">Người dùng</span></span>
+                </div>
+              </div>
+            </div>
           </article>
-          <article class="faq-item">
-            <h2>Kết quả có thay bác sĩ không?</h2>
-            <p>Không. Đây là lớp hỗ trợ quyết định, cần bác sĩ xác nhận trước khi dùng trong điều trị.</p>
+
+          <article class="profile-card">
+            <h2 class="profile-section-title"><span class="material-symbols-outlined" aria-hidden="true">badge</span>Thông tin cá nhân</h2>
+            <form id="profile-info-form" class="profile-form">
+              <div class="profile-grid">
+                <label class="field"><span>Họ tên</span><input class="text-input" id="profile-name-input" maxlength="150" required /></label>
+                <label class="field"><span>Email</span><input class="text-input" id="profile-email-input" type="email" disabled /></label>
+              </div>
+              <p class="form-message" id="profile-info-message" role="status"></p>
+              <div class="profile-actions">
+                <button class="primary-button compact" type="submit"><span class="material-symbols-outlined" aria-hidden="true">save</span>Lưu thay đổi</button>
+              </div>
+            </form>
           </article>
-          <article class="faq-item contact-card">
-            <h2>Hỗ trợ</h2>
-            <input type="text" placeholder="Chủ đề cần hỗ trợ" disabled />
-            <textarea rows="3" placeholder="Nội dung trao đổi..." disabled></textarea>
-            <button class="primary-button" type="button" disabled>Sắp ra mắt</button>
-            <p class="muted-text">Kênh hỗ trợ trong ứng dụng đang được phát triển.</p>
+
+          <article class="profile-card">
+            <h2 class="profile-section-title"><span class="material-symbols-outlined" aria-hidden="true">lock</span>Đổi mật khẩu</h2>
+            <form id="profile-password-form" class="profile-form">
+              <label class="field"><span>Mật khẩu hiện tại</span><input class="text-input" id="profile-current-pw" type="password" autocomplete="current-password" required /></label>
+              <div class="profile-grid">
+                <label class="field"><span>Mật khẩu mới</span><input class="text-input" id="profile-new-pw" type="password" autocomplete="new-password" minlength="6" required placeholder="Tối thiểu 6 ký tự" /></label>
+                <label class="field"><span>Nhập lại mật khẩu mới</span><input class="text-input" id="profile-confirm-pw" type="password" autocomplete="new-password" required /></label>
+              </div>
+              <p class="form-message" id="profile-pw-message" role="status"></p>
+              <div class="profile-actions profile-actions-split">
+                <button class="secondary-button compact" type="button" id="profile-logout-button"><span class="material-symbols-outlined" aria-hidden="true">logout</span>Đăng xuất</button>
+                <button class="primary-button compact" type="submit"><span class="material-symbols-outlined" aria-hidden="true">lock_reset</span>Cập nhật mật khẩu</button>
+              </div>
+            </form>
           </article>
         </div>
       </section>

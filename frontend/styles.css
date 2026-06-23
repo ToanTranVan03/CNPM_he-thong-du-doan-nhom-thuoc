@@ -1919,3 +1919,352 @@ input:focus {
   margin: 0;
   word-break: break-word;
 }
+
+/* ===================================================================
+   VERDE OVERHAUL — redesign (token + font + top bar + soft motion)
+   Ghi đè lên style cũ ở cuối file; giữ nguyên class/id để script.js chạy.
+   =================================================================== */
+
+/* 1) Token Verde — sáng */
+:root {
+  --surface: #f3f1e9; --surface-lowest: #fffefb; --surface-low: #f0ede2;
+  --surface-container: #f7f4ec; --surface-high: #ece9df; --surface-highest: #dcebe5;
+  --text: #1b261f; --text-muted: #67736a; --text-subtle: #9aa298;
+  --outline: #e5e1d5;
+  --primary: #1f6b5c; --primary-action: #1f6b5c; --primary-hover: #185448;
+  --primary-contrast: #ffffff; --primary-soft: #dcebe5;
+  --secondary: #2a8472; --secondary-soft: #bfe3da;
+  --accent: #cf6a3c; --accent-soft: #f6e4d6;
+  --success: #1f6b5c; --success-soft: #dcebe5;
+  --warning: #b07d24; --warning-bg: #f6ecd3; --warning-soft: #f6ecd3;
+  --danger: #b5482f; --danger-soft: #f6e0d9; --error: #b5482f;
+  --track: #e8e4d8;
+  --radius: 14px; --radius-sm: 12px; --radius-md: 16px; --radius-lg: 22px; --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(31, 107, 92, 0.06);
+  --shadow-md: 0 14px 34px -20px rgba(31, 107, 92, 0.3);
+  --shadow-lg: 0 30px 60px -28px rgba(31, 107, 92, 0.42);
+  --shadow: var(--shadow-md);
+  --ring: 0 0 0 4px rgba(31, 107, 92, 0.16);
+}
+
+/* Token Verde — tối */
+[data-theme="dark"] {
+  --surface: #10171a; --surface-lowest: #16201d; --surface-low: #1c2723;
+  --surface-container: #1c2723; --surface-high: #25322d; --surface-highest: #143f37;
+  --text: #e8efe9; --text-muted: #9fb0a6; --text-subtle: #7f9088;
+  --outline: #2a3a33;
+  --primary: #4cbfa6; --primary-action: #4cbfa6; --primary-hover: #6fd0ba;
+  --primary-contrast: #07211c; --primary-soft: #143f37;
+  --secondary: #4cbfa6; --secondary-soft: #1f4a42;
+  --accent: #e0875a; --accent-soft: #3a2a1f;
+  --success: #4cbfa6; --success-soft: #143f37;
+  --warning: #d6a64a; --warning-bg: #2e2718; --warning-soft: #2e2718;
+  --danger: #e0796a; --danger-soft: #321f1d; --error: #e0796a;
+  --track: #25322d;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 16px 34px -20px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 30px 60px -28px rgba(0, 0, 0, 0.6);
+}
+
+/* 2) Font Be Vietnam Pro */
+body { font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+/* 3) Sidebar -> Top bar */
+.app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+.app-sidebar {
+  position: sticky; top: 0; left: auto; right: auto;
+  width: 100%; height: auto; flex-direction: row; align-items: center; gap: 16px;
+  padding: 10px clamp(16px, 4vw, 40px);
+  border-right: 0; border-bottom: 1px solid var(--outline);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  backdrop-filter: blur(10px); z-index: 40;
+}
+.sidebar-brand { padding: 0; margin: 0; flex: none; }
+.side-nav { display: flex; flex-direction: row; align-items: center; gap: 4px; flex: 1; min-width: 0; overflow: visible; flex-wrap: nowrap; }
+.nav-link { width: auto; min-height: 38px; padding: 0 13px; border-radius: var(--radius-sm); white-space: nowrap; font-weight: 600; }
+.app-sidebar .theme-toggle { width: auto; min-height: 38px; padding: 0 12px; border: 1px solid var(--outline); border-radius: var(--radius-sm); flex: none; }
+.theme-toggle-label { display: none; }
+.sidebar-user { flex-direction: row; align-items: center; gap: 10px; padding: 4px; margin: 0; border: 0; background: transparent; flex: none; }
+.app-main { margin-left: 0; }
+
+/* 4) Auth — căn giữa, 1 cột */
+.auth-panel { max-width: 440px; margin: auto; grid-template-columns: 1fr; }
+.auth-copy { display: none; }
+.auth-card { box-shadow: var(--shadow-lg); }
+
+/* 5) Home — căn giữa kiểu Console */
+.hero-grid { grid-template-columns: 1fr; max-width: 860px; margin-inline: auto; gap: 22px; }
+.hero-grid .intro { text-align: center; }
+.hero-grid .intro .lead { margin-inline: auto; }
+
+/* 6) Tinh chỉnh bo góc / form */
+.primary-button, .secondary-button { border-radius: var(--radius-md); }
+.detail-card, .stat-card, .feature-card, .tip-card, .auth-card, .diagnosis-panel,
+.history-card, .modal-card, .table-wrap, .dict-table-wrap { border-radius: var(--radius-lg); }
+input, textarea, select, .search-box { border-radius: var(--radius-md); }
+
+/* 7) Hiệu ứng — chuyển động mềm, tinh tế */
+.nav-link, .bottom-link, .primary-button, .secondary-button, .text-button, .icon-button,
+.feedback-button, .status-pill, .chip, .theme-toggle, .search-box, input, textarea, select,
+.detail-card, .stat-card, .feature-card, .history-card, .tip-card, .symptom-list button {
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease,
+    transform 0.18s ease, box-shadow 0.2s ease;
+}
+.primary-button:hover, .secondary-button:hover, .feedback-button:hover { transform: translateY(-1px); }
+.primary-button:active, .secondary-button:active, .nav-link:active { transform: translateY(0); }
+.detail-card:hover, .stat-card:hover, .feature-card:hover, .history-card:hover {
+  transform: translateY(-2px); box-shadow: var(--shadow-lg);
+}
+.icon-button:hover { transform: translateY(-1px); }
+input:focus, textarea:focus, select:focus, .search-box:focus-within {
+  outline: none; box-shadow: var(--ring);
+}
+/* thanh độ tin cậy chạy mượt */
+#confidence-bar, .progress-bar > span, .progress-bar span {
+  transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .page.is-active { animation: verde-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .auth-card:not(.is-hidden) { animation: verde-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .modal-overlay:not(.is-hidden) .modal-card { animation: verde-pop 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .history-card, .stat-card, .detail-card { animation: verde-rise 0.4s ease both; }
+}
+@keyframes verde-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes verde-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* 8) Top bar trên mobile: ẩn bớt chữ user, vẫn còn bottom-nav */
+@media (max-width: 900px) { .sidebar-user > div { display: none; } }
+@media (max-width: 640px) { .hero-grid .intro h1 { font-size: 1.7rem; } }
+
+/* ===================================================================
+   VERDE COMPONENTS — khớp mockup Figma (chip, gauge, prediction,
+   card, pill, bảng, modal, dropdown admin). Nhắm class tĩnh + class
+   do script.js sinh. Giữ nguyên id/logic.
+   =================================================================== */
+
+/* Brand logo gradient */
+.sidebar-brand { gap: 11px; font-weight: 700; }
+.sidebar-logo {
+  display: grid; place-items: center; width: 38px; height: 38px;
+  border-radius: 12px; color: #fff; font-weight: 800; font-size: 0.8rem; letter-spacing: -0.02em;
+  background: linear-gradient(150deg, #2a8472, #1f6b5c);
+  box-shadow: 0 8px 16px -7px rgba(31, 107, 92, 0.7);
+}
+
+/* Top bar nav pills + dropdown Quản trị */
+.nav-link { gap: 8px; color: var(--text-muted); }
+.nav-link .material-symbols-outlined { font-size: 19px; }
+.nav-admin { position: relative; display: flex; align-items: center; }
+.nav-admin-trigger { gap: 6px; }
+.nav-caret { font-size: 16px !important; transition: transform 0.2s ease; }
+.nav-admin:hover .nav-caret, .nav-admin:focus-within .nav-caret { transform: rotate(180deg); }
+.nav-admin-panel {
+  position: absolute; top: calc(100% + 8px); left: 0; min-width: 236px;
+  background: var(--surface-lowest); border: 1px solid var(--outline);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
+  padding: 7px; display: flex; flex-direction: column; gap: 2px; z-index: 60;
+  opacity: 0; visibility: hidden; transform: translateY(-6px);
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+}
+.nav-admin:hover .nav-admin-panel, .nav-admin:focus-within .nav-admin-panel {
+  opacity: 1; visibility: visible; transform: translateY(0);
+}
+.nav-admin-label {
+  margin: 0; padding: 8px 11px 4px; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-subtle);
+}
+.nav-admin-panel .nav-link { width: 100%; justify-content: flex-start; min-height: 40px; border-radius: 10px; }
+.nav-admin-panel .nav-link .material-symbols-outlined { color: var(--primary); }
+
+/* Avatar tròn gradient */
+.avatar {
+  background: linear-gradient(150deg, #2a8472, #1f6b5c); color: #fff;
+  border-radius: var(--radius-pill); font-weight: 700;
+}
+
+/* Console: panel bệnh án + chip triệu chứng */
+.diagnosis-panel { box-shadow: var(--shadow-md); }
+.symptom-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.symptom-chip, .suggested-symptom-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px;
+  border-radius: var(--radius-pill); border: 1px solid var(--outline);
+  background: var(--surface-lowest); color: var(--text-muted);
+  font-size: 0.82rem; font-weight: 500;
+}
+.symptom-chip:hover, .suggested-symptom-chip:hover { border-color: var(--primary); color: var(--primary); transform: translateY(-1px); }
+.symptom-chip.is-selected {
+  background: var(--primary-soft); border-color: var(--primary); color: var(--primary); font-weight: 600;
+}
+.suggested-symptom-chip { border-style: dashed; }
+
+/* Status pills — tông Verde */
+.status-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
+  border-radius: var(--radius-pill); font-size: 0.72rem; font-weight: 600;
+}
+.status-pill .material-symbols-outlined { font-size: 15px; }
+.status-success, .status-secure { background: var(--success-soft); color: var(--success); }
+.status-secondary { background: var(--surface-high); color: var(--text-muted); }
+.status-warning { background: var(--warning-soft); color: var(--warning); }
+.status-danger { background: var(--danger-soft); color: var(--danger); }
+
+/* Result: confidence + thanh top-3 */
+.confidence-box { background: var(--surface-low); border: 1px solid var(--outline); border-radius: var(--radius-md); padding: 16px 18px; }
+.progress-bar { background: var(--track); border-radius: var(--radius-pill); overflow: hidden; }
+.progress-bar > span, #confidence-bar { background: linear-gradient(90deg, #1f6b5c, #3ba88f); border-radius: var(--radius-pill); }
+.confidence-box[data-level="high"] #confidence-bar { background: linear-gradient(90deg, #1f6b5c, #3ba88f); }
+.confidence-box[data-level="mid"] #confidence-bar { background: linear-gradient(90deg, #b07d24, #d2a13f); }
+.confidence-box[data-level="low"] #confidence-bar, .confidence-box[data-level="none"] #confidence-bar { background: linear-gradient(90deg, #b5482f, #d06a52); }
+.confidence-tag { font-weight: 600; }
+.prediction-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: baseline; margin-bottom: 14px; }
+.prediction-name { font-weight: 600; font-size: 0.9rem; }
+.prediction-value { font-weight: 800; font-variant-numeric: tabular-nums; }
+.prediction-track { grid-column: 1 / -1; height: 9px; border-radius: var(--radius-pill); background: var(--track); overflow: hidden; }
+.prediction-fill { display: block; height: 100%; border-radius: var(--radius-pill); background: linear-gradient(90deg, #1f6b5c, #3ba88f); transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1); }
+.prediction-row:not(:first-child) .prediction-fill { background: #bcc8be; }
+
+/* History card */
+.history-card { background: var(--surface-lowest); border: 1px solid var(--outline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 18px 20px; }
+.card-topline { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.card-topline time { font-size: 0.74rem; color: var(--text-subtle); }
+.history-card h2 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+
+/* Activity card */
+.activity-card { background: var(--surface-lowest); border: 1px solid var(--outline); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); padding: 16px; }
+.activity-icon { color: var(--primary); }
+
+/* Stat / detail cards */
+.stat-card { border: 1px solid var(--outline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.stat-icon { color: var(--primary); background: var(--primary-soft); border-radius: 12px; padding: 8px; }
+.detail-card { background: var(--surface-lowest); border: 1px solid var(--outline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.detail-card.warning-card { background: var(--warning-soft); border-color: #f0dca8; }
+
+/* Bảng dữ liệu admin (data-table, dict-table) */
+.table-wrap, .dict-table-wrap { border: 1px solid var(--outline); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm); background: var(--surface-lowest); }
+.data-table, .dict-table { width: 100%; border-collapse: collapse; }
+.data-table th, .dict-table th {
+  text-align: left; font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--text-subtle); font-weight: 700; padding: 12px 16px;
+  background: var(--surface-container); border-bottom: 1px solid var(--outline);
+}
+.data-table td, .dict-table td { padding: 12px 16px; border-bottom: 1px solid var(--outline); color: var(--text-muted); }
+.data-table tbody tr:hover, .dict-table tbody tr:hover { background: var(--surface-container); }
+
+/* Admin list (nhóm thuốc, phản hồi) */
+.admin-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.admin-list li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--outline); border-radius: var(--radius-md); background: var(--surface-lowest); }
+.admin-list li:hover { border-color: var(--primary); }
+
+/* Search box + input */
+.search-box, .text-input, input[type="search"], input[type="text"], input[type="email"], input[type="password"], input[type="date"], textarea, select {
+  border: 1px solid var(--outline); background: var(--surface-lowest);
+}
+.search-box:focus-within { border-color: var(--primary); box-shadow: var(--ring); }
+
+/* Modal */
+.modal-overlay { background: rgba(27, 38, 31, 0.42); backdrop-filter: blur(3px); }
+.modal-card { background: var(--surface-lowest); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); border: 1px solid var(--outline); }
+
+/* Feature card (Hồ sơ/About) */
+.feature-card { background: var(--surface-lowest); border: 1px solid var(--outline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.feature-card.dark { background: linear-gradient(155deg, #2a8472, #185448); color: #fff; border: 0; }
+.feature-card.dark .feature-icon { color: #fff; }
+.feature-icon { color: var(--primary); }
+
+/* Bottom nav (mobile) Verde */
+.bottom-nav { background: color-mix(in srgb, var(--surface) 92%, transparent); border-top: 1px solid var(--outline); backdrop-filter: blur(10px); }
+.bottom-link.is-active { color: var(--primary); }
+
+/* ===== TOP BAR FIX — ép 1 hàng ngang, reset width/margin con cũ ===== */
+.app-sidebar { display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; gap: 14px; align-items: center; height: auto !important; }
+.app-sidebar > * { margin: 0 !important; position: static !important; }
+.sidebar-brand { width: auto !important; flex: 0 0 auto; order: 0; }
+.side-nav { width: auto !important; flex: 1 1 auto; min-width: 0; order: 1; }
+.app-sidebar .theme-toggle { order: 2; }
+.sidebar-user { order: 3; }
+.app-sidebar .theme-toggle { width: auto !important; min-width: 0; flex: none; height: 38px; justify-content: center; }
+.sidebar-user { width: auto !important; flex: none; max-width: 240px; }
+.sidebar-user > div { min-width: 0; }
+.sidebar-user #user-name, .sidebar-user #user-email { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; display: block; }
+
+/* ===== Donut độ tin cậy (giống mockup) ===== */
+.confidence-box { display: grid; grid-template-columns: auto 1fr; gap: 4px 18px; align-items: center; }
+.confidence-donut { grid-column: 1; grid-row: 1 / -1; position: relative; width: 112px; height: 112px; flex: none; }
+.confidence-donut svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.cd-track { fill: none; stroke: var(--track); stroke-width: 12; }
+.cd-arc { fill: none; stroke: var(--primary); stroke-width: 12; stroke-linecap: round; stroke-dasharray: 327; stroke-dashoffset: 327; transition: stroke-dashoffset 0.8s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.3s ease; }
+.cd-center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.cd-center b { font-size: 1.45rem; font-weight: 800; letter-spacing: -0.02em; }
+.confidence-box .confidence-head, .confidence-box .progress-bar, .confidence-box .confidence-tag { grid-column: 2; }
+.confidence-box #confidence-value { display: none; }
+.confidence-box .progress-bar { display: none; }
+.confidence-box[data-level="mid"] .cd-arc { stroke: var(--warning); }
+.confidence-box[data-level="low"] .cd-arc, .confidence-box[data-level="none"] .cd-arc { stroke: var(--danger); }
+.confidence-box[data-level="rule"] .cd-arc { stroke: var(--text-subtle); }
+
+/* ===== Home: eyebrow thành pill badge (giống mockup Console) ===== */
+#page-home .intro .eyebrow {
+  display: inline-block; padding: 6px 14px; border-radius: var(--radius-pill);
+  background: var(--primary-soft); color: var(--primary); margin-bottom: 14px;
+}
+
+/* ===== Lịch sử: thẻ -> hàng ngang (giống mockup) ===== */
+.history-grid { display: flex; flex-direction: column; gap: 12px; }
+.history-card {
+  display: grid; grid-template-columns: minmax(86px, auto) 1fr auto;
+  grid-template-rows: auto auto; align-items: center; align-content: center;
+  column-gap: 18px; row-gap: 3px; padding: 14px 18px; min-height: 0;
+}
+.history-card .card-topline { grid-column: 1; grid-row: 1 / -1; flex-direction: column; align-items: flex-start; gap: 4px; margin: 0; }
+.history-card h2 { grid-column: 2; grid-row: 1; margin: 0; font-size: 0.98rem; align-self: end; line-height: 1.25; }
+.history-card > p { grid-column: 2; grid-row: 2; margin: 0; color: var(--text-muted); font-size: 0.84rem; align-self: start;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-card .icon-button { grid-column: 3; grid-row: 1 / -1; }
+@media (max-width: 560px) {
+  .history-card { grid-template-columns: 1fr auto; }
+  .history-card .card-topline { grid-column: 1; grid-row: 1; flex-direction: row; }
+  .history-card h2 { grid-column: 1; grid-row: 2; }
+  .history-card > p { grid-column: 1; grid-row: 3; }
+  .history-card .icon-button { grid-column: 2; grid-row: 1 / -1; }
+}
+
+/* ===== Hồ sơ cá nhân (giống mockup, gọn, chỉ control có chức năng) ===== */
+.profile-card { background: var(--surface-lowest); border: 1px solid var(--outline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 24px; margin-bottom: 16px; }
+.profile-hero { display: flex; align-items: center; gap: 18px; }
+.profile-avatar { width: 72px; height: 72px; border-radius: 22px; display: grid; place-items: center; color: #fff; font-size: 1.5rem; font-weight: 800; flex: none;
+  background: linear-gradient(150deg, #2a8472, #1f6b5c); box-shadow: 0 16px 30px -12px rgba(31, 107, 92, 0.7); }
+.profile-meta h2 { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; }
+.profile-meta p { color: var(--text-muted); font-size: 0.9rem; margin-top: 2px; }
+.profile-chips { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.profile-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); background: var(--surface-low); padding: 5px 11px; border-radius: var(--radius-pill); }
+.profile-chip .material-symbols-outlined { font-size: 15px; color: var(--primary); }
+.profile-chip.is-admin { background: var(--primary-soft); color: var(--primary); }
+.profile-section-title { display: flex; align-items: center; gap: 9px; font-size: 1rem; font-weight: 700; margin-bottom: 16px; }
+.profile-section-title .material-symbols-outlined { color: var(--primary); font-size: 20px; }
+.profile-form .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.profile-form .field span { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
+.profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.profile-actions { display: flex; justify-content: flex-end; }
+.profile-actions-split { justify-content: space-between; }
+.primary-button.compact, .secondary-button.compact { height: 40px; padding: 0 16px; font-size: 0.85rem; }
+@media (max-width: 560px) { .profile-grid { grid-template-columns: 1fr; } }
+
+/* Hồ sơ: thu hẹp như mockup, không tràn ngang ở màn rộng */
+.container.page-narrow { max-width: 780px; margin-left: auto; margin-right: auto; }
+
+/* ===== Rút gọn Kết quả — ẩn card phụ (lifestyle), giữ chức năng cốt lõi ===== */
+#page-result .detail-card:has(#precaution-list),
+#page-result .detail-card:has(#care-list) { display: none; }
+
+/* ===== Rút gọn Dashboard — ẩn 2 mục phân tích phụ, giữ stat + biểu đồ chính ===== */
+#page-dashboard .section-heading:has(#reject-total-pill),
+#page-dashboard .section-heading:has(#group-stats-pill),
+#page-dashboard .dashboard-grid:has(#reject-bars-canvas),
+#page-dashboard .dashboard-grid:has(#group-bars-canvas) { display: none; }

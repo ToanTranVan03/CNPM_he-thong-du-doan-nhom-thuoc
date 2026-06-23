@@ -121,10 +121,23 @@ function initialsForName(name, email) {
 function updateUserUi() {
   const displayName = currentUser?.name || "Người dùng";
   const displayEmail = currentUser?.email || "";
+  const initials = initialsForName(displayName, displayEmail);
   userName.textContent = displayName;
   userEmail.textContent = displayEmail;
-  userAvatar.textContent = initialsForName(displayName, displayEmail);
-  profileSummary.textContent = `${displayName} (${displayEmail}) đang đăng nhập vào hệ thống hỗ trợ nhập triệu chứng tiếng Việt và gợi ý nhóm thuốc khi dữ liệu đủ tin cậy.`;
+  userAvatar.textContent = initials;
+  // Trang Hồ sơ
+  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  setText("profile-avatar", initials);
+  setText("profile-name-display", displayName);
+  setText("profile-email-display", displayEmail);
+  setVal("profile-name-input", displayName);
+  setVal("profile-email-input", displayEmail);
+  const isAdmin = currentUser?.role === "admin";
+  setText("profile-role", isAdmin ? "Quản trị viên" : "Người dùng");
+  const roleChip = document.getElementById("profile-role-chip");
+  if (roleChip) roleChip.classList.toggle("is-admin", isAdmin);
+  setText("profile-stat-saved", String((typeof savedResults !== "undefined" && savedResults) ? savedResults.length : 0));
   updateAdminUi();
 }
 
@@ -504,6 +517,16 @@ function renderPrediction(result) {
     confidenceLevel = "high";
   }
   setConfidenceLevel(confidenceLevel);
+  // Vòng donut độ tin cậy (đồng bộ với mức màu qua data-level)
+  const donutArc = document.getElementById("confidence-donut-arc");
+  const donutVal = document.getElementById("confidence-donut-value");
+  if (donutArc) {
+    const C = 2 * Math.PI * 52;
+    const shown = isRuleBased ? 0 : Math.max(0, Math.min(100, confidencePct || 0));
+    donutArc.style.strokeDasharray = C.toFixed(1);
+    donutArc.style.strokeDashoffset = (C * (1 - shown / 100)).toFixed(1);
+  }
+  if (donutVal) donutVal.textContent = isRuleBased ? "Quy tắc" : `${confidence}%`;
   resultTitle.textContent = result.display_title || result.disease_vi || result.disease;
   resultSubtitle.textContent = `${matchedCount} triệu chứng đã map sang đặc trưng tiếng Anh`;
   if (unsupportedLabels.length > 0) {
@@ -1341,6 +1364,64 @@ async function logoutCurrentUser() {
 
 logoutButton.addEventListener("click", logoutCurrentUser);
 profileLogoutButton.addEventListener("click", logoutCurrentUser);
+
+// ── Hồ sơ: cập nhật họ tên (gọi /api/auth/profile) ──────────────────────────
+const profileInfoForm = document.getElementById("profile-info-form");
+if (profileInfoForm) {
+  profileInfoForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const msg = document.getElementById("profile-info-message");
+    const name = document.getElementById("profile-name-input").value.trim();
+    if (msg) { msg.textContent = ""; msg.classList.remove("is-error"); }
+    try {
+      const res = await fetch("/api/auth/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không cập nhật được hồ sơ.");
+      currentUser = data.user;
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(currentUser));
+      updateUserUi();
+      if (msg) { msg.textContent = "Đã lưu thay đổi."; }
+    } catch (error) {
+      if (msg) { msg.textContent = formatError(error); msg.classList.add("is-error"); }
+    }
+  });
+}
+
+// ── Hồ sơ: đổi mật khẩu (gọi /api/auth/change-password) ─────────────────────
+const profilePwForm = document.getElementById("profile-password-form");
+if (profilePwForm) {
+  profilePwForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const msg = document.getElementById("profile-pw-message");
+    const cur = document.getElementById("profile-current-pw").value;
+    const np = document.getElementById("profile-new-pw").value;
+    const cp = document.getElementById("profile-confirm-pw").value;
+    if (msg) { msg.textContent = ""; msg.classList.remove("is-error"); }
+    if (np !== cp) {
+      if (msg) { msg.textContent = "Mật khẩu nhập lại không khớp."; msg.classList.add("is-error"); }
+      return;
+    }
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ current_password: cur, new_password: np }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không đổi được mật khẩu.");
+      if (data.token) { authToken = data.token; localStorage.setItem(AUTH_TOKEN_KEY, authToken); }
+      if (data.user) { currentUser = data.user; localStorage.setItem(AUTH_USER_KEY, JSON.stringify(currentUser)); }
+      profilePwForm.reset();
+      if (msg) { msg.textContent = "Đổi mật khẩu thành công."; }
+    } catch (error) {
+      if (msg) { msg.textContent = formatError(error); msg.classList.add("is-error"); }
+    }
+  });
+}
 
 navButtons.forEach((button) => {
   button.addEventListener("click", () => showPage(button.dataset.page));

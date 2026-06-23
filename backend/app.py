@@ -38,6 +38,30 @@ from lexicon import (
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
+
+
+def _load_dotenv(path: Path) -> None:
+    """Nạp KEY=VALUE từ .env vào os.environ (KHÔNG ghi đè biến môi trường sẵn có).
+
+    Cho phép cấu hình cố định qua .env (vd ADMIN_EMAILS) mà không cần đặt env thủ công.
+    """
+    if not path.exists():
+        return
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip()
+            if key and key not in os.environ:
+                os.environ[key] = val.strip().strip('"').strip("'")
+    except OSError:
+        pass
+
+
+_load_dotenv(PROJECT_ROOT / ".env")
+
 MODEL_DIR = Path(os.environ.get("MODEL_DIR", PROJECT_ROOT / "models"))
 MODEL_PATH = MODEL_DIR / "disease_model.joblib"
 METADATA_PATH = MODEL_DIR / "metadata.json"
@@ -2694,6 +2718,42 @@ def reset_password():
     user["password_hash"] = generate_password_hash(password)
     user.pop("reset_code_hash", None)
     user.pop("reset_code_expires_at", None)
+    token = issue_session(user)
+    save_user_store(store)
+    return jsonify({"user": user_public_view(user), "token": token})
+
+
+@app.post("/api/auth/profile")
+def update_profile():
+    """Cập nhật họ tên người dùng đang đăng nhập."""
+    store = load_user_store()
+    user = current_user_from_request(store)
+    if not user:
+        return jsonify({"error": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."}), 401
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Vui lòng nhập họ tên."}), 400
+    user["name"] = name[:150]
+    save_user_store(store)
+    return jsonify({"user": user_public_view(user)})
+
+
+@app.post("/api/auth/change-password")
+def change_password():
+    """Đổi mật khẩu khi đã đăng nhập (xác thực mật khẩu hiện tại)."""
+    store = load_user_store()
+    user = current_user_from_request(store)
+    if not user:
+        return jsonify({"error": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."}), 401
+    payload = request.get_json(silent=True) or {}
+    current = str(payload.get("current_password") or "")
+    new_password = str(payload.get("new_password") or "")
+    if not check_password_hash(user.get("password_hash", ""), current):
+        return jsonify({"error": "Mật khẩu hiện tại không đúng."}), 400
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        return jsonify({"error": f"Mật khẩu mới phải có ít nhất {MIN_PASSWORD_LENGTH} ký tự."}), 400
+    user["password_hash"] = generate_password_hash(new_password)
     token = issue_session(user)
     save_user_store(store)
     return jsonify({"user": user_public_view(user), "token": token})
