@@ -138,7 +138,6 @@ function showAuthenticatedApp() {
   if (!symptomsLoaded) {
     loadSymptoms();
   }
-  loadSamplePicker(); // US29: nạp danh sách bệnh án mẫu vào Trang Chủ
 }
 
 function showAuthScreen(viewName = "login") {
@@ -196,7 +195,7 @@ function updateAdminUi() {
   });
 }
 
-const ADMIN_PAGES = new Set(["dashboard", "admin-history", "dictionary", "samples", "drug-admin", "feedback-admin"]);
+const ADMIN_PAGES = new Set(["dashboard", "admin-history", "dictionary", "drug-admin", "feedback-admin"]);
 
 function showPage(pageName) {
   // US19/US27: chặn trang admin nếu không phải admin (kể cả khi gọi trực tiếp).
@@ -218,8 +217,6 @@ function showPage(pageName) {
     loadAdminHistory(1);
   } else if (pageName === "dictionary") {
     loadDictionary(1);
-  } else if (pageName === "samples") {
-    loadSamples();
   } else if (pageName === "drug-admin") {
     loadDrugAdmin();
   } else if (pageName === "feedback-admin") {
@@ -1368,144 +1365,6 @@ exampleButton.addEventListener("click", () => {
   renderSymptoms(symptomSearch.value);
   textarea.focus();
 });
-
-// ── US29: bệnh án mẫu — picker Trang Chủ (SCRUM-119) + quản lý admin (SCRUM-116) ──
-const samplePicker = document.getElementById("sample-picker");
-const sampleSelect = document.getElementById("sample-select");
-const sampleForm = document.getElementById("sample-form");
-const sampleFormMessage = document.getElementById("sample-form-message");
-const samplesList = document.getElementById("samples-list");
-const samplesCount = document.getElementById("samples-count");
-const samplesEmpty = document.getElementById("samples-empty");
-let sampleCache = [];
-
-async function fetchSamples() {
-  const response = await fetch("/api/benh-an-mau", {
-    headers: { Authorization: `Bearer ${authToken}` },
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Không tải được bệnh án mẫu.");
-  sampleCache = data.benh_an_mau || [];
-  return sampleCache;
-}
-
-async function loadSamplePicker() {
-  if (!sampleSelect) return;
-  try {
-    const items = await fetchSamples();
-    sampleSelect.innerHTML = '<option value="">— Chọn bệnh án mẫu —</option>';
-    items.forEach((s) => {
-      const opt = document.createElement("option");
-      opt.value = String(s.ma);
-      opt.textContent = s.tieu_de;
-      sampleSelect.appendChild(opt);
-    });
-    if (samplePicker) samplePicker.classList.toggle("is-hidden", items.length === 0);
-  } catch {
-    if (samplePicker) samplePicker.classList.add("is-hidden");
-  }
-}
-
-if (sampleSelect) {
-  // SCRUM-119: chọn mẫu -> nạp nội dung vào ô nhập liệu.
-  sampleSelect.addEventListener("change", () => {
-    const s = sampleCache.find((x) => String(x.ma) === sampleSelect.value);
-    if (!s) return;
-    textarea.value = s.noi_dung;
-    selectedSymptoms.clear();
-    updateCharCount();
-    updateSelectedCount();
-    renderSymptoms(symptomSearch.value);
-    setMessage(`Đã nạp bệnh án mẫu: ${s.tieu_de}`);
-    textarea.focus();
-  });
-}
-
-function renderSamplesAdmin() {
-  if (!samplesList) return;
-  samplesList.innerHTML = "";
-  if (samplesCount) samplesCount.textContent = `${sampleCache.length} mẫu`;
-  if (samplesEmpty) samplesEmpty.classList.toggle("is-hidden", sampleCache.length > 0);
-  sampleCache.forEach((s) => {
-    const card = document.createElement("article");
-    card.className = "history-card";
-    const title = document.createElement("h2");
-    title.textContent = s.tieu_de;
-    const body = document.createElement("p");
-    body.textContent = s.noi_dung;
-    const meta = document.createElement("p");
-    meta.className = "muted-text";
-    meta.textContent = s.mo_ta || "";
-    const del = document.createElement("button");
-    del.className = "secondary-button compact";
-    del.type = "button";
-    del.textContent = "Xóa";
-    del.addEventListener("click", () => deleteSample(s.ma));
-    card.append(title, body, meta, del);
-    samplesList.appendChild(card);
-  });
-}
-
-async function loadSamples() {
-  if (!isAdminUser()) return;
-  try {
-    await fetchSamples();
-    renderSamplesAdmin();
-  } catch (error) {
-    if (sampleFormMessage) {
-      sampleFormMessage.textContent = formatError(error);
-      sampleFormMessage.classList.add("is-error");
-    }
-  }
-}
-
-async function deleteSample(ma) {
-  try {
-    const response = await fetch(`/api/admin/benh-an-mau/${ma}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.error || "Không xóa được.");
-    }
-    await loadSamples();
-    loadSamplePicker();
-  } catch (error) {
-    if (sampleFormMessage) {
-      sampleFormMessage.textContent = formatError(error);
-      sampleFormMessage.classList.add("is-error");
-    }
-  }
-}
-
-if (sampleForm) {
-  sampleForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    sampleFormMessage.classList.remove("is-error");
-    sampleFormMessage.textContent = "Đang lưu...";
-    try {
-      const response = await fetch("/api/admin/benh-an-mau", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({
-          tieu_de: document.getElementById("sample-tieu-de").value,
-          noi_dung: document.getElementById("sample-noi-dung").value,
-          mo_ta: document.getElementById("sample-mo-ta").value,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Không thêm được mẫu.");
-      sampleForm.reset();
-      sampleFormMessage.textContent = "Đã thêm bệnh án mẫu.";
-      await loadSamples();
-      loadSamplePicker();
-    } catch (error) {
-      sampleFormMessage.textContent = formatError(error);
-      sampleFormMessage.classList.add("is-error");
-    }
-  });
-}
 
 // ── PORT: Quản lý thuốc (CRUD nhóm thuốc + thuốc) ────────────────────────────
 const dgForm = document.getElementById("dg-form");
