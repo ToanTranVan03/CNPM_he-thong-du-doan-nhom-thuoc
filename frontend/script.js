@@ -604,7 +604,9 @@ function renderPrediction(result) {
 function renderInsufficientInput(result) {
   const matchedLabels = result.matched_symptoms_vi || result.matched_symptom_labels || [];
 
-  currentResult = null;
+  // Vẫn giữ result để "Lưu kết quả" hoạt động (lịch sử ghi cả ca chưa đủ tin cậy).
+  // Feedback đã bị ẩn ở ca này nên không gửi nhầm.
+  currentResult = result;
   renderCaseSummary(result);
   renderSuggestedSymptoms(result);
   resetFeedbackBox(false); // US18: chưa đủ dữ liệu thì không có gì để đánh giá
