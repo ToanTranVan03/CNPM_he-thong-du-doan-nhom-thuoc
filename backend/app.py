@@ -4263,6 +4263,47 @@ def predict():
     )
 
 
+# ── Tài khoản CỐ ĐỊNH: tự tạo lại mỗi lần khởi động (không bao giờ mất) ──────
+FIXED_ACCOUNTS = [
+    {"email": "admin@pharmapredict.vn", "name": "Quản trị viên", "password": "Admin@2026", "role": "admin"},
+    {"email": "user@pharmapredict.vn", "name": "Người dùng", "password": "User@2026", "role": "user"},
+]
+
+
+def _seed_fixed_accounts() -> None:
+    """Đảm bảo admin + user cố định luôn tồn tại; tạo mới nếu thiếu, giữ admin không mất quyền."""
+    try:
+        store = load_user_store()
+        changed = False
+        for acc in FIXED_ACCOUNTS:
+            email = normalize_email(acc["email"])
+            existing = find_user_by_email(store, email)
+            if existing is None:
+                store["users"].append({
+                    "id": secrets.token_hex(8),
+                    "name": acc["name"],
+                    "email": email,
+                    "password_hash": generate_password_hash(acc["password"]),
+                    "created_at": iso_utc(now_utc()),
+                    "role": acc["role"],
+                })
+                changed = True
+            elif existing.get("role") != acc["role"]:
+                existing["role"] = acc["role"]
+                changed = True
+        if changed:
+            save_user_store(store)
+    except Exception:
+        app.logger.exception("seed_fixed_accounts: bỏ qua, app vẫn chạy")
+
+
+try:
+    with app.app_context():
+        _seed_fixed_accounts()
+except Exception:
+    app.logger.exception("seed_fixed_accounts ngoài context")
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="127.0.0.1", port=port, debug=False)
