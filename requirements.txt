@@ -12,6 +12,8 @@ Flask-SQLAlchemy>=3.1
 # Xử lý dữ liệu
 pandas
 pyarrow               # đọc file .parquet (dataset HuggingFace)
+openpyxl               # xuất báo cáo lịch sử dạng Excel .xlsx
+reportlab              # xuất báo cáo lịch sử dạng PDF
 
 # Hiểu ngữ nghĩa tiếng Việt (khớp triệu chứng câu lạ cùng nghĩa)
 # Lần đầu chạy sẽ tự tải model SBERT (~500MB). Thiếu 2 gói này app vẫn chạy (fallback keyword).

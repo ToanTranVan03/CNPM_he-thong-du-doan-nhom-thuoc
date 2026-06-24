@@ -915,7 +915,46 @@ input:focus {
 
 .history-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+}
+
+.history-filter-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius);
+  background: var(--surface-lowest);
+}
+
+.history-filter-panel.is-hidden {
+  display: none;
+}
+
+.history-filter-panel label {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.history-filter-panel select {
+  min-height: 40px;
+  width: auto;
+  min-width: 180px;
+}
+
+@media (max-width: 480px) {
+  .history-filter-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .history-filter-panel select {
+    width: 100%;
+  }
 }
 
 .search-box {
@@ -970,6 +1009,28 @@ input:focus {
 
 .history-card.is-hidden {
   display: none;
+}
+
+.user-history-card {
+  cursor: pointer;
+}
+
+.history-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-card .history-card-actions .icon-button {
+  position: static;
+}
+
+.history-delete-button {
+  color: var(--danger);
+}
+
+.danger-button {
+  color: var(--danger);
 }
 
 .about-layout {
@@ -2226,13 +2287,13 @@ input:focus, textarea:focus, select:focus, .search-box:focus-within {
 .history-card h2 { grid-column: 2; grid-row: 1; margin: 0; font-size: 0.98rem; align-self: end; line-height: 1.25; }
 .history-card > p { grid-column: 2; grid-row: 2; margin: 0; color: var(--text-muted); font-size: 0.84rem; align-self: start;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-card .icon-button { grid-column: 3; grid-row: 1 / -1; }
+.history-card .history-card-actions { grid-column: 3; grid-row: 1 / -1; }
 @media (max-width: 560px) {
   .history-card { grid-template-columns: 1fr auto; }
   .history-card .card-topline { grid-column: 1; grid-row: 1; flex-direction: row; }
   .history-card h2 { grid-column: 1; grid-row: 2; }
   .history-card > p { grid-column: 1; grid-row: 3; }
-  .history-card .icon-button { grid-column: 2; grid-row: 1 / -1; }
+  .history-card .history-card-actions { grid-column: 2; grid-row: 1 / -1; }
 }
 
 /* ===== Hồ sơ cá nhân (giống mockup, gọn, chỉ control có chức năng) ===== */

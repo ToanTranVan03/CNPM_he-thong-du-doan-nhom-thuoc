@@ -296,8 +296,8 @@
             </div>
             <div class="form-actions">
               <button class="primary-button" type="button" id="save-result">
-                <span class="material-symbols-outlined" aria-hidden="true">save</span>
-                Lưu kết quả
+                <span class="material-symbols-outlined" aria-hidden="true">history</span>
+                Xem lịch sử đã lưu
               </button>
               <button class="secondary-button" type="button" data-page="home">
                 <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
@@ -390,16 +390,36 @@
               <p class="lead">Toàn bộ ca bạn đã phân tích, lưu theo phiên đăng nhập.</p>
             </div>
             <div class="history-actions">
-              <button class="secondary-button compact" type="button">
+              <button class="secondary-button compact" type="button" id="history-filter-toggle" aria-expanded="false" aria-controls="history-filter-panel">
                 <span class="material-symbols-outlined" aria-hidden="true">filter_list</span>
                 Lọc
               </button>
-              <button class="secondary-button compact" type="button">
-                <span class="material-symbols-outlined" aria-hidden="true">download</span>
-                Xuất
+              <button class="secondary-button compact danger-button" type="button" id="history-clear">
+                <span class="material-symbols-outlined" aria-hidden="true">delete_sweep</span>
+                Xóa tất cả
+              </button>
+              <button class="secondary-button compact" type="button" id="history-export-excel">
+                <span class="material-symbols-outlined" aria-hidden="true">table_view</span>
+                Xuất Excel
+              </button>
+              <button class="secondary-button compact" type="button" id="history-export-pdf">
+                <span class="material-symbols-outlined" aria-hidden="true">picture_as_pdf</span>
+                Xuất PDF
               </button>
             </div>
           </div>
+
+          <div class="history-filter-panel is-hidden" id="history-filter-panel">
+            <label for="history-date-filter">Khoảng thời gian</label>
+            <select id="history-date-filter">
+              <option value="all">Tất cả</option>
+              <option value="today">Hôm nay</option>
+              <option value="7">7 ngày gần đây</option>
+              <option value="30">30 ngày gần đây</option>
+            </select>
+          </div>
+
+          <p class="form-message" id="history-message" role="status"></p>
 
           <label class="search-box" for="history-search">
             <span class="material-symbols-outlined" aria-hidden="true">search</span>
@@ -675,9 +695,13 @@
             </div>
             <div class="history-head-actions">
               <span class="status-pill status-secondary" id="ah-total-pill">0 lượt</span>
-              <button class="secondary-button compact" type="button" id="ah-export">
-                <span class="material-symbols-outlined" aria-hidden="true">download</span>
-                <span>Xuất CSV</span>
+              <button class="secondary-button compact" type="button" id="ah-export-excel">
+                <span class="material-symbols-outlined" aria-hidden="true">table_view</span>
+                <span>Xuất Excel</span>
+              </button>
+              <button class="secondary-button compact" type="button" id="ah-export-pdf">
+                <span class="material-symbols-outlined" aria-hidden="true">picture_as_pdf</span>
+                <span>Xuất PDF</span>
               </button>
             </div>
           </div>
@@ -860,6 +884,21 @@
           </button>
         </div>
         <dl class="detail-list" id="ah-detail-body"></dl>
+      </div>
+    </div>
+
+    <div class="modal-overlay is-hidden" id="history-detail-modal" role="dialog" aria-modal="true" aria-labelledby="history-detail-title">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Lịch sử của tôi</p>
+            <h2 id="history-detail-title">Chi tiết dự đoán</h2>
+          </div>
+          <button class="icon-button" type="button" id="history-detail-close" aria-label="Đóng">
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <dl class="detail-list" id="history-detail-body"></dl>
       </div>
     </div>
 

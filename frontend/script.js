@@ -29,6 +29,13 @@ const selectedCount = document.getElementById("selected-count");
 const formMessage = document.getElementById("form-message");
 const historySearch = document.getElementById("history-search");
 const historyList = document.getElementById("history-list");
+const historyFilterToggle = document.getElementById("history-filter-toggle");
+const historyFilterPanel = document.getElementById("history-filter-panel");
+const historyDateFilter = document.getElementById("history-date-filter");
+const historyMessage = document.getElementById("history-message");
+const historyClearButton = document.getElementById("history-clear");
+const historyExportExcel = document.getElementById("history-export-excel");
+const historyExportPdf = document.getElementById("history-export-pdf");
 const resultTitle = document.getElementById("result-title");
 const resultSubtitle = document.getElementById("result-subtitle");
 const scoreLabel = document.getElementById("score-label");
@@ -76,6 +83,11 @@ function loadSavedHistory() {
     savedResults = JSON.parse(localStorage.getItem(historyStorageKey()) || "[]");
     if (!Array.isArray(savedResults)) {
       savedResults = [];
+    } else {
+      savedResults = savedResults
+        .filter((entry) => entry && typeof entry === "object")
+        .slice(-20)
+        .map((entry) => ({ ...entry, id: entry.id || makeHistoryId() }));
     }
   } catch {
     savedResults = [];
@@ -350,14 +362,98 @@ function renderSuggestedSymptoms(result) {
   });
 }
 
+function makeHistoryId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `history-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function saveHistory() {
-  localStorage.setItem(historyStorageKey(), JSON.stringify(savedResults.slice(0, 20)));
+  savedResults = savedResults.slice(-20);
+  try {
+    localStorage.setItem(historyStorageKey(), JSON.stringify(savedResults));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function addPredictionToHistory(result, notes) {
+  const entry = {
+    id: makeHistoryId(),
+    disease: result.display_title || result.disease_vi || result.disease || "Chưa đủ dữ liệu để gợi ý",
+    symptoms: result.matched_symptoms_vi || result.matched_symptom_labels || [],
+    notes: String(notes || "").trim(),
+    savedAt: new Date().toLocaleDateString("vi-VN"),
+    savedAtIso: new Date().toISOString(),
+  };
+  savedResults.push(entry);
+  const saved = saveHistory();
+  renderSavedHistory();
+  renderRecentActivity();
+  if (!saved) setAuthMessage(historyMessage, "Trình duyệt không cho phép lưu lịch sử.", true);
+  return saved;
+}
+
+function deleteHistoryEntry(entry) {
+  if (!confirm(`Xóa kết quả “${entry.disease || "dự đoán"}”?`)) return;
+  savedResults = savedResults.filter((item) => item.id !== entry.id);
+  saveHistory();
+  renderSavedHistory();
+  renderRecentActivity();
+  setAuthMessage(historyMessage, "Đã xóa kết quả khỏi lịch sử.");
+}
+
+function historyEntryDate(entry) {
+  if (entry.savedAtIso) {
+    const parsed = new Date(entry.savedAtIso);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  const match = String(entry.savedAt || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return match ? new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1])) : null;
+}
+
+function historyEntryMatches(entry) {
+  const query = (historySearch?.value || "").trim().toLowerCase();
+  const symptoms = Array.isArray(entry.symptoms) ? entry.symptoms : [];
+  const haystack = `${entry.disease || ""} ${entry.notes || ""} ${symptoms.join(" ")} ${entry.savedAt || ""}`.toLowerCase();
+  if (query && !haystack.includes(query)) return false;
+
+  const period = historyDateFilter?.value || "all";
+  if (period === "all") return true;
+  const date = historyEntryDate(entry);
+  if (!date) return false;
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === "today") return date >= start;
+  start.setDate(start.getDate() - Number(period) + 1);
+  return date >= start;
+}
+
+function filteredHistoryEntries() {
+  return savedResults.filter(historyEntryMatches);
+}
+
+function openHistoryDetail(entry) {
+  const modal = document.getElementById("history-detail-modal");
+  const body = document.getElementById("history-detail-body");
+  if (!modal || !body) return;
+  const symptoms = Array.isArray(entry.symptoms) ? entry.symptoms.join(", ") : "";
+  const fields = [
+    ["Ngày lưu", entry.savedAt || "—"],
+    ["Kết quả dự đoán", entry.disease || "—"],
+    ["Triệu chứng", symptoms || "Chưa rõ triệu chứng"],
+    ["Mô tả đã nhập", entry.notes || "Không có mô tả"],
+  ];
+  body.innerHTML = fields.map(([key, value]) => `<dt>${ahEscape(key)}</dt><dd>${ahEscape(value)}</dd>`).join("");
+  modal.classList.remove("is-hidden");
+  document.getElementById("history-detail-close")?.focus();
 }
 
 function createHistoryCard(entry) {
   const card = document.createElement("article");
   card.className = "history-card user-history-card";
-  card.dataset.search = `${entry.disease} ${entry.notes} ${entry.symptoms.join(" ")} ${entry.savedAt}`.toLowerCase();
+  const symptoms = Array.isArray(entry.symptoms) ? entry.symptoms : [];
+  card.dataset.search = `${entry.disease || ""} ${entry.notes || ""} ${symptoms.join(" ")} ${entry.savedAt || ""}`.toLowerCase();
 
   const topLine = document.createElement("div");
   topLine.className = "card-topline";
@@ -373,12 +469,30 @@ function createHistoryCard(entry) {
   title.textContent = entry.disease;
 
   const summary = document.createElement("p");
-  summary.textContent = `${entry.symptoms.join(", ") || "Chưa rõ triệu chứng"} - ${entry.notes || "Không có mô tả."}`;
+  summary.textContent = `${symptoms.join(", ") || "Chưa rõ triệu chứng"} - ${entry.notes || "Không có mô tả."}`;
+
+  const actions = document.createElement("div");
+  actions.className = "history-card-actions";
+
+  const deleteButton = document.createElement("button");
+  deleteButton.className = "icon-button history-delete-button";
+  deleteButton.type = "button";
+  deleteButton.setAttribute("aria-label", `Xóa ${entry.disease || "dự đoán"}`);
+  deleteButton.title = "Xóa lịch sử";
+  const deleteIcon = document.createElement("span");
+  deleteIcon.className = "material-symbols-outlined";
+  deleteIcon.setAttribute("aria-hidden", "true");
+  deleteIcon.textContent = "delete";
+  deleteButton.appendChild(deleteIcon);
+  deleteButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    deleteHistoryEntry(entry);
+  });
 
   const button = document.createElement("button");
   button.className = "icon-button";
   button.type = "button";
-  button.setAttribute("aria-label", "Xem chi tiet");
+  button.setAttribute("aria-label", `Xem chi tiết ${entry.disease || "dự đoán"}`);
 
   const icon = document.createElement("span");
   icon.className = "material-symbols-outlined";
@@ -387,7 +501,13 @@ function createHistoryCard(entry) {
 
   topLine.append(status, time);
   button.appendChild(icon);
-  card.append(topLine, title, summary, button);
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openHistoryDetail(entry);
+  });
+  actions.append(deleteButton, button);
+  card.append(topLine, title, summary, actions);
+  card.addEventListener("click", () => openHistoryDetail(entry));
   return card;
 }
 
@@ -397,8 +517,16 @@ function renderSavedHistory() {
     .slice()
     .reverse()
     .forEach((entry) => {
-      historyList.prepend(createHistoryCard(entry));
+      historyList.appendChild(createHistoryCard(entry));
     });
+  applyHistoryFilters();
+}
+
+function applyHistoryFilters() {
+  const entries = savedResults.slice().reverse();
+  document.querySelectorAll(".user-history-card").forEach((card, index) => {
+    card.classList.toggle("is-hidden", !entries[index] || !historyEntryMatches(entries[index]));
+  });
   updateHistoryEmptyState();
 }
 
@@ -418,8 +546,47 @@ function updateHistoryEmptyState() {
       desc.textContent = "Các kết quả bạn lưu sẽ xuất hiện ở đây. Hãy thử tạo một dự đoán mới.";
     } else {
       title.textContent = "Không tìm thấy kết quả";
-      desc.textContent = "Không có mục nào khớp với từ khóa tìm kiếm.";
+      desc.textContent = "Không có mục nào khớp với từ khóa hoặc bộ lọc hiện tại.";
     }
+  }
+}
+
+async function exportPersonalHistory(format) {
+  const entries = filteredHistoryEntries();
+  if (entries.length === 0) {
+    setAuthMessage(historyMessage, "Không có dữ liệu phù hợp để xuất.", true);
+    return;
+  }
+  const button = format === "xlsx" ? historyExportExcel : historyExportPdf;
+  if (button) button.disabled = true;
+  setAuthMessage(historyMessage, `Đang tạo file ${format === "xlsx" ? "Excel" : "PDF"}...`);
+  try {
+    const response = await fetch(`/api/history/export.${format}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify({ entries }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Không tạo được báo cáo.");
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `lich_su_du_doan.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setAuthMessage(historyMessage, `Đã xuất ${entries.length} kết quả.`);
+  } catch (error) {
+    setAuthMessage(historyMessage, formatError(error), true);
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -529,6 +696,9 @@ function renderPrediction(result) {
   if (donutVal) donutVal.textContent = isRuleBased ? "Quy tắc" : `${confidence}%`;
   resultTitle.textContent = result.display_title || result.disease_vi || result.disease;
   resultSubtitle.textContent = `${matchedCount} triệu chứng đã map sang đặc trưng tiếng Anh`;
+  if (result.llm_context_used) {
+    resultSubtitle.textContent += " · Đã chuẩn hóa ngữ cảnh bằng AI";
+  }
   if (unsupportedLabels.length > 0) {
     resultSubtitle.textContent += `; chưa hỗ trợ: ${unsupportedLabels.join(", ")}`;
   }
@@ -620,6 +790,9 @@ function renderInsufficientInput(result) {
   resultSubtitle.textContent = matchedLabels.length
     ? `${matchedLabels.length} triệu chứng đã map: ${matchedLabels.join(", ")}`
     : "Chưa nhận diện đủ triệu chứng trong tập train";
+  if (result.llm_context_used) {
+    resultSubtitle.textContent += " · Đã chuẩn hóa ngữ cảnh bằng AI";
+  }
   resultNote.textContent =
     result.error ||
     "Hãy mô tả thêm triệu chứng đi kèm, thời gian khởi phát, mức độ nặng, bệnh nền hoặc thuốc đang dùng.";
@@ -637,13 +810,17 @@ function renderInsufficientInput(result) {
 
 async function predict() {
   setMessage("Đang tiền xử lý tiếng Việt và gọi mô hình đã train...");
+  const notes = textarea.value.trim();
 
   const response = await fetch("/api/predict", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    },
     body: JSON.stringify({
       symptoms: [...selectedSymptoms],
-      notes: textarea.value,
+      notes,
     }),
   });
 
@@ -651,12 +828,14 @@ async function predict() {
   if (!response.ok) {
     if (result.needs_more_input) {
       renderInsufficientInput(result);
+      addPredictionToHistory(result, notes);
     }
     throw new Error(result.error || "Không gợi ý được nhóm thuốc.");
   }
 
   setMessage("Dự đoán xong.");
   renderPrediction(result);
+  addPredictionToHistory(result, notes);
 }
 
 async function loadSymptoms() {
@@ -1748,29 +1927,47 @@ symptomSearch.addEventListener("input", (event) => {
   renderSymptoms(event.target.value);
 });
 
-historySearch.addEventListener("input", (event) => {
-  const query = event.target.value.trim().toLowerCase();
+historySearch.addEventListener("input", applyHistoryFilters);
 
-  document.querySelectorAll(".history-card").forEach((card) => {
-    const haystack = card.dataset.search.toLowerCase();
-    card.classList.toggle("is-hidden", query !== "" && !haystack.includes(query));
+if (historyFilterToggle && historyFilterPanel) {
+  historyFilterToggle.addEventListener("click", () => {
+    const willOpen = historyFilterPanel.classList.contains("is-hidden");
+    historyFilterPanel.classList.toggle("is-hidden", !willOpen);
+    historyFilterToggle.setAttribute("aria-expanded", String(willOpen));
+    if (willOpen) historyDateFilter?.focus();
   });
-  updateHistoryEmptyState();
-});
+}
+if (historyDateFilter) historyDateFilter.addEventListener("change", applyHistoryFilters);
+if (historyClearButton) {
+  historyClearButton.addEventListener("click", () => {
+    if (savedResults.length === 0) {
+      setAuthMessage(historyMessage, "Lịch sử hiện đang trống.");
+      return;
+    }
+    if (!confirm(`Xóa toàn bộ ${savedResults.length} kết quả đã lưu?`)) return;
+    savedResults = [];
+    saveHistory();
+    renderSavedHistory();
+    renderRecentActivity();
+    setAuthMessage(historyMessage, "Đã xóa toàn bộ lịch sử.");
+  });
+}
+if (historyExportExcel) historyExportExcel.addEventListener("click", () => exportPersonalHistory("xlsx"));
+if (historyExportPdf) historyExportPdf.addEventListener("click", () => exportPersonalHistory("pdf"));
+
+const historyDetailModal = document.getElementById("history-detail-modal");
+const historyDetailClose = document.getElementById("history-detail-close");
+function closeHistoryDetail() {
+  if (historyDetailModal) historyDetailModal.classList.add("is-hidden");
+}
+if (historyDetailClose) historyDetailClose.addEventListener("click", closeHistoryDetail);
+if (historyDetailModal) {
+  historyDetailModal.addEventListener("click", (event) => {
+    if (event.target === historyDetailModal) closeHistoryDetail();
+  });
+}
 
 saveResultButton.addEventListener("click", () => {
-  if (currentResult) {
-    savedResults.push({
-      disease: currentResult.display_title || currentResult.disease_vi || currentResult.disease,
-      symptoms: currentResult.matched_symptoms_vi || [],
-      notes: textarea.value.trim(),
-      savedAt: new Date().toLocaleDateString("vi-VN"),
-    });
-    saveHistory();
-    historyList.prepend(createHistoryCard(savedResults[savedResults.length - 1]));
-    updateHistoryEmptyState();
-    renderRecentActivity();
-  }
   showPage("history");
 });
 
@@ -1891,31 +2088,41 @@ const ahNextBtn = document.getElementById("ah-next");
 if (ahPrevBtn) ahPrevBtn.addEventListener("click", () => { if (ahPage > 1) loadAdminHistory(ahPage - 1); });
 if (ahNextBtn) ahNextBtn.addEventListener("click", () => { if (ahPage < ahPages) loadAdminHistory(ahPage + 1); });
 
-const ahExportBtn = document.getElementById("ah-export");
-if (ahExportBtn) {
-  ahExportBtn.addEventListener("click", async () => {
-    const msg = document.getElementById("ah-message");
-    try {
-      const params = new URLSearchParams();
-      if (ahStatus) params.set("status", ahStatus);
-      if (ahEmail) params.set("email", ahEmail);
-      const qs = params.toString();
-      const response = await fetch(`/api/admin/history.csv${qs ? `?${qs}` : ""}`, { headers: adminHeaders() });
-      if (!response.ok) throw new Error("Không xuất được CSV.");
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "lich_su_he_thong.csv";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      if (msg) { msg.textContent = error.message; msg.classList.add("is-error"); }
+async function exportAdminHistory(format, button) {
+  const msg = document.getElementById("ah-message");
+  if (button) button.disabled = true;
+  if (msg) { msg.textContent = `Đang tạo file ${format === "xlsx" ? "Excel" : "PDF"}...`; msg.classList.remove("is-error"); }
+  try {
+    const params = new URLSearchParams();
+    if (ahStatus) params.set("status", ahStatus);
+    if (ahEmail) params.set("email", ahEmail);
+    const qs = params.toString();
+    const response = await fetch(`/api/admin/history.${format}${qs ? `?${qs}` : ""}`, { headers: adminHeaders() });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Không xuất được báo cáo.");
     }
-  });
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `lich_su_he_thong.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    if (msg) msg.textContent = "Đã tạo báo cáo theo bộ lọc hiện tại.";
+  } catch (error) {
+    if (msg) { msg.textContent = error.message; msg.classList.add("is-error"); }
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
+
+const ahExportExcelBtn = document.getElementById("ah-export-excel");
+const ahExportPdfBtn = document.getElementById("ah-export-pdf");
+if (ahExportExcelBtn) ahExportExcelBtn.addEventListener("click", () => exportAdminHistory("xlsx", ahExportExcelBtn));
+if (ahExportPdfBtn) ahExportPdfBtn.addEventListener("click", () => exportAdminHistory("pdf", ahExportPdfBtn));
 
 // Master–detail: bấm 1 dòng để xem chi tiết đầy đủ.
 const ahDetailModal = document.getElementById("ah-detail-modal");
@@ -1952,6 +2159,9 @@ if (ahDetailModal) {
   });
 }
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && historyDetailModal && !historyDetailModal.classList.contains("is-hidden")) {
+    closeHistoryDetail();
+  }
   if (e.key === "Escape" && ahDetailModal && !ahDetailModal.classList.contains("is-hidden")) {
     closeAhDetail();
   }

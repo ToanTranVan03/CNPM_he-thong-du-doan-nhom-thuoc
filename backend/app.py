@@ -11,9 +11,10 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from itertools import permutations
 from pathlib import Path
+from urllib.parse import urlparse
 
 import joblib
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
 from backend.translations import (
@@ -579,7 +580,7 @@ SEMANTIC_BLOCKLIST = {
 SEMANTIC_READY = False
 if SEMANTIC_ENABLED:
     try:
-        import semantic_matcher
+        from backend import semantic_matcher
         _semantic_pairs = [
             (kw, feature)
             for feature in features
@@ -595,25 +596,25 @@ if SEMANTIC_ENABLED:
 # Đọc env theo RUNTIME (mỗi request) để bật/tắt linh hoạt và dễ test/stub. LLM chỉ làm
 # giàu đầu vào; KHÔNG bao giờ là nguồn quyết định nhóm thuốc (xem /api/predict).
 try:
-    import llm_context
+    from backend import llm_context
 except Exception:
     llm_context = None
 
 # Lớp DỰ PHÒNG LLM (phân loại nhóm khi pipeline không trích được triệu chứng). Mặc định TẮT.
 try:
-    import llm_classify
+    from backend import llm_classify
 except Exception:
     llm_classify = None
 
 # Tầng NGỮ CẢNH - AN TOÀN (bệnh nền/tuổi/thai kỳ/tương tác/dị ứng/phản vệ). LUÔN bật.
 try:
-    import context_safety
+    from backend import context_safety
 except Exception:
     context_safety = None
 
 # Trích ngữ cảnh bằng LLM (semantic, bắt cách nói mới) + vòng học. Mặc định TẮT (LLM_CONTEXT_ENABLED).
 try:
-    import llm_context_extract
+    from backend import llm_context_extract
 except Exception:
     llm_context_extract = None
 
@@ -2774,6 +2775,37 @@ def symptoms():
     return jsonify({"symptoms": readable_symptoms})
 
 
+@app.get("/api/admin/integrations/llm")
+def admin_llm_integration_status():
+    """Trả trạng thái cấu hình LLM mà không gọi provider hoặc làm lộ API key."""
+    admin, error = current_admin_from_request(load_user_store())
+    if error:
+        return error
+    _ = admin
+    api_key = os.environ.get("LLM_API_KEY", "").strip()
+    base_url = os.environ.get("LLM_BASE_URL", "").strip()
+    model_name = os.environ.get("LLM_MODEL", "").strip()
+    context_enabled = llm_context_enabled()
+    fallback_enabled = bool(llm_classify and llm_classify.fallback_enabled())
+    common_configured = bool(api_key and base_url and model_name)
+    return jsonify({
+        "provider_host": urlparse(base_url).hostname or "",
+        "model": model_name,
+        "api_key_configured": bool(api_key),
+        "context": {
+            "enabled": context_enabled,
+            "module_loaded": llm_context is not None and llm_context_extract is not None,
+            "ready": context_enabled and common_configured and llm_context is not None,
+        },
+        "fallback_suggestion": {
+            "enabled": fallback_enabled,
+            "module_loaded": llm_classify is not None,
+            "ready": fallback_enabled and common_configured and llm_classify is not None,
+        },
+        "deterministic_safety_loaded": context_safety is not None,
+    })
+
+
 def _valid_date_param(value: str | None) -> str | None:
     """Chấp nhận 'YYYY-MM-DD'; sai định dạng -> None (bỏ lọc thay vì báo lỗi)."""
     if not value:
@@ -3078,19 +3110,10 @@ def admin_group_stats():
     })
 
 
-@app.get("/api/admin/history")
-def admin_history():
-    """Admin xem TOÀN BỘ lịch sử dự đoán của mọi người dùng (đọc ket_qua_du_doan).
-
-    Admin-only, DB-only (lịch sử đầy đủ chỉ có trong Postgres). Lọc ?email=&status=&from=&to=,
-    phân trang ?page=&page_size=. Trả từng ca kèm email người dùng, trạng thái, nhóm thuốc, thời gian.
-    """
-    _admin, error = _require_admin_db()
-    if error:
-        return error
+def _filtered_admin_history_query():
+    """Tạo truy vấn lịch sử dùng chung cho bảng và mọi định dạng xuất file."""
     from sqlalchemy import Date, cast
     KQ = db_models.KetQuaDuDoan
-
     q = db.session.query(KQ)
     email = (request.args.get("email") or "").strip().lower()
     status = (request.args.get("status") or "").strip()
@@ -3104,6 +3127,21 @@ def admin_history():
         q = q.filter(cast(KQ.created_at, Date) >= date_from)
     if date_to:
         q = q.filter(cast(KQ.created_at, Date) <= date_to)
+    return q
+
+
+@app.get("/api/admin/history")
+def admin_history():
+    """Admin xem TOÀN BỘ lịch sử dự đoán của mọi người dùng (đọc ket_qua_du_doan).
+
+    Admin-only, DB-only (lịch sử đầy đủ chỉ có trong Postgres). Lọc ?email=&status=&from=&to=,
+    phân trang ?page=&page_size=. Trả từng ca kèm email người dùng, trạng thái, nhóm thuốc, thời gian.
+    """
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    KQ = db_models.KetQuaDuDoan
+    q = _filtered_admin_history_query()
 
     total = q.count()
     try:
@@ -3144,23 +3182,8 @@ def admin_history_csv():
     _admin, error = _require_admin_db()
     if error:
         return error
-    from sqlalchemy import Date, cast
     KQ = db_models.KetQuaDuDoan
-
-    q = db.session.query(KQ)
-    email = (request.args.get("email") or "").strip().lower()
-    status = (request.args.get("status") or "").strip()
-    date_from = _valid_date_param(request.args.get("from"))
-    date_to = _valid_date_param(request.args.get("to"))
-    if email:
-        q = q.filter(KQ.user_email.ilike(f"%{email}%"))
-    if status in ("suggest", "emergency", "safety_block"):
-        q = q.filter(KQ.trang_thai == status)
-    if date_from:
-        q = q.filter(cast(KQ.created_at, Date) >= date_from)
-    if date_to:
-        q = q.filter(cast(KQ.created_at, Date) <= date_to)
-
+    q = _filtered_admin_history_query()
     rows = q.order_by(KQ.created_at.desc()).limit(5000).all()
     buffer = io.StringIO()
     buffer.write("﻿")  # BOM để Excel đọc đúng UTF-8
@@ -3181,6 +3204,214 @@ def admin_history_csv():
         buffer.getvalue(),
         mimetype="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=lich_su_he_thong.csv"},
+    )
+
+
+def _build_history_xlsx(title: str, headers: list[str], rows: list[list[str]]) -> io.BytesIO:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = title[:31]
+    sheet.append(headers)
+    for row in rows:
+        sheet.append(row)
+    header_fill = PatternFill("solid", fgColor="1F6F54")
+    for cell in sheet[1]:
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.fill = header_fill
+        cell.alignment = Alignment(vertical="center")
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = sheet.dimensions
+    for index, header in enumerate(headers, 1):
+        values = [str(sheet.cell(row=row, column=index).value or "") for row in range(1, sheet.max_row + 1)]
+        width = min(55, max(12, max(len(value) for value in values) + 2))
+        sheet.column_dimensions[get_column_letter(index)].width = width
+        if width == 55:
+            for row in range(2, sheet.max_row + 1):
+                sheet.cell(row=row, column=index).alignment = Alignment(wrap_text=True, vertical="top")
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
+
+
+def _pdf_unicode_font() -> str:
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    font_name = "HistoryUnicode"
+    if font_name in pdfmetrics.getRegisteredFontNames():
+        return font_name
+    candidates = [
+        Path(os.environ.get("REPORT_PDF_FONT", "")),
+        Path("C:/Windows/Fonts/arial.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    ]
+    for path in candidates:
+        if str(path) and path.is_file():
+            pdfmetrics.registerFont(TTFont(font_name, str(path)))
+            return font_name
+    return "Helvetica"
+
+
+def _build_history_pdf(title: str, headers: list[str], rows: list[list[str]]) -> io.BytesIO:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from xml.sax.saxutils import escape
+
+    output = io.BytesIO()
+    font = _pdf_unicode_font()
+    document = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        leftMargin=10 * mm,
+        rightMargin=10 * mm,
+        topMargin=10 * mm,
+        bottomMargin=10 * mm,
+        title=title,
+    )
+    title_style = ParagraphStyle("ReportTitle", fontName=font, fontSize=16, leading=20, textColor=colors.HexColor("#174E3B"))
+    cell_style = ParagraphStyle("ReportCell", fontName=font, fontSize=7, leading=9)
+    header_style = ParagraphStyle("ReportHeader", parent=cell_style, textColor=colors.white)
+    table_data = [[Paragraph(escape(str(value)), header_style) for value in headers]]
+    table_data.extend([[Paragraph(escape(str(value or "")), cell_style) for value in row] for row in rows])
+    usable_width = landscape(A4)[0] - 20 * mm
+    weights = [1] * len(headers)
+    if len(headers) >= 4:
+        weights[-1] = 2.2
+    total_weight = sum(weights)
+    table = Table(table_data, colWidths=[usable_width * weight / total_weight for weight in weights], repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F6F54")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, -1), font),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#B7C7C0")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F3F7F5")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    generated_at = datetime.now().astimezone().strftime("%d/%m/%Y %H:%M")
+    document.build([
+        Paragraph(escape(title), title_style),
+        Paragraph(escape(f"Ngày xuất: {generated_at} · {len(rows)} kết quả"), cell_style),
+        Spacer(1, 5 * mm),
+        table,
+    ])
+    output.seek(0)
+    return output
+
+
+def _admin_history_export_data():
+    labels = {"suggest": "Gợi ý OTC", "safety_block": "Né an toàn", "emergency": "Cấp cứu"}
+    rows = _filtered_admin_history_query().order_by(db_models.KetQuaDuDoan.created_at.desc()).limit(5000).all()
+    return [[
+        iso_utc(row.created_at) if row.created_at else "",
+        row.user_email or "guest",
+        labels.get(row.trang_thai, row.trang_thai or ""),
+        row.nhom_thuoc_du_doan or "",
+        f"{round(row.do_tin_cay * 100)}%" if isinstance(row.do_tin_cay, (int, float)) else "",
+        (row.mo_ta_benh_an.noi_dung if row.mo_ta_benh_an else "") or "",
+    ] for row in rows]
+
+
+@app.get("/api/admin/history.xlsx")
+def admin_history_xlsx():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    headers = ["Thời gian", "Email", "Hướng xử trí", "Nhóm thuốc", "Độ tin cậy", "Câu nhập"]
+    return send_file(
+        _build_history_xlsx("Lịch sử hệ thống", headers, _admin_history_export_data()),
+        as_attachment=True,
+        download_name="lich_su_he_thong.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.get("/api/admin/history.pdf")
+def admin_history_pdf():
+    _admin, error = _require_admin_db()
+    if error:
+        return error
+    headers = ["Thời gian", "Email", "Hướng xử trí", "Nhóm thuốc", "Tin cậy", "Câu nhập"]
+    return send_file(
+        _build_history_pdf("Báo cáo lịch sử dự đoán toàn hệ thống", headers, _admin_history_export_data()),
+        as_attachment=True,
+        download_name="lich_su_he_thong.pdf",
+        mimetype="application/pdf",
+    )
+
+
+def _personal_history_rows():
+    payload = request.get_json(silent=True) or {}
+    entries = payload.get("entries")
+    if not isinstance(entries, list) or not entries:
+        return None, (jsonify({"error": "Không có dữ liệu lịch sử để xuất."}), 400)
+    rows = []
+    for entry in entries[:100]:
+        if not isinstance(entry, dict):
+            continue
+        symptoms = entry.get("symptoms") if isinstance(entry.get("symptoms"), list) else []
+        clipped = lambda value, limit=2000: str(value or "")[:limit]
+        rows.append([
+            clipped(entry.get("savedAt"), 100),
+            clipped(entry.get("disease"), 500),
+            ", ".join(clipped(item, 200) for item in symptoms[:50]),
+            clipped(entry.get("notes")),
+        ])
+    if not rows:
+        return None, (jsonify({"error": "Dữ liệu lịch sử không hợp lệ."}), 400)
+    return rows, None
+
+
+def _require_history_user():
+    user = current_user_from_request(load_user_store())
+    if not user:
+        return jsonify({"error": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."}), 401
+    return None
+
+
+@app.post("/api/history/export.xlsx")
+def personal_history_xlsx():
+    auth_error = _require_history_user()
+    if auth_error:
+        return auth_error
+    rows, error = _personal_history_rows()
+    if error:
+        return error
+    headers = ["Ngày lưu", "Kết quả dự đoán", "Triệu chứng", "Mô tả"]
+    return send_file(
+        _build_history_xlsx("Lịch sử dự đoán", headers, rows),
+        as_attachment=True,
+        download_name="lich_su_du_doan.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.post("/api/history/export.pdf")
+def personal_history_pdf():
+    auth_error = _require_history_user()
+    if auth_error:
+        return auth_error
+    rows, error = _personal_history_rows()
+    if error:
+        return error
+    headers = ["Ngày lưu", "Kết quả dự đoán", "Triệu chứng", "Mô tả"]
+    return send_file(
+        _build_history_pdf("Báo cáo lịch sử dự đoán", headers, rows),
+        as_attachment=True,
+        download_name="lich_su_du_doan.pdf",
+        mimetype="application/pdf",
     )
 
 
@@ -3831,6 +4062,7 @@ def predict():
 
     active_symptoms = set()
     active_symptoms_order = []
+    _llm_symptoms_added = []
     for symptom in selected:
         key = str(symptom).lower()
         if key in feature_lookup:
@@ -3849,6 +4081,7 @@ def predict():
             if symptom not in active_symptoms:
                 active_symptoms.add(symptom)
                 active_symptoms_order.append(symptom)
+                _llm_symptoms_added.append(symptom)
     unsupported_symptoms = unsupported_symptoms_from_text(notes)
     # Phủ định: trừ feature LLM đánh dấu phủ định, rồi vẫn chạy lọc phủ định theo notes như cũ.
     if _llm_context is not None:
@@ -3867,6 +4100,8 @@ def predict():
                 "confidence": None,
                 "label_type": LABEL_TYPE,
                 "score_type": "emergency",
+                "suggestion_source": "llm_context_safety",
+                "llm_context_used": True,
                 "matched_symptoms": active_symptoms_order,
                 "top_predictions": [],
             }), 422
@@ -3902,6 +4137,8 @@ def predict():
                     "input_used": "llm_fallback",
                     "confidence": None,
                     "score_type": "llm_fallback",
+                    "suggestion_source": "llm_fallback",
+                    "llm_context_used": _llm_context is not None,
                     "label_type": LABEL_TYPE,
                     "matched_symptoms": [],
                     "matched_symptoms_vi": [],
@@ -4100,6 +4337,7 @@ def predict():
     # ── TẦNG NGỮ CẢNH - AN TOÀN: đọc cả câu (bệnh nền/tuổi/thai kỳ/tương tác/dị ứng) và CHẶN
     # gợi ý chống chỉ định, BẤT KỂ nguồn dự đoán (model hay rule). Đây là lớp vá điểm mù ngữ cảnh.
     _contraindicated = False
+    _llm_safety_context_used = False
     if LABEL_TYPE == "drug_group" and context_safety is not None:
         # LLM trích ngữ cảnh (semantic) để bắt cách nói MỚI lexicon sót; đồng thời HỌC lại.
         _extra = None
@@ -4109,6 +4347,7 @@ def predict():
                 if _parsed:
                     context_safety.learn_from_llm(_parsed)  # lưu cụm chữ mới -> rule tự bắt lần sau
                     _extra = context_safety.flags_from_llm(_parsed)
+                    _llm_safety_context_used = True
             except Exception:
                 _extra = None
         if context_safety.drug_allergy_cause(context_safety.norm(notes)) or (_extra and _extra.get("allergy")):
@@ -4163,6 +4402,9 @@ def predict():
                 "confidence": None,
                 "score_label": SCORE_LABEL,
                 "score_type": score_type,
+                "suggestion_source": "model_with_llm_context" if _llm_symptoms_added else "model_or_rule",
+                "llm_context_used": _llm_context is not None,
+                "llm_safety_context_used": _llm_safety_context_used,
                 "label_type": LABEL_TYPE,
                 "suggested_symptoms": suggested_symptoms_for_more_info(active_symptoms),
                 "medications": triage["treatment"],
@@ -4235,6 +4477,9 @@ def predict():
             "confidence": confidence,
             "top_gap": top_gap,
             "input_used": input_used,
+            "suggestion_source": "model_with_llm_context" if _llm_symptoms_added else ("rule" if score_type == "rule" else "model"),
+            "llm_context_used": _llm_context is not None,
+            "llm_safety_context_used": _llm_safety_context_used,
             "score_label": SCORE_LABEL,
             "score_type": score_type,
             "label_type": LABEL_TYPE,
