@@ -565,7 +565,9 @@ AMBIGUOUS_NORMALIZED_KEYWORDS = {
 
 # ── Lớp khớp NGỮ NGHĨA tiếng Việt (SBERT) — bổ sung cho khớp từ khóa cứng ──────
 # Bật/tắt qua env. Graceful: thiếu thư viện/model -> tự dùng exact-match như cũ.
-SEMANTIC_ENABLED = os.environ.get("SEMANTIC_MATCH", "1") != "0"
+# SBERT/PyTorch vượt giới hạn RAM 512 MB trên Render; mặc định tắt. Các luồng model,
+# rule, lịch sử và xuất báo cáo không phụ thuộc tầng semantic local này.
+SEMANTIC_ENABLED = os.environ.get("SEMANTIC_MATCH", "0") != "0"
 SEMANTIC_THRESHOLD = float(os.environ.get("SEMANTIC_THRESHOLD", "0.62"))
 # Lớp ngữ nghĩa chỉ chạy khi exact-match thu được < ngưỡng này (fallback).
 SEMANTIC_FALLBACK_MAX = int(os.environ.get("SEMANTIC_FALLBACK_MAX", "2"))
