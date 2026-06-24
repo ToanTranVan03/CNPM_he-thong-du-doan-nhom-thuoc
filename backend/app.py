@@ -11,7 +11,6 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from itertools import permutations
 from pathlib import Path
-from urllib.parse import urlparse
 
 import joblib
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -596,13 +595,13 @@ if SEMANTIC_ENABLED:
 # Đọc env theo RUNTIME (mỗi request) để bật/tắt linh hoạt và dễ test/stub. LLM chỉ làm
 # giàu đầu vào; KHÔNG bao giờ là nguồn quyết định nhóm thuốc (xem /api/predict).
 try:
-    from backend import llm_context
+    import llm_context
 except Exception:
     llm_context = None
 
 # Lớp DỰ PHÒNG LLM (phân loại nhóm khi pipeline không trích được triệu chứng). Mặc định TẮT.
 try:
-    from backend import llm_classify
+    import llm_classify
 except Exception:
     llm_classify = None
 
@@ -614,7 +613,7 @@ except Exception:
 
 # Trích ngữ cảnh bằng LLM (semantic, bắt cách nói mới) + vòng học. Mặc định TẮT (LLM_CONTEXT_ENABLED).
 try:
-    from backend import llm_context_extract
+    import llm_context_extract
 except Exception:
     llm_context_extract = None
 
@@ -2775,37 +2774,6 @@ def symptoms():
     return jsonify({"symptoms": readable_symptoms})
 
 
-@app.get("/api/admin/integrations/llm")
-def admin_llm_integration_status():
-    """Trả trạng thái cấu hình LLM mà không gọi provider hoặc làm lộ API key."""
-    admin, error = current_admin_from_request(load_user_store())
-    if error:
-        return error
-    _ = admin
-    api_key = os.environ.get("LLM_API_KEY", "").strip()
-    base_url = os.environ.get("LLM_BASE_URL", "").strip()
-    model_name = os.environ.get("LLM_MODEL", "").strip()
-    context_enabled = llm_context_enabled()
-    fallback_enabled = bool(llm_classify and llm_classify.fallback_enabled())
-    common_configured = bool(api_key and base_url and model_name)
-    return jsonify({
-        "provider_host": urlparse(base_url).hostname or "",
-        "model": model_name,
-        "api_key_configured": bool(api_key),
-        "context": {
-            "enabled": context_enabled,
-            "module_loaded": llm_context is not None and llm_context_extract is not None,
-            "ready": context_enabled and common_configured and llm_context is not None,
-        },
-        "fallback_suggestion": {
-            "enabled": fallback_enabled,
-            "module_loaded": llm_classify is not None,
-            "ready": fallback_enabled and common_configured and llm_classify is not None,
-        },
-        "deterministic_safety_loaded": context_safety is not None,
-    })
-
-
 def _valid_date_param(value: str | None) -> str | None:
     """Chấp nhận 'YYYY-MM-DD'; sai định dạng -> None (bỏ lọc thay vì báo lỗi)."""
     if not value:
@@ -4062,7 +4030,6 @@ def predict():
 
     active_symptoms = set()
     active_symptoms_order = []
-    _llm_symptoms_added = []
     for symptom in selected:
         key = str(symptom).lower()
         if key in feature_lookup:
@@ -4081,7 +4048,6 @@ def predict():
             if symptom not in active_symptoms:
                 active_symptoms.add(symptom)
                 active_symptoms_order.append(symptom)
-                _llm_symptoms_added.append(symptom)
     unsupported_symptoms = unsupported_symptoms_from_text(notes)
     # Phủ định: trừ feature LLM đánh dấu phủ định, rồi vẫn chạy lọc phủ định theo notes như cũ.
     if _llm_context is not None:
@@ -4100,8 +4066,6 @@ def predict():
                 "confidence": None,
                 "label_type": LABEL_TYPE,
                 "score_type": "emergency",
-                "suggestion_source": "llm_context_safety",
-                "llm_context_used": True,
                 "matched_symptoms": active_symptoms_order,
                 "top_predictions": [],
             }), 422
@@ -4137,8 +4101,6 @@ def predict():
                     "input_used": "llm_fallback",
                     "confidence": None,
                     "score_type": "llm_fallback",
-                    "suggestion_source": "llm_fallback",
-                    "llm_context_used": _llm_context is not None,
                     "label_type": LABEL_TYPE,
                     "matched_symptoms": [],
                     "matched_symptoms_vi": [],
@@ -4337,7 +4299,6 @@ def predict():
     # ── TẦNG NGỮ CẢNH - AN TOÀN: đọc cả câu (bệnh nền/tuổi/thai kỳ/tương tác/dị ứng) và CHẶN
     # gợi ý chống chỉ định, BẤT KỂ nguồn dự đoán (model hay rule). Đây là lớp vá điểm mù ngữ cảnh.
     _contraindicated = False
-    _llm_safety_context_used = False
     if LABEL_TYPE == "drug_group" and context_safety is not None:
         # LLM trích ngữ cảnh (semantic) để bắt cách nói MỚI lexicon sót; đồng thời HỌC lại.
         _extra = None
@@ -4347,7 +4308,6 @@ def predict():
                 if _parsed:
                     context_safety.learn_from_llm(_parsed)  # lưu cụm chữ mới -> rule tự bắt lần sau
                     _extra = context_safety.flags_from_llm(_parsed)
-                    _llm_safety_context_used = True
             except Exception:
                 _extra = None
         if context_safety.drug_allergy_cause(context_safety.norm(notes)) or (_extra and _extra.get("allergy")):
@@ -4402,9 +4362,6 @@ def predict():
                 "confidence": None,
                 "score_label": SCORE_LABEL,
                 "score_type": score_type,
-                "suggestion_source": "model_with_llm_context" if _llm_symptoms_added else "model_or_rule",
-                "llm_context_used": _llm_context is not None,
-                "llm_safety_context_used": _llm_safety_context_used,
                 "label_type": LABEL_TYPE,
                 "suggested_symptoms": suggested_symptoms_for_more_info(active_symptoms),
                 "medications": triage["treatment"],
@@ -4477,9 +4434,6 @@ def predict():
             "confidence": confidence,
             "top_gap": top_gap,
             "input_used": input_used,
-            "suggestion_source": "model_with_llm_context" if _llm_symptoms_added else ("rule" if score_type == "rule" else "model"),
-            "llm_context_used": _llm_context is not None,
-            "llm_safety_context_used": _llm_safety_context_used,
             "score_label": SCORE_LABEL,
             "score_type": score_type,
             "label_type": LABEL_TYPE,

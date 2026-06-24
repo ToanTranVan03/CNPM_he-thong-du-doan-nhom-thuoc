@@ -696,9 +696,6 @@ function renderPrediction(result) {
   if (donutVal) donutVal.textContent = isRuleBased ? "Quy tắc" : `${confidence}%`;
   resultTitle.textContent = result.display_title || result.disease_vi || result.disease;
   resultSubtitle.textContent = `${matchedCount} triệu chứng đã map sang đặc trưng tiếng Anh`;
-  if (result.llm_context_used) {
-    resultSubtitle.textContent += " · Đã chuẩn hóa ngữ cảnh bằng AI";
-  }
   if (unsupportedLabels.length > 0) {
     resultSubtitle.textContent += `; chưa hỗ trợ: ${unsupportedLabels.join(", ")}`;
   }
@@ -790,9 +787,6 @@ function renderInsufficientInput(result) {
   resultSubtitle.textContent = matchedLabels.length
     ? `${matchedLabels.length} triệu chứng đã map: ${matchedLabels.join(", ")}`
     : "Chưa nhận diện đủ triệu chứng trong tập train";
-  if (result.llm_context_used) {
-    resultSubtitle.textContent += " · Đã chuẩn hóa ngữ cảnh bằng AI";
-  }
   resultNote.textContent =
     result.error ||
     "Hãy mô tả thêm triệu chứng đi kèm, thời gian khởi phát, mức độ nặng, bệnh nền hoặc thuốc đang dùng.";

@@ -22,17 +22,6 @@ LLM_MODEL=llama-3.3-70b-versatile
 LLM_TIMEOUT=15
 ```
 
-Để vừa tự động trích/chuẩn hóa ngữ cảnh tiếng Việt vừa dùng gợi ý dự phòng, phải bật
-**cả hai** cờ `LLM_CONTEXT_ENABLED=1` và `LLM_FALLBACK_ENABLED=1`. Chỉ bật
-`LLM_CONTEXT_ENABLED` không cho phép LLM tự chọn nhóm thuốc.
-
-Admin có thể kiểm tra cấu hình đã được backend nạp (không trả API key) qua:
-
-```text
-GET /api/admin/integrations/llm
-Authorization: Bearer <admin-token>
-```
-
 Cài client: `pip install openai`.
 
 ## Kiểm chứng (đã đo 2026-06-16)
